@@ -30,4 +30,6 @@ jobs:
         with:
           go-version-file: src/go.mod
 
+      - run: make init
+
       - run: make test
