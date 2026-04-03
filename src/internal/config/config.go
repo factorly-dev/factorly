@@ -3,29 +3,47 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	Tools map[string]ToolConfig `yaml:"tools"`
+	ToolsDir string                `yaml:"tools_dir,omitempty"`
+	Tools    map[string]ToolConfig `yaml:"tools"`
 }
 
 type ToolConfig struct {
 	Type        string            `yaml:"type"`
 	Description string            `yaml:"description"`
-	Command     string            `yaml:"command"`
-	Args        []string          `yaml:"args"`
-	Env         map[string]string `yaml:"env"`
-	Parameters  []ParamConfig     `yaml:"parameters"`
+	Command     string            `yaml:"command,omitempty"`
+	Args        []string          `yaml:"args,omitempty"`
+	Env         map[string]string `yaml:"env,omitempty"`
+	Parameters  []ParamConfig     `yaml:"parameters,omitempty"`
+
+	// REST fields
+	BaseURL string            `yaml:"base_url,omitempty"`
+	Method  string            `yaml:"method,omitempty"`
+	Path    string            `yaml:"path,omitempty"`
+	Headers map[string]string `yaml:"headers,omitempty"`
+	Auth    *AuthConfig       `yaml:"auth,omitempty"`
+}
+
+type AuthConfig struct {
+	Type   string `yaml:"type"`             // "bearer", "basic", "header"
+	Token  string `yaml:"token,omitempty"`  // for bearer
+	Header string `yaml:"header,omitempty"` // for header-based auth
+	Value  string `yaml:"value,omitempty"`  // for header-based auth
 }
 
 type ParamConfig struct {
 	Name        string `yaml:"name"`
-	Description string `yaml:"description"`
-	Required    bool   `yaml:"required"`
+	Description string `yaml:"description,omitempty"`
+	Required    bool   `yaml:"required,omitempty"`
+	In          string `yaml:"in,omitempty"` // "query", "path", "header", "body"
 }
 
 var envVarPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
@@ -46,6 +64,24 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 
+	// Load tools from directory if tools_dir is set
+	if cfg.ToolsDir != "" {
+		dir := cfg.ToolsDir
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(filepath.Dir(path), dir)
+		}
+		dirTools, err := loadDir(dir)
+		if err != nil {
+			return nil, err
+		}
+		if cfg.Tools == nil {
+			cfg.Tools = make(map[string]ToolConfig)
+		}
+		if err := mergeTools(cfg.Tools, dirTools); err != nil {
+			return nil, err
+		}
+	}
+
 	resolveEnvVars(&cfg)
 	inferParameters(&cfg)
 
@@ -54,6 +90,78 @@ func Load(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// LoadDir loads tool definitions from a directory of YAML files (no primary config file).
+func LoadDir(dirPath string) (*Config, error) {
+	tools, err := loadDir(dirPath)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := &Config{Tools: tools}
+	resolveEnvVars(cfg)
+	inferParameters(cfg)
+
+	if err := validate(cfg); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
+func loadDir(dir string) (map[string]ToolConfig, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("reading tools_dir %q: %w", dir, err)
+	}
+
+	// Sort for deterministic load order
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+
+	all := make(map[string]ToolConfig)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		ext := filepath.Ext(name)
+		if ext != ".yaml" && ext != ".yml" {
+			continue
+		}
+
+		path := filepath.Join(dir, name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", path, err)
+		}
+
+		var tools map[string]ToolConfig
+		if err := yaml.Unmarshal(data, &tools); err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", path, err)
+		}
+
+		for toolName, toolCfg := range tools {
+			if _, exists := all[toolName]; exists {
+				return nil, fmt.Errorf("config: duplicate tool %q (found again in %s)", toolName, name)
+			}
+			all[toolName] = toolCfg
+		}
+	}
+
+	return all, nil
+}
+
+func mergeTools(base, extras map[string]ToolConfig) error {
+	for name, tool := range extras {
+		if _, exists := base[name]; exists {
+			return fmt.Errorf("config: duplicate tool %q (defined in both factorly.yaml and tools_dir)", name)
+		}
+		base[name] = tool
+	}
+	return nil
 }
 
 func resolveEnvVars(cfg *Config) {
@@ -65,6 +173,16 @@ func resolveEnvVars(cfg *Config) {
 		}
 		for k, v := range tool.Env {
 			tool.Env[k] = resolveString(v)
+		}
+		// REST fields
+		tool.BaseURL = resolveString(tool.BaseURL)
+		tool.Path = resolveString(tool.Path)
+		for k, v := range tool.Headers {
+			tool.Headers[k] = resolveString(v)
+		}
+		if tool.Auth != nil {
+			tool.Auth.Token = resolveString(tool.Auth.Token)
+			tool.Auth.Value = resolveString(tool.Auth.Value)
 		}
 		cfg.Tools[name] = tool
 	}
@@ -117,6 +235,14 @@ func validate(cfg *Config) error {
 		}
 		if tool.Type == "cli" && tool.Command == "" {
 			return fmt.Errorf("config: cli tool %q missing command", name)
+		}
+		if tool.Type == "rest" {
+			if tool.BaseURL == "" {
+				return fmt.Errorf("config: rest tool %q missing base_url", name)
+			}
+			if tool.Method == "" {
+				return fmt.Errorf("config: rest tool %q missing method", name)
+			}
 		}
 	}
 	return nil

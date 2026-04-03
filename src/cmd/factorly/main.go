@@ -9,13 +9,16 @@ import (
 	"github.com/factorly-dev/factorly/internal"
 	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/logger"
+	"github.com/factorly-dev/factorly/internal/openapi"
 	"github.com/factorly-dev/factorly/internal/provider"
 	"github.com/factorly-dev/factorly/internal/proxy"
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var configPath string
+var configDir string
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
@@ -92,18 +95,68 @@ var callCmd = &cobra.Command{
 	},
 }
 
+var importCmd = &cobra.Command{
+	Use:   "import",
+	Short: "Import tool definitions from external sources",
+}
+
+var importOpenAPIOut string
+var importOpenAPIPrefix string
+
+var importOpenAPICmd = &cobra.Command{
+	Use:   "openapi <spec-path>",
+	Short: "Generate tool definitions from an OpenAPI spec",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		tools, err := openapi.Generate(args[0], openapi.GenerateOpts{
+			Prefix: importOpenAPIPrefix,
+		})
+		if err != nil {
+			return err
+		}
+
+		data, err := yaml.Marshal(tools)
+		if err != nil {
+			return fmt.Errorf("marshaling output: %w", err)
+		}
+
+		if importOpenAPIOut != "" {
+			if err := os.WriteFile(importOpenAPIOut, data, 0o644); err != nil {
+				return fmt.Errorf("writing %s: %w", importOpenAPIOut, err)
+			}
+			fmt.Fprintf(os.Stderr, "Wrote %d tools to %s\n", len(tools), importOpenAPIOut)
+			return nil
+		}
+
+		fmt.Print(string(data))
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "path to factorly.yaml")
-	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd)
+	rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "", "path to directory of tool definition files")
+
+	importOpenAPICmd.Flags().StringVarP(&importOpenAPIOut, "out", "o", "", "output file path (default: stdout)")
+	importOpenAPICmd.Flags().StringVarP(&importOpenAPIPrefix, "prefix", "p", "", "tool name prefix (default: from spec title)")
+	importCmd.AddCommand(importOpenAPICmd)
+
+	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, importCmd)
 }
 
 func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
-	cfgPath := configPath
-	if cfgPath == "" {
-		cfgPath = config.FindConfig()
-	}
+	var cfg *config.Config
+	var err error
 
-	cfg, err := config.Load(cfgPath)
+	if configDir != "" {
+		cfg, err = config.LoadDir(configDir)
+	} else {
+		cfgPath := configPath
+		if cfgPath == "" {
+			cfgPath = config.FindConfig()
+		}
+		cfg, err = config.Load(cfgPath)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -115,6 +168,17 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 	cliTools := make(map[string]provider.CLIToolDef)
 
 	for name, toolCfg := range cfg.Tools {
+		params := make([]registry.Parameter, len(toolCfg.Parameters))
+		for i, p := range toolCfg.Parameters {
+			params[i] = registry.Parameter{
+				Name:        p.Name,
+				Description: p.Description,
+				Required:    p.Required,
+			}
+		}
+
+		providerKey := toolCfg.Type
+
 		switch toolCfg.Type {
 		case "cli":
 			cliTools[name] = provider.CLIToolDef{
@@ -122,27 +186,15 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 				Args:    toolCfg.Args,
 				Env:     toolCfg.Env,
 			}
-
-			params := make([]registry.Parameter, len(toolCfg.Parameters))
-			for i, p := range toolCfg.Parameters {
-				params[i] = registry.Parameter{
-					Name:        p.Name,
-					Description: p.Description,
-					Required:    p.Required,
-				}
-			}
-
-			reg.Register(&registry.Tool{
-				Name:        name,
-				Type:        toolCfg.Type,
-				Description: toolCfg.Description,
-				Parameters:  params,
-				ProviderKey: "cli",
-			})
-
-		default:
-			fmt.Fprintf(os.Stderr, "warning: tool %q has unsupported type %q (Day 1 supports cli only)\n", name, toolCfg.Type)
 		}
+
+		reg.Register(&registry.Tool{
+			Name:        name,
+			Type:        toolCfg.Type,
+			Description: toolCfg.Description,
+			Parameters:  params,
+			ProviderKey: providerKey,
+		})
 	}
 
 	if len(cliTools) > 0 {

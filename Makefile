@@ -1,4 +1,4 @@
-.PHONY: build test clean vet lint fix fmt release version run init
+.PHONY: build test test-integration clean vet lint fix fmt release version run init
 
 BINARY  := factorly
 OUTDIR  := build
@@ -15,7 +15,10 @@ run:
 	cd $(SRCDIR) && go run ./cmd/factorly $(ARGS)
 
 test:
-	cd $(SRCDIR) && go test ./...
+	cd $(SRCDIR) && $(GOTESTSUM) --format testname -- ./...
+
+test-integration: build
+	cd $(SRCDIR) && $(GOTESTSUM) --format testname -- -tags integration ./test/...
 
 vet:
 	cd $(SRCDIR) && go vet ./...
@@ -23,8 +26,10 @@ vet:
 init:
 	cd $(SRCDIR) && go mod download
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install gotest.tools/gotestsum@latest
 
 GOLANGCI_LINT := $(or $(shell which golangci-lint 2>/dev/null),$(shell go env GOPATH)/bin/golangci-lint)
+GOTESTSUM     := $(or $(shell which gotestsum 2>/dev/null),$(shell go env GOPATH)/bin/gotestsum)
 
 lint:
 	cd $(SRCDIR) && $(GOLANGCI_LINT) run ./...

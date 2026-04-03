@@ -293,3 +293,314 @@ func TestHasPlaceholder(t *testing.T) {
 		t.Error("did not expect to find {missing}")
 	}
 }
+
+// --- Tool Directory Tests ---
+
+func writeToolDir(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "tools")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func TestToolsDirLoading(t *testing.T) {
+	toolsDir := writeToolDir(t, map[string]string{
+		"echo.yaml": `
+echo.test:
+  type: cli
+  command: echo
+  args: ["{msg}"]
+`,
+	})
+
+	configContent := `
+tools_dir: ` + toolsDir + `
+tools:
+  web.fetch:
+    type: cli
+    command: curl
+    args: ["-s", "{url}"]
+`
+	path := writeTestConfig(t, configContent)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(cfg.Tools) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(cfg.Tools))
+	}
+	if _, ok := cfg.Tools["web.fetch"]; !ok {
+		t.Error("expected tool web.fetch from inline config")
+	}
+	if _, ok := cfg.Tools["echo.test"]; !ok {
+		t.Error("expected tool echo.test from tools dir")
+	}
+}
+
+func TestToolsDirMultipleFiles(t *testing.T) {
+	toolsDir := writeToolDir(t, map[string]string{
+		"a.yaml": `
+tool.a:
+  type: cli
+  command: echo
+  args: ["a"]
+`,
+		"b.yml": `
+tool.b:
+  type: cli
+  command: echo
+  args: ["b"]
+`,
+	})
+
+	configContent := `
+tools_dir: ` + toolsDir + `
+tools:
+  tool.c:
+    type: cli
+    command: echo
+    args: ["c"]
+`
+	path := writeTestConfig(t, configContent)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(cfg.Tools) != 3 {
+		t.Fatalf("expected 3 tools, got %d", len(cfg.Tools))
+	}
+}
+
+func TestToolsDirConflictWithInline(t *testing.T) {
+	toolsDir := writeToolDir(t, map[string]string{
+		"web.yaml": `
+web.fetch:
+  type: cli
+  command: wget
+  args: ["{url}"]
+`,
+	})
+
+	configContent := `
+tools_dir: ` + toolsDir + `
+tools:
+  web.fetch:
+    type: cli
+    command: curl
+    args: ["-s", "{url}"]
+`
+	path := writeTestConfig(t, configContent)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for duplicate tool across inline and dir")
+	}
+}
+
+func TestToolsDirConflictAcrossFiles(t *testing.T) {
+	toolsDir := writeToolDir(t, map[string]string{
+		"a.yaml": `
+dupe:
+  type: cli
+  command: echo
+  args: ["a"]
+`,
+		"b.yaml": `
+dupe:
+  type: cli
+  command: echo
+  args: ["b"]
+`,
+	})
+
+	configContent := `tools_dir: ` + toolsDir + `
+tools: {}
+`
+	path := writeTestConfig(t, configContent)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for duplicate tool across dir files")
+	}
+}
+
+func TestToolsDirOnly(t *testing.T) {
+	toolsDir := writeToolDir(t, map[string]string{
+		"tools.yaml": `
+echo.test:
+  type: cli
+  command: echo
+  args: ["{msg}"]
+`,
+	})
+
+	configContent := `
+tools_dir: ` + toolsDir + `
+tools: {}
+`
+	// Need at least one tool total to pass validation, so use dir-only
+	path := writeTestConfig(t, configContent)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(cfg.Tools) != 1 {
+		t.Fatalf("expected 1 tool from dir, got %d", len(cfg.Tools))
+	}
+}
+
+func TestLoadDirDirectly(t *testing.T) {
+	toolsDir := writeToolDir(t, map[string]string{
+		"tools.yaml": `
+echo.test:
+  type: cli
+  command: echo
+  args: ["{msg}"]
+web.fetch:
+  type: cli
+  command: curl
+  args: ["-s", "{url}"]
+`,
+	})
+
+	cfg, err := LoadDir(toolsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(cfg.Tools) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(cfg.Tools))
+	}
+}
+
+func TestToolsDirIgnoresNonYAML(t *testing.T) {
+	toolsDir := writeToolDir(t, map[string]string{
+		"tools.yaml": `
+echo.test:
+  type: cli
+  command: echo
+  args: ["{msg}"]
+`,
+		"readme.txt": `this is not a yaml file`,
+		".hidden":    `also not yaml`,
+	})
+
+	cfg, err := LoadDir(toolsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(cfg.Tools) != 1 {
+		t.Fatalf("expected 1 tool (ignoring non-yaml), got %d", len(cfg.Tools))
+	}
+}
+
+func TestToolsDirParameterInference(t *testing.T) {
+	toolsDir := writeToolDir(t, map[string]string{
+		"tools.yaml": `
+echo.test:
+  type: cli
+  command: echo
+  args: ["{msg}", "{name}"]
+`,
+	})
+
+	cfg, err := LoadDir(toolsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tool := cfg.Tools["echo.test"]
+	if len(tool.Parameters) != 2 {
+		t.Fatalf("expected 2 inferred params, got %d", len(tool.Parameters))
+	}
+}
+
+func TestToolsDirMissing(t *testing.T) {
+	configContent := `
+tools_dir: /nonexistent/tools
+tools:
+  web.fetch:
+    type: cli
+    command: curl
+    args: ["-s", "{url}"]
+`
+	path := writeTestConfig(t, configContent)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for missing tools_dir")
+	}
+}
+
+// --- REST Validation Tests ---
+
+func TestValidationRESTMissingBaseURL(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  api:
+    type: rest
+    method: GET
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for rest tool missing base_url")
+	}
+}
+
+func TestValidationRESTMissingMethod(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  api:
+    type: rest
+    base_url: https://api.example.com
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for rest tool missing method")
+	}
+}
+
+func TestValidRESTConfig(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  api.get:
+    type: rest
+    description: "Get data"
+    base_url: https://api.example.com
+    method: GET
+    path: /data
+    auth:
+      type: bearer
+      token: "${API_TOKEN}"
+    parameters:
+      - name: limit
+        in: query
+        required: false
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tool := cfg.Tools["api.get"]
+	if tool.BaseURL != "https://api.example.com" {
+		t.Errorf("expected base_url, got %q", tool.BaseURL)
+	}
+	if tool.Auth == nil {
+		t.Fatal("expected auth config")
+	}
+	if tool.Auth.Type != "bearer" {
+		t.Errorf("expected bearer auth, got %s", tool.Auth.Type)
+	}
+	if tool.Parameters[0].In != "query" {
+		t.Errorf("expected param in=query, got %q", tool.Parameters[0].In)
+	}
+}
