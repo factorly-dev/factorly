@@ -1,0 +1,68 @@
+.PHONY: build test clean vet lint fix fmt release version run init
+
+BINARY  := factorly
+OUTDIR  := build
+SRCDIR  := src
+VERSION := $(shell grep 'Version' $(SRCDIR)/internal/version.go | head -1 | sed 's/.*"\(.*\)".*/\1/')
+LDFLAGS := -s -w
+
+# Default: build for the host platform
+build:
+	@mkdir -p $(OUTDIR)
+	cd $(SRCDIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o ../$(OUTDIR)/$(BINARY) ./cmd/factorly
+
+run:
+	cd $(SRCDIR) && go run ./cmd/factorly $(ARGS)
+
+test:
+	cd $(SRCDIR) && go test ./...
+
+vet:
+	cd $(SRCDIR) && go vet ./...
+
+init:
+	cd $(SRCDIR) && go mod download
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+GOLANGCI_LINT := $(or $(shell which golangci-lint 2>/dev/null),$(shell go env GOPATH)/bin/golangci-lint)
+
+lint:
+	cd $(SRCDIR) && $(GOLANGCI_LINT) run ./...
+
+fix:
+	cd $(SRCDIR) && $(GOLANGCI_LINT) run --fix ./...
+	gofmt -w $(SRCDIR)
+
+fmt: fix
+
+clean:
+	rm -rf $(OUTDIR)
+
+# Bump patch version: 0.1.0 → 0.1.1
+# Usage: make version            (bump patch)
+#        make version BUMP=minor  (0.1.0 → 0.2.0)
+#        make version BUMP=major  (0.1.0 → 1.0.0)
+BUMP ?= patch
+version:
+	@major=$$(echo "$(VERSION)" | cut -d. -f1); \
+	minor=$$(echo "$(VERSION)" | cut -d. -f2); \
+	patch=$$(echo "$(VERSION)" | cut -d. -f3); \
+	case "$(BUMP)" in \
+		major) major=$$((major+1)); minor=0; patch=0;; \
+		minor) minor=$$((minor+1)); patch=0;; \
+		patch) patch=$$((patch+1));; \
+		*) echo "Unknown BUMP=$(BUMP). Use major, minor, or patch." >&2; exit 1;; \
+	esac; \
+	NEW="$$major.$$minor.$$patch"; \
+	sed -i "s/Version    = \"$(VERSION)\"/Version    = \"$$NEW\"/" $(SRCDIR)/internal/version.go; \
+	echo "$(VERSION) → $$NEW"
+
+# Cross-platform release builds
+release: clean
+	@mkdir -p $(OUTDIR)
+	cd $(SRCDIR) && GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o ../$(OUTDIR)/$(BINARY)-linux-amd64 ./cmd/factorly
+	cd $(SRCDIR) && GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o ../$(OUTDIR)/$(BINARY)-darwin-amd64 ./cmd/factorly
+	cd $(SRCDIR) && GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o ../$(OUTDIR)/$(BINARY)-darwin-arm64 ./cmd/factorly
+	cd $(SRCDIR) && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o ../$(OUTDIR)/$(BINARY)-windows-amd64.exe ./cmd/factorly
+	@echo "Built $(VERSION) binaries:"
+	@ls -lh $(OUTDIR)/$(BINARY)-*

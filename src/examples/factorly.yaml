@@ -1,0 +1,11 @@
+tools:
+  web.fetch:
+    type: cli
+    description: "Fetch a webpage"
+    command: curl
+    args: ["-s", "{url}"]
+  file.read:
+    type: cli
+    description: "Read a file"
+    command: cat
+    args: ["{path}"]
