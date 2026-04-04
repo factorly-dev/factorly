@@ -164,8 +164,8 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 	reg := registry.New()
 	providers := make(map[string]provider.Provider)
 
-	// Group CLI tools by provider key
 	cliTools := make(map[string]provider.CLIToolDef)
+	restTools := make(map[string]provider.RESTToolDef)
 
 	for name, toolCfg := range cfg.Tools {
 		params := make([]registry.Parameter, len(toolCfg.Parameters))
@@ -186,6 +186,29 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 				Args:    toolCfg.Args,
 				Env:     toolCfg.Env,
 			}
+		case "rest":
+			restDef := provider.RESTToolDef{
+				Method:  toolCfg.Method,
+				BaseURL: toolCfg.BaseURL,
+				Path:    toolCfg.Path,
+				Headers: toolCfg.Headers,
+			}
+			if toolCfg.Auth != nil {
+				restDef.Auth = &provider.AuthDef{
+					Type:   toolCfg.Auth.Type,
+					Token:  toolCfg.Auth.Token,
+					Header: toolCfg.Auth.Header,
+					Value:  toolCfg.Auth.Value,
+				}
+			}
+			for _, p := range toolCfg.Parameters {
+				restDef.Params = append(restDef.Params, provider.RESTParamDef{
+					Name:     p.Name,
+					In:       p.In,
+					Required: p.Required,
+				})
+			}
+			restTools[name] = restDef
 		}
 
 		reg.Register(&registry.Tool{
@@ -199,6 +222,13 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 
 	if len(cliTools) > 0 {
 		providers["cli"] = provider.NewCLI(cliTools)
+	}
+	if len(restTools) > 0 {
+		restProvider := provider.NewREST(restTools)
+		if err := restProvider.Setup(); err != nil {
+			return nil, nil, fmt.Errorf("rest provider setup: %w", err)
+		}
+		providers["rest"] = restProvider
 	}
 
 	log, err := logger.NewJSONL("")

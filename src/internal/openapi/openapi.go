@@ -3,6 +3,8 @@ package openapi
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
@@ -15,11 +17,11 @@ type GenerateOpts struct {
 	Prefix string // tool name prefix, defaults to slugified info.title
 }
 
-// Generate reads an OpenAPI 3.x spec and returns Factorly tool definitions.
+// Generate reads an OpenAPI 3.x spec (local file or URL) and returns Factorly tool definitions.
 func Generate(specPath string, opts GenerateOpts) (map[string]config.ToolConfig, error) {
-	data, err := os.ReadFile(specPath)
+	data, err := readSpec(specPath)
 	if err != nil {
-		return nil, fmt.Errorf("reading spec: %w", err)
+		return nil, err
 	}
 
 	// Parse as generic map (handles both YAML and JSON)
@@ -235,4 +237,27 @@ func isHTTPMethod(m string) bool {
 		return true
 	}
 	return false
+}
+
+func readSpec(specPath string) ([]byte, error) {
+	if strings.HasPrefix(specPath, "http://") || strings.HasPrefix(specPath, "https://") {
+		resp, err := http.Get(specPath) //nolint:gosec // user-provided URL is intentional
+		if err != nil {
+			return nil, fmt.Errorf("fetching spec from %s: %w", specPath, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("fetching spec from %s: %s", specPath, resp.Status)
+		}
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("reading spec from %s: %w", specPath, err)
+		}
+		return data, nil
+	}
+	data, err := os.ReadFile(specPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading spec: %w", err)
+	}
+	return data, nil
 }

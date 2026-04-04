@@ -3,6 +3,10 @@
 package test
 
 import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -420,6 +424,182 @@ tools:
 	}
 	if strings.TrimSpace(stdout) != "pipeline works" {
 		t.Errorf("expected 'pipeline works', got %q", stdout)
+	}
+}
+
+// --- REST Provider ---
+
+func TestToolsListREST(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  api.list:
+    type: rest
+    description: "List items"
+    base_url: https://api.example.com
+    method: GET
+    path: /items
+    parameters:
+      - name: limit
+        in: query
+`,
+	})
+
+	stdout, _, code := run(t, dir, "tools")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "api.list") {
+		t.Error("expected api.list in tools output")
+	}
+	if !strings.Contains(stdout, "rest") {
+		t.Error("expected 'rest' type in tools output")
+	}
+}
+
+func TestCallREST(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"items":["a","b"]}`))
+	}))
+	defer srv.Close()
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  api.list:
+    type: rest
+    description: "List items"
+    base_url: %s
+    method: GET
+    path: /items
+`, srv.URL),
+	})
+
+	stdout, _, code := run(t, dir, "call", "api.list")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, `{"items":["a","b"]}`) {
+		t.Errorf("expected JSON response, got %q", stdout)
+	}
+}
+
+func TestCallRESTWithParams(t *testing.T) {
+	var capturedPath string
+	var capturedQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		capturedQuery = r.URL.RawQuery
+		w.Write([]byte(`{"id":"42"}`))
+	}))
+	defer srv.Close()
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  api.get:
+    type: rest
+    base_url: %s
+    method: GET
+    path: /items/{id}
+    parameters:
+      - name: id
+        in: path
+        required: true
+      - name: fields
+        in: query
+`, srv.URL),
+	})
+
+	stdout, _, code := run(t, dir, "call", "api.get", "--id", "42", "--fields", "name,status")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if capturedPath != "/items/42" {
+		t.Errorf("expected path /items/42, got %s", capturedPath)
+	}
+	if !strings.Contains(capturedQuery, "fields=name") {
+		t.Errorf("expected query param, got %s", capturedQuery)
+	}
+	if !strings.Contains(stdout, `{"id":"42"}`) {
+		t.Errorf("expected response, got %q", stdout)
+	}
+}
+
+func TestCallRESTPost(t *testing.T) {
+	var capturedBody string
+	var capturedMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedMethod = r.Method
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = string(body)
+		w.WriteHeader(201)
+		w.Write([]byte(`{"created":true}`))
+	}))
+	defer srv.Close()
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  api.create:
+    type: rest
+    base_url: %s
+    method: POST
+    path: /items
+    parameters:
+      - name: body
+        in: body
+        required: true
+`, srv.URL),
+	})
+
+	stdout, _, code := run(t, dir, "call", "api.create", "--body", `{"name":"test"}`)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if capturedMethod != "POST" {
+		t.Errorf("expected POST, got %s", capturedMethod)
+	}
+	if capturedBody != `{"name":"test"}` {
+		t.Errorf("expected body, got %q", capturedBody)
+	}
+	if !strings.Contains(stdout, `{"created":true}`) {
+		t.Errorf("expected response, got %q", stdout)
+	}
+}
+
+func TestCallRESTAuth(t *testing.T) {
+	var capturedAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuth = r.Header.Get("Authorization")
+		w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  api.get:
+    type: rest
+    base_url: %s
+    method: GET
+    path: /secure
+    auth:
+      type: bearer
+      token: test-token-123
+`, srv.URL),
+	})
+
+	stdout, _, code := run(t, dir, "call", "api.get")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if capturedAuth != "Bearer test-token-123" {
+		t.Errorf("expected bearer auth, got %q", capturedAuth)
+	}
+	if stdout != "ok" {
+		t.Errorf("expected 'ok', got %q", stdout)
 	}
 }
 
