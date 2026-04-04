@@ -55,7 +55,7 @@ var toolsCmd = &cobra.Command{
 	Use:   "tools",
 	Short: "List all configured tools",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_, reg, err := bootstrap()
+		_, reg, err := loadConfig()
 		if err != nil {
 			return err
 		}
@@ -90,6 +90,15 @@ var callCmd = &cobra.Command{
 
 		vlog("calling tool: %s", toolName)
 		vlog("  params: %v", params)
+
+		// Validate tool exists before opening vault or creating providers
+		_, reg, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		if _, err := reg.Get(toolName); err != nil {
+			return err
+		}
 
 		p, _, err := bootstrap()
 		if err != nil {
@@ -292,7 +301,9 @@ func init() {
 	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, importCmd, initCmd, vaultCmd)
 }
 
-func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
+// loadConfig loads config and builds a registry. Does not open the vault
+// or create providers — use for read-only commands like `tools`.
+func loadConfig() (*config.Config, *registry.Registry, error) {
 	config.Verbose = nil
 	if verbose {
 		config.Verbose = func(format string, args ...any) {
@@ -322,15 +333,7 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 
 	vlog("loaded %d tools", len(cfg.Tools))
 
-	// Open vault resolver if any config values contain ${backend:key} refs
-	resolver := initResolver(cfg)
-
 	reg := registry.New()
-	providers := make(map[string]provider.Provider)
-
-	cliTools := make(map[string]provider.CLIToolDef)
-	restTools := make(map[string]provider.RESTToolDef)
-
 	for name, toolCfg := range cfg.Tools {
 		params := make([]registry.Parameter, len(toolCfg.Parameters))
 		for i, p := range toolCfg.Parameters {
@@ -340,9 +343,34 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 				Required:    p.Required,
 			}
 		}
+		reg.Register(&registry.Tool{
+			Name:        name,
+			Type:        toolCfg.Type,
+			Description: toolCfg.Description,
+			Parameters:  params,
+			ProviderKey: toolCfg.Type,
+		})
+	}
 
-		providerKey := toolCfg.Type
+	return cfg, reg, nil
+}
 
+// bootstrap loads config, opens the vault if needed, creates providers,
+// and wires everything together. Use for execution commands like `call`.
+func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
+	cfg, reg, err := loadConfig()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Open vault resolver only when executing tools
+	resolver := initResolver(cfg)
+
+	providers := make(map[string]provider.Provider)
+	cliTools := make(map[string]provider.CLIToolDef)
+	restTools := make(map[string]provider.RESTToolDef)
+
+	for name, toolCfg := range cfg.Tools {
 		switch toolCfg.Type {
 		case "cli":
 			cliTools[name] = provider.CLIToolDef{
@@ -374,15 +402,7 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 			}
 			restTools[name] = restDef
 		}
-
-		vlog("  registered tool: %s (type: %s)", name, toolCfg.Type)
-		reg.Register(&registry.Tool{
-			Name:        name,
-			Type:        toolCfg.Type,
-			Description: toolCfg.Description,
-			Parameters:  params,
-			ProviderKey: providerKey,
-		})
+		vlog("  registered provider for tool: %s (type: %s)", name, toolCfg.Type)
 	}
 
 	if len(cliTools) > 0 {
