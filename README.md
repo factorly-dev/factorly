@@ -21,7 +21,7 @@ Your AI agent needs to call Slack, GitHub, Stripe, a database, an internal API. 
 - **No audit trail** — what did the agent actually call? With what parameters?
 - **Key rotation** means hunting through agent configs and .env files
 
-Factorly fixes this. Secrets live in Factorly's config. The agent only knows tool names.
+Factorly fixes this. Secrets live in Factorly's config — or encrypted in the vault. The agent only knows tool names.
 
 ```
 ┌──────────────────────┐         ┌──────────────────────────────┐
@@ -29,7 +29,7 @@ Factorly fixes this. Secrets live in Factorly's config. The agent only knows too
 │                      │         │                              │
 │  Knows:              │  call   │  Injects:                    │
 │  - tool names        │────────▶│  - Authorization headers     │
-│  - parameter names   │         │  - API keys                  │
+│  - parameter names   │         │  - API keys from vault       │
 │                      │◀────────│  - Base URLs                 │
 │  Never sees:         │  data   │                              │
 │  - API keys          │         │  Logs every call.            │
@@ -80,7 +80,7 @@ tools:
     path: /users/{username}/repos
     auth:
       type: bearer
-      token: ${GITHUB_TOKEN}
+      token: "${vault:GITHUB_TOKEN}"
     parameters:
       - name: username
         in: path
@@ -88,8 +88,6 @@ tools:
       - name: per_page
         in: query
 ```
-
-Environment variables (`${VAR}`) are resolved from your shell environment or a `.env` file.
 
 ### Use it
 
@@ -105,6 +103,78 @@ factorly call github.repos --username octocat --per_page 5
 
 # Verbose mode — see what's happening
 factorly -v call web.fetch --url "https://example.com"
+```
+
+## Vault — Encrypted Secret Storage
+
+Factorly includes an encrypted vault so secrets never live in plaintext `.env` files. Secrets are stored encrypted on disk using AES-256-GCM with an Argon2id-derived key.
+
+### Store secrets
+
+```bash
+# Interactive — prompts for value with no echo
+factorly vault set GITHUB_TOKEN
+
+# Inline
+factorly vault set STRIPE_KEY sk_live_xxxxxxxxxxxx
+
+# List stored keys (values are never shown)
+factorly vault list
+
+# Remove a secret
+factorly vault delete OLD_KEY
+```
+
+### Reference in config
+
+Use `${vault:KEY}` anywhere you'd use `${ENV_VAR}`:
+
+```yaml
+# Env var (plain text in environment)
+token: "${GITHUB_TOKEN}"
+
+# Vault (encrypted on disk)
+token: "${vault:GITHUB_TOKEN}"
+```
+
+Both work. Mix and match per tool. Vault references are resolved at startup — the agent never sees either form.
+
+### How it works
+
+```
+factorly vault set GITHUB_TOKEN
+  → prompts for value (no echo)
+  → encrypts with AES-256-GCM
+  → stores in ~/.config/factorly/vault.enc
+
+factorly call github.repos --username octocat
+  → loads config, finds ${vault:GITHUB_TOKEN}
+  → decrypts vault, resolves to real token
+  → injects into Authorization header
+  → agent sees only the response data
+```
+
+### Vault password
+
+The vault is locked with a master password. Resolved in order:
+
+1. `FACTORLY_VAULT_PASSWORD` env var (CI/automation)
+2. `~/.config/factorly/vault.key` file (headless servers)
+3. Interactive prompt (normal dev UX)
+
+### Vault path
+
+Default: `~/.config/factorly/vault.enc`. Override with `--vault-path` flag or `FACTORLY_VAULT_PATH` env var.
+
+### Extensible backends (future)
+
+The vault uses a `Backend` interface. The local encrypted file is the v1 backend. Future backends:
+
+```yaml
+# Coming soon
+token: "${1password:Development/GitHub/token}"
+token: "${gcp-sm:project-id/GITHUB_TOKEN}"
+token: "${aws-sm:prod/stripe-key}"
 ```
 
 ## Import from OpenAPI
@@ -161,7 +231,7 @@ slack.post:
   path: /chat.postMessage
   auth:
     type: bearer
-    token: "${SLACK_TOKEN}"
+    token: "${vault:SLACK_TOKEN}"
   parameters:
     - name: channel
       required: true
@@ -192,7 +262,7 @@ tools:
 ## What You Get
 
 - **One endpoint** — your agent connects to Factorly, sees everything
-- **Credentials secured** — API keys and tokens live in Factorly's config, not in your agent
+- **Credentials secured** — secrets live in the encrypted vault or env vars, never in the agent
 - **Every call logged** — every tool call is logged with timestamp, parameters, and response summary
 - **Zero lock-in** — your tools don't change. Remove Factorly and everything still works independently
 - **Any protocol** — REST APIs, CLI tools, and soon MCP servers. One config format for all of them
@@ -205,15 +275,32 @@ factorly init --out factorly.yaml   # create at custom path
 factorly tools                      # list all configured tools
 factorly call <tool> [--param val]  # call a tool
 factorly import openapi <spec>      # generate tools from OpenAPI spec
+factorly vault set <key> [value]    # store a secret (prompts if no value)
+factorly vault list                 # list secret names
+factorly vault delete <key>         # remove a secret
 factorly version                    # print version
 ```
 
 **Global flags:**
 
 ```bash
--v, --verbose       # print debug info to stderr
--c, --config <path> # path to factorly.yaml
-    --config-dir    # load tools from a directory (no config file needed)
+-v, --verbose          # print debug info to stderr
+-c, --config <path>    # path to factorly.yaml
+    --config-dir       # load tools from a directory (no config file needed)
+```
+
+**Vault flags:**
+
+```bash
+    --vault-path       # path to vault file (default: ~/.config/factorly/vault.enc)
+```
+
+**Environment variables:**
+
+```bash
+FACTORLY_VAULT_PASSWORD   # vault master password (for CI/automation)
+FACTORLY_VAULT_PATH       # vault file path override
+FACTORLY_NO_LOG           # disable call logging when set
 ```
 
 ## Call Log
@@ -223,8 +310,6 @@ Every tool call is logged to `~/.config/factorly/calls.jsonl`:
 ```json
 {"timestamp":"2026-04-03T09:15:32Z","interface":"cli","tool":"web.fetch","params":{"url":"https://example.com"},"status":"success","duration_ms":215,"output":"<!doctype html>..."}
 ```
-
-Set `FACTORLY_NO_LOG=1` to disable logging.
 
 ## Config Reference
 
@@ -249,9 +334,9 @@ tools:
       Accept: application/json
     auth:                       # optional
       type: bearer              # bearer, basic, or header
-      token: ${API_KEY}         # for bearer
+      token: ${vault:API_KEY}   # vault ref or ${ENV_VAR}
       # header: X-Api-Key       # for header type
-      # value: ${API_KEY}       # for header type
+      # value: ${vault:KEY}     # for header type
     parameters:
       - name: id
         in: path                # path, query, header, or body
@@ -259,6 +344,8 @@ tools:
       - name: limit
         in: query
 ```
+
+**Secret references:** Use `${ENV_VAR}` for environment variables or `${vault:KEY}` for encrypted vault secrets. Both are resolved at startup before the agent sees anything.
 
 **Parameter routing:** Parameters are routed by their `in` field. When `in` is omitted, defaults to `query` for GET/DELETE or `body` for POST/PUT/PATCH.
 
@@ -278,9 +365,11 @@ make build              # build for host platform → build/factorly
 make test               # run unit + integration tests
 make test-unit          # unit tests only
 make test-integration   # integration tests only (builds binary first)
+make ci                 # full CI pipeline: tidy, fmt, vet, lint, test
 make lint               # run golangci-lint
 make fmt                # auto-fix lint issues + format code
 make vet                # go vet
+make tidy               # go mod tidy
 make clean              # remove build artifacts
 make version            # bump patch version (BUMP=minor|major)
 make release            # cross-platform binaries (linux, darwin, windows)
@@ -295,12 +384,14 @@ make release            # cross-platform binaries (linux, darwin, windows)
 - [x] `factorly init` — interactive project setup
 - [x] `factorly import openapi` — generate tools from OpenAPI specs (local + remote)
 - [x] Tool directory — modular configs via `tools_dir` and `.factorly/`
+- [x] Encrypted vault — `${vault:KEY}` with AES-256-GCM + Argon2id
 - [x] Call logging (JSONL)
 - [x] `--verbose` flag
 - [ ] `factorly serve` — MCP server mode
 - [ ] MCP provider — spawn + manage child MCP servers
 - [ ] `factorly test` — verify all tools are reachable
 - [ ] `factorly logs` — view/query the call log
+- [ ] External vault backends (1Password, GCP Secret Manager, AWS)
 - [ ] Tool health checks
 - [ ] Hosted version (Factorly Cloud)
 - [ ] Team configs and shared credential vault

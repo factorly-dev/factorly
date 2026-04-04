@@ -833,6 +833,114 @@ dupe:
 	}
 }
 
+// --- Vault ---
+
+func TestVaultSetAndList(t *testing.T) {
+	vp := filepath.Join(t.TempDir(), "vault.enc")
+
+	// Set secrets
+	_, stderr, code := runVault(t, vp, "vault", "set", "MY_TOKEN", "secret-value-123")
+	if code != 0 {
+		t.Fatalf("vault set failed: %s", stderr)
+	}
+	runVault(t, vp, "vault", "set", "OTHER", "other-value")
+
+	// List
+	stdout, _, code := runVault(t, vp, "vault", "list")
+	if code != 0 {
+		t.Fatal("vault list failed")
+	}
+	if !strings.Contains(stdout, "MY_TOKEN") || !strings.Contains(stdout, "OTHER") {
+		t.Errorf("expected both keys in list, got %q", stdout)
+	}
+}
+
+func TestVaultDelete(t *testing.T) {
+	vp := filepath.Join(t.TempDir(), "vault.enc")
+
+	runVault(t, vp, "vault", "set", "TEMP_KEY", "value")
+	_, _, code := runVault(t, vp, "vault", "delete", "TEMP_KEY")
+	if code != 0 {
+		t.Fatal("vault delete failed")
+	}
+
+	stdout, _, _ := runVault(t, vp, "vault", "list")
+	if strings.Contains(stdout, "TEMP_KEY") {
+		t.Error("expected TEMP_KEY to be deleted")
+	}
+}
+
+func TestVaultCallWithSecret(t *testing.T) {
+	vp := filepath.Join(t.TempDir(), "vault.enc")
+	secret := "vault-injected-bearer-token"
+
+	// Store secret in vault
+	runVault(t, vp, "vault", "set", "API_SECRET", secret)
+
+	var capturedAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  api.test:
+    type: rest
+    base_url: %s
+    method: GET
+    path: /data
+    auth:
+      type: bearer
+      token: "${vault:API_SECRET}"
+`, srv.URL),
+	})
+
+	stdout, stderr, code := runVault(t, vp, "-c", filepath.Join(dir, "factorly.yaml"), "call", "api.test")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+
+	// Server received the vault secret
+	if capturedAuth != "Bearer "+secret {
+		t.Errorf("expected server to receive vault secret, got %q", capturedAuth)
+	}
+
+	// Agent never sees the secret
+	if strings.Contains(stdout, secret) {
+		t.Error("SECRET LEAKED: vault secret appeared in stdout")
+	}
+	if strings.Contains(stderr, secret) {
+		t.Error("SECRET LEAKED: vault secret appeared in stderr")
+	}
+}
+
+// runVault runs factorly with a temp vault path and password set via env.
+func runVault(t *testing.T, vaultPath string, args ...string) (string, string, int) {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PASSWORD=testpass123",
+		"FACTORLY_VAULT_PATH="+vaultPath,
+	)
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	exitCode := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			t.Fatalf("failed to run factorly: %v", err)
+		}
+	}
+	return stdout.String(), stderr.String(), exitCode
+}
+
 // --- Credential Isolation ---
 // Verifies that secrets configured in Factorly never appear in the
 // agent-visible output (stdout/stderr) — only in the HTTP request

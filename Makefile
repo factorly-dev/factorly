@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-integration clean vet lint fix fmt release version run init
+.PHONY: build test test-unit test-integration clean vet lint fix fmt tidy ci release version run init
 
 BINARY  := factorly
 OUTDIR  := build
@@ -25,6 +25,9 @@ test-integration: build
 vet:
 	cd $(SRCDIR) && go vet ./...
 
+tidy:
+	cd $(SRCDIR) && go mod tidy
+
 init:
 	cd $(SRCDIR) && go mod download
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
@@ -41,6 +44,8 @@ fix:
 	gofmt -w $(SRCDIR)
 
 fmt: fix
+
+ci: tidy fmt vet lint test
 
 clean:
 	rm -rf $(OUTDIR)

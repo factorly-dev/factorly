@@ -15,6 +15,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/provider"
 	"github.com/factorly-dev/factorly/internal/proxy"
 	"github.com/factorly-dev/factorly/internal/registry"
+	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -288,7 +289,7 @@ func init() {
 	importOpenAPICmd.Flags().StringVarP(&importOpenAPIPrefix, "prefix", "p", "", "tool name prefix (default: from spec title)")
 	importCmd.AddCommand(importOpenAPICmd)
 
-	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, importCmd, initCmd)
+	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, importCmd, initCmd, vaultCmd)
 }
 
 func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
@@ -321,6 +322,9 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 
 	vlog("loaded %d tools", len(cfg.Tools))
 
+	// Open vault resolver if any config values contain ${backend:key} refs
+	resolver := initResolver(cfg)
+
 	reg := registry.New()
 	providers := make(map[string]provider.Provider)
 
@@ -344,21 +348,21 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 			cliTools[name] = provider.CLIToolDef{
 				Command: toolCfg.Command,
 				Args:    toolCfg.Args,
-				Env:     toolCfg.Env,
+				Env:     resolveVaultMap(resolver, toolCfg.Env),
 			}
 		case "rest":
 			restDef := provider.RESTToolDef{
 				Method:  toolCfg.Method,
-				BaseURL: toolCfg.BaseURL,
+				BaseURL: resolveVaultRef(resolver, toolCfg.BaseURL),
 				Path:    toolCfg.Path,
-				Headers: toolCfg.Headers,
+				Headers: resolveVaultMap(resolver, toolCfg.Headers),
 			}
 			if toolCfg.Auth != nil {
 				restDef.Auth = &provider.AuthDef{
 					Type:   toolCfg.Auth.Type,
-					Token:  toolCfg.Auth.Token,
+					Token:  resolveVaultRef(resolver, toolCfg.Auth.Token),
 					Header: toolCfg.Auth.Header,
-					Value:  toolCfg.Auth.Value,
+					Value:  resolveVaultRef(resolver, toolCfg.Auth.Value),
 				}
 			}
 			for _, p := range toolCfg.Parameters {
@@ -435,6 +439,78 @@ func extractGlobalFlags(args []string) []string {
 		}
 	}
 	return remaining
+}
+
+// initResolver checks if any config values contain vault references
+// and opens the vault if needed.
+func initResolver(cfg *config.Config) *vault.Resolver {
+	// Scan config for vault refs
+	hasRefs := false
+	for _, tool := range cfg.Tools {
+		if tool.Auth != nil {
+			if vault.HasVaultRefs(tool.Auth.Token) || vault.HasVaultRefs(tool.Auth.Value) {
+				hasRefs = true
+				break
+			}
+		}
+		for _, v := range tool.Env {
+			if vault.HasVaultRefs(v) {
+				hasRefs = true
+				break
+			}
+		}
+		for _, v := range tool.Headers {
+			if vault.HasVaultRefs(v) {
+				hasRefs = true
+				break
+			}
+		}
+		if vault.HasVaultRefs(tool.BaseURL) {
+			hasRefs = true
+		}
+		if hasRefs {
+			break
+		}
+	}
+
+	if !hasRefs {
+		return nil
+	}
+
+	vlog("vault references detected, opening vault")
+	backend, err := openVault()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to open vault: %v\n", err)
+		return nil
+	}
+
+	resolver := vault.NewResolver()
+	resolver.Register("vault", backend)
+	vlog("vault opened successfully")
+	return resolver
+}
+
+func resolveVaultRef(resolver *vault.Resolver, s string) string {
+	if resolver == nil || s == "" {
+		return s
+	}
+	resolved, err := resolver.Resolve(s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		return s
+	}
+	return resolved
+}
+
+func resolveVaultMap(resolver *vault.Resolver, m map[string]string) map[string]string {
+	if resolver == nil || len(m) == 0 {
+		return m
+	}
+	resolved := make(map[string]string, len(m))
+	for k, v := range m {
+		resolved[k] = resolveVaultRef(resolver, v)
+	}
+	return resolved
 }
 
 func parseToolArgs(args []string) map[string]string {
