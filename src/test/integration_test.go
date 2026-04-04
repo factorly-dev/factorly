@@ -46,6 +46,7 @@ func TestMain(m *testing.M) {
 func run(t *testing.T, dir string, args ...string) (string, string, int) {
 	t.Helper()
 	cmd := exec.Command(binary, args...)
+	cmd.Env = append(os.Environ(), "FACTORLY_NO_LOG=1")
 	if dir != "" {
 		cmd.Dir = dir
 	}
@@ -619,6 +620,7 @@ func TestMissingConfig(t *testing.T) {
 func runWithStdin(t *testing.T, dir string, stdin string, args ...string) (string, string, int) {
 	t.Helper()
 	cmd := exec.Command(binary, args...)
+	cmd.Env = append(os.Environ(), "FACTORLY_NO_LOG=1")
 	if dir != "" {
 		cmd.Dir = dir
 	}
@@ -647,12 +649,12 @@ func TestInitDefaults(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
-	if !strings.Contains(stdout, "Created factorly.yaml") {
+	if !strings.Contains(stdout, "Created") {
 		t.Errorf("expected creation message, got %q", stdout)
 	}
 
-	// Verify file was created and is valid
-	data, err := os.ReadFile(filepath.Join(dir, "factorly.yaml"))
+	// Verify file was created at .factorly/factorly.yaml
+	data, err := os.ReadFile(filepath.Join(dir, ".factorly", "factorly.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -675,12 +677,12 @@ func TestInitWithToolsDir(t *testing.T) {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 
-	// Verify tools directory was created
-	if _, err := os.Stat(filepath.Join(dir, "tools")); os.IsNotExist(err) {
-		t.Error("expected tools directory to be created")
+	// Verify tools directory was created inside .factorly/
+	if _, err := os.Stat(filepath.Join(dir, ".factorly", "tools")); os.IsNotExist(err) {
+		t.Error("expected .factorly/tools directory to be created")
 	}
 
-	data, err := os.ReadFile(filepath.Join(dir, "factorly.yaml"))
+	data, err := os.ReadFile(filepath.Join(dir, ".factorly", "factorly.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -691,33 +693,143 @@ func TestInitWithToolsDir(t *testing.T) {
 
 func TestInitAlreadyExists(t *testing.T) {
 	dir := setupDir(t, map[string]string{
-		"factorly.yaml": "tools: {}",
+		".factorly/factorly.yaml": "tools: {}",
 	})
 
 	stdin := "\n\n\n"
 	_, _, code := runWithStdin(t, dir, stdin, "init")
 	if code == 0 {
-		t.Fatal("expected non-zero exit when factorly.yaml already exists")
+		t.Fatal("expected non-zero exit when .factorly/factorly.yaml already exists")
+	}
+}
+
+func TestInitWithOutFlag(t *testing.T) {
+	dir := t.TempDir()
+
+	stdin := "n\ny\nn\n"
+	_, _, code := runWithStdin(t, dir, stdin, "init", "--out", "factorly.yaml")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+
+	// Should be at the custom path, not .factorly/
+	if _, err := os.Stat(filepath.Join(dir, "factorly.yaml")); os.IsNotExist(err) {
+		t.Error("expected factorly.yaml at custom path")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".factorly")); err == nil {
+		t.Error("did not expect .factorly/ directory with --out flag")
 	}
 }
 
 func TestInitNoExample(t *testing.T) {
 	dir := t.TempDir()
 
-	// No tools dir, no example, no openapi — should still create a valid (empty tools) config
-	// Actually this will fail validation since no tools. Let's just verify it creates the file.
 	stdin := "n\nn\nn\n"
 	_, _, code := runWithStdin(t, dir, stdin, "init")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 
-	data, err := os.ReadFile(filepath.Join(dir, "factorly.yaml"))
+	data, err := os.ReadFile(filepath.Join(dir, ".factorly", "factorly.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(data), "tools:") {
 		t.Error("expected tools key in config")
+	}
+}
+
+// --- .factorly/ project directory ---
+
+func TestProjectDirLoading(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `
+tools:
+  echo.project:
+    type: cli
+    command: echo
+    args: ["{msg}"]
+`,
+	})
+
+	stdout, _, code := run(t, dir, "tools")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "echo.project") {
+		t.Error("expected echo.project from .factorly/")
+	}
+}
+
+func TestProjectDirLooseFiles(t *testing.T) {
+	// .factorly/ with just tool files, no factorly.yaml inside
+	dir := setupDir(t, map[string]string{
+		".factorly/echo.yaml": `
+echo.loose:
+  type: cli
+  command: echo
+  args: ["{msg}"]
+`,
+	})
+
+	stdout, _, code := run(t, dir, "tools")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "echo.loose") {
+		t.Error("expected echo.loose from .factorly/ loose files")
+	}
+}
+
+func TestProjectDirMergesWithInline(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  web.fetch:
+    type: cli
+    command: curl
+    args: ["-s", "{url}"]
+`,
+		".factorly/echo.yaml": `
+echo.project:
+  type: cli
+  command: echo
+  args: ["{msg}"]
+`,
+	})
+
+	stdout, _, code := run(t, dir, "tools")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "web.fetch") {
+		t.Error("expected web.fetch from factorly.yaml")
+	}
+	if !strings.Contains(stdout, "echo.project") {
+		t.Error("expected echo.project from .factorly/")
+	}
+}
+
+func TestProjectDirConflict(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  dupe:
+    type: cli
+    command: echo
+    args: ["inline"]
+`,
+		".factorly/dupe.yaml": `
+dupe:
+  type: cli
+  command: echo
+  args: ["project"]
+`,
+	})
+
+	_, _, code := run(t, dir, "tools")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for duplicate tool across config and .factorly/")
 	}
 }
 

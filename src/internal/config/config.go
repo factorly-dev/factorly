@@ -11,6 +11,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Verbose is an optional log function for debug output. Set by the CLI --verbose flag.
+var Verbose func(format string, args ...any)
+
+func vlog(format string, args ...any) {
+	if Verbose != nil {
+		Verbose(format, args...)
+	}
+}
+
 type Config struct {
 	ToolsDir string                `yaml:"tools_dir,omitempty"`
 	Tools    map[string]ToolConfig `yaml:"tools"`
@@ -54,30 +63,59 @@ func Load(path string) (*Config, error) {
 		path = "factorly.yaml"
 	}
 
+	var cfg Config
+
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading config: %w", err)
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("reading config: %w", err)
+		}
+		vlog("config file not found: %s (will check .factorly/)", path)
+		cfg.Tools = make(map[string]ToolConfig)
+	} else {
+		vlog("loaded config: %s", path)
+		if err := yaml.Unmarshal(data, &cfg); err != nil {
+			return nil, fmt.Errorf("parsing config: %w", err)
+		}
+		if cfg.Tools == nil {
+			cfg.Tools = make(map[string]ToolConfig)
+		}
 	}
 
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing config: %w", err)
-	}
-
-	// Load tools from directory if tools_dir is set
+	// Load tools from tools_dir if set
 	if cfg.ToolsDir != "" {
 		dir := cfg.ToolsDir
 		if !filepath.IsAbs(dir) {
 			dir = filepath.Join(filepath.Dir(path), dir)
 		}
+		vlog("loading tools_dir: %s", dir)
 		dirTools, err := loadDir(dir)
 		if err != nil {
 			return nil, err
 		}
-		if cfg.Tools == nil {
-			cfg.Tools = make(map[string]ToolConfig)
+		vlog("  found %d tools in tools_dir", len(dirTools))
+		if err := mergeTools(cfg.Tools, dirTools); err != nil {
+			return nil, err
+		}
+	}
+
+	// Merge .factorly/ project directory if it exists.
+	configDir := filepath.Dir(path)
+	if filepath.Base(configDir) == ".factorly" {
+		vlog("loading loose tool files from %s", configDir)
+		dirTools, err := loadDir(configDir)
+		if err != nil {
+			return nil, err
+		}
+		if len(dirTools) > 0 {
+			vlog("  found %d tools in %s", len(dirTools), configDir)
 		}
 		if err := mergeTools(cfg.Tools, dirTools); err != nil {
+			return nil, err
+		}
+	} else {
+		// Config is outside .factorly/ — check for a .factorly/ subdirectory
+		if err := mergeProjectDir(&cfg, configDir); err != nil {
 			return nil, err
 		}
 	}
@@ -131,6 +169,10 @@ func loadDir(dir string) (map[string]ToolConfig, error) {
 		if ext != ".yaml" && ext != ".yml" {
 			continue
 		}
+		// Skip the primary config file if present in the same directory
+		if name == "factorly.yaml" || name == "factorly.yml" {
+			continue
+		}
 
 		path := filepath.Join(dir, name)
 		data, err := os.ReadFile(path)
@@ -160,6 +202,69 @@ func mergeTools(base, extras map[string]ToolConfig) error {
 			return fmt.Errorf("config: duplicate tool %q (defined in both factorly.yaml and tools_dir)", name)
 		}
 		base[name] = tool
+	}
+	return nil
+}
+
+// mergeProjectDir merges tool definitions from a .factorly/ directory
+// relative to baseDir. It loads .factorly/factorly.yaml if present
+// (merging its tools and following its tools_dir), and also loads any
+// loose YAML tool files directly in .factorly/.
+func mergeProjectDir(cfg *Config, baseDir string) error {
+	projectDir := filepath.Join(baseDir, ".factorly")
+	info, err := os.Stat(projectDir)
+	if err != nil || !info.IsDir() {
+		return nil
+	}
+
+	vlog("found project directory: %s", projectDir)
+
+	// Check for .factorly/factorly.yaml
+	projectConfig := filepath.Join(projectDir, "factorly.yaml")
+	if _, err := os.Stat(projectConfig); err == nil {
+		vlog("loading project config: %s", projectConfig)
+		data, err := os.ReadFile(projectConfig)
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", projectConfig, err)
+		}
+		var projectCfg Config
+		if err := yaml.Unmarshal(data, &projectCfg); err != nil {
+			return fmt.Errorf("parsing %s: %w", projectConfig, err)
+		}
+
+		// Follow tools_dir from project config
+		if projectCfg.ToolsDir != "" {
+			dir := projectCfg.ToolsDir
+			if !filepath.IsAbs(dir) {
+				dir = filepath.Join(projectDir, dir)
+			}
+			dirTools, err := loadDir(dir)
+			if err != nil {
+				return err
+			}
+			if projectCfg.Tools == nil {
+				projectCfg.Tools = make(map[string]ToolConfig)
+			}
+			if err := mergeTools(projectCfg.Tools, dirTools); err != nil {
+				return err
+			}
+		}
+
+		// Merge project tools into main config
+		if err := mergeTools(cfg.Tools, projectCfg.Tools); err != nil {
+			return err
+		}
+	}
+
+	// Also load loose YAML files in .factorly/ (loadDir skips factorly.yaml)
+	dirTools, err := loadDir(projectDir)
+	if err != nil {
+		return err
+	}
+	if len(dirTools) > 0 {
+		if err := mergeTools(cfg.Tools, dirTools); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -249,6 +354,7 @@ func validate(cfg *Config) error {
 }
 
 func FindConfig() string {
+	// Prefer top-level config — .factorly/ merges into it via Load()
 	candidates := []string{
 		"factorly.yaml",
 		"factorly.yml",
@@ -257,6 +363,14 @@ func FindConfig() string {
 		if _, err := os.Stat(c); err == nil {
 			return c
 		}
+	}
+	// No top-level config — check .factorly/ project directory
+	if _, err := os.Stat(".factorly/factorly.yaml"); err == nil {
+		return ".factorly/factorly.yaml"
+	}
+	// .factorly/ exists with loose files but no factorly.yaml inside
+	if info, err := os.Stat(".factorly"); err == nil && info.IsDir() {
+		return ".factorly/factorly.yaml"
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		p := home + "/.config/factorly/factorly.yaml"

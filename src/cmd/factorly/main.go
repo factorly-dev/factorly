@@ -21,6 +21,13 @@ import (
 
 var configPath string
 var configDir string
+var verbose bool
+
+func vlog(format string, args ...any) {
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[factorly] "+format+"\n", args...)
+	}
+}
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
@@ -71,8 +78,17 @@ var callCmd = &cobra.Command{
 	Args:               cobra.MinimumNArgs(1),
 	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Manually extract global flags that cobra can't parse due to DisableFlagParsing
+		args = extractGlobalFlags(args)
+
+		if len(args) == 0 {
+			return fmt.Errorf("usage: factorly call <tool> [--param value ...]")
+		}
 		toolName := args[0]
 		params := parseToolArgs(args[1:])
+
+		vlog("calling tool: %s", toolName)
+		vlog("  params: %v", params)
 
 		p, _, err := bootstrap()
 		if err != nil {
@@ -83,6 +99,8 @@ var callCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
+		vlog("  status: %s (exit code: %d, duration: %s)", map[bool]string{true: "error", false: "success"}[result.IsError()], result.ExitCode, result.Duration)
 
 		if result.Output != "" {
 			fmt.Print(result.Output)
@@ -97,13 +115,21 @@ var callCmd = &cobra.Command{
 	},
 }
 
+var initOut string
+
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Create a new factorly.yaml config file",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		outPath := "factorly.yaml"
+		outPath := initOut
+		if outPath == "" {
+			outPath = filepath.Join(".factorly", "factorly.yaml")
+		}
 		if _, err := os.Stat(outPath); err == nil {
 			return fmt.Errorf("%s already exists", outPath)
+		}
+		if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+			return fmt.Errorf("creating directory: %w", err)
 		}
 
 		scanner := bufio.NewScanner(os.Stdin)
@@ -116,7 +142,12 @@ var initCmd = &cobra.Command{
 		toolsDir := ""
 		if strings.HasPrefix(strings.ToLower(useToolsDir), "y") {
 			toolsDir = prompt(scanner, "Tools directory path", "./tools")
-			if err := os.MkdirAll(toolsDir, 0o755); err != nil {
+			// Resolve tools dir relative to the config file location
+			absToolsDir := toolsDir
+			if !filepath.IsAbs(absToolsDir) {
+				absToolsDir = filepath.Join(filepath.Dir(outPath), absToolsDir)
+			}
+			if err := os.MkdirAll(absToolsDir, 0o755); err != nil {
 				return fmt.Errorf("creating tools directory: %w", err)
 			}
 		}
@@ -127,7 +158,7 @@ var initCmd = &cobra.Command{
 		// Build config
 		type yamlConfig struct {
 			ToolsDir string                       `yaml:"tools_dir,omitempty"`
-			Tools    map[string]config.ToolConfig  `yaml:"tools"`
+			Tools    map[string]config.ToolConfig `yaml:"tools"`
 		}
 		cfg := yamlConfig{
 			ToolsDir: toolsDir,
@@ -153,10 +184,14 @@ var initCmd = &cobra.Command{
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to import OpenAPI spec: %v\n", err)
 				} else if toolsDir != "" {
-					// Write to tools dir
+					// Write to tools dir (resolved relative to config)
 					specName := filepath.Base(specPath)
 					specName = strings.TrimSuffix(specName, filepath.Ext(specName))
-					outFile := filepath.Join(toolsDir, specName+".yaml")
+					resolvedToolsDir := toolsDir
+					if !filepath.IsAbs(resolvedToolsDir) {
+						resolvedToolsDir = filepath.Join(filepath.Dir(outPath), resolvedToolsDir)
+					}
+					outFile := filepath.Join(resolvedToolsDir, specName+".yaml")
 					data, err := yaml.Marshal(tools)
 					if err == nil {
 						if err := os.WriteFile(outFile, data, 0o644); err != nil {
@@ -245,6 +280,9 @@ var importOpenAPICmd = &cobra.Command{
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "path to factorly.yaml")
 	rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "", "path to directory of tool definition files")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "print detailed progress to stderr")
+
+	initCmd.Flags().StringVarP(&initOut, "out", "o", "", "output file path (default: .factorly/factorly.yaml)")
 
 	importOpenAPICmd.Flags().StringVarP(&importOpenAPIOut, "out", "o", "", "output file path (default: stdout)")
 	importOpenAPICmd.Flags().StringVarP(&importOpenAPIPrefix, "prefix", "p", "", "tool name prefix (default: from spec title)")
@@ -254,21 +292,34 @@ func init() {
 }
 
 func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
+	config.Verbose = nil
+	if verbose {
+		config.Verbose = func(format string, args ...any) {
+			fmt.Fprintf(os.Stderr, "[factorly] "+format+"\n", args...)
+		}
+	}
+
 	var cfg *config.Config
 	var err error
 
 	if configDir != "" {
+		vlog("loading config from directory: %s", configDir)
 		cfg, err = config.LoadDir(configDir)
 	} else {
 		cfgPath := configPath
 		if cfgPath == "" {
 			cfgPath = config.FindConfig()
+			vlog("found config: %s", cfgPath)
+		} else {
+			vlog("using config: %s", cfgPath)
 		}
 		cfg, err = config.Load(cfgPath)
 	}
 	if err != nil {
 		return nil, nil, err
 	}
+
+	vlog("loaded %d tools", len(cfg.Tools))
 
 	reg := registry.New()
 	providers := make(map[string]provider.Provider)
@@ -320,6 +371,7 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 			restTools[name] = restDef
 		}
 
+		vlog("  registered tool: %s (type: %s)", name, toolCfg.Type)
 		reg.Register(&registry.Tool{
 			Name:        name,
 			Type:        toolCfg.Type,
@@ -330,6 +382,7 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 	}
 
 	if len(cliTools) > 0 {
+		vlog("initialized cli provider (%d tools)", len(cliTools))
 		providers["cli"] = provider.NewCLI(cliTools)
 	}
 	if len(restTools) > 0 {
@@ -337,24 +390,51 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 		if err := restProvider.Setup(); err != nil {
 			return nil, nil, fmt.Errorf("rest provider setup: %w", err)
 		}
+		vlog("initialized rest provider (%d tools)", len(restTools))
 		providers["rest"] = restProvider
 	}
 
-	log, err := logger.NewJSONL("")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: failed to open log: %v\n", err)
-		log = nil
-	}
-
 	var logIface logger.Logger
-	if log != nil {
-		logIface = log
-	} else {
+	if os.Getenv("FACTORLY_NO_LOG") != "" {
+		vlog("logging disabled (FACTORLY_NO_LOG set)")
 		logIface = logger.NopLogger{}
+	} else {
+		log, err := logger.NewJSONL("")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to open log: %v\n", err)
+			logIface = logger.NopLogger{}
+		} else {
+			logIface = log
+		}
 	}
 
 	p := proxy.New(reg, providers, logIface)
 	return p, reg, nil
+}
+
+// extractGlobalFlags pulls out global flags (-v, --verbose, -c, --config)
+// from args since DisableFlagParsing prevents cobra from handling them.
+func extractGlobalFlags(args []string) []string {
+	var remaining []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-v", "--verbose":
+			verbose = true
+		case "-c", "--config":
+			if i+1 < len(args) {
+				configPath = args[i+1]
+				i++
+			}
+		case "--config-dir":
+			if i+1 < len(args) {
+				configDir = args[i+1]
+				i++
+			}
+		default:
+			remaining = append(remaining, args[i])
+		}
+	}
+	return remaining
 }
 
 func parseToolArgs(args []string) map[string]string {

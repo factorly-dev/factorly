@@ -1,4 +1,4 @@
-.PHONY: build test test-integration clean vet lint fix fmt release version run init
+.PHONY: build test test-unit test-integration clean vet lint fix fmt release version run init
 
 BINARY  := factorly
 OUTDIR  := build
@@ -14,7 +14,9 @@ build:
 run:
 	cd $(SRCDIR) && go run ./cmd/factorly $(ARGS)
 
-test:
+test: test-unit test-integration
+
+test-unit:
 	cd $(SRCDIR) && $(GOTESTSUM) --format testname -- ./...
 
 test-integration: build
