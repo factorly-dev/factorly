@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
@@ -95,6 +97,113 @@ var callCmd = &cobra.Command{
 	},
 }
 
+var initCmd = &cobra.Command{
+	Use:   "init",
+	Short: "Create a new factorly.yaml config file",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		outPath := "factorly.yaml"
+		if _, err := os.Stat(outPath); err == nil {
+			return fmt.Errorf("%s already exists", outPath)
+		}
+
+		scanner := bufio.NewScanner(os.Stdin)
+
+		fmt.Println("Setting up a new Factorly config.")
+		fmt.Println()
+
+		// Tools directory
+		useToolsDir := prompt(scanner, "Use a tools directory for modular configs? (y/n)", "n")
+		toolsDir := ""
+		if strings.HasPrefix(strings.ToLower(useToolsDir), "y") {
+			toolsDir = prompt(scanner, "Tools directory path", "./tools")
+			if err := os.MkdirAll(toolsDir, 0o755); err != nil {
+				return fmt.Errorf("creating tools directory: %w", err)
+			}
+		}
+
+		// Example tool
+		addExample := prompt(scanner, "Add an example CLI tool? (y/n)", "y")
+
+		// Build config
+		type yamlConfig struct {
+			ToolsDir string                       `yaml:"tools_dir,omitempty"`
+			Tools    map[string]config.ToolConfig  `yaml:"tools"`
+		}
+		cfg := yamlConfig{
+			ToolsDir: toolsDir,
+			Tools:    make(map[string]config.ToolConfig),
+		}
+
+		if strings.HasPrefix(strings.ToLower(addExample), "y") {
+			cfg.Tools["web.fetch"] = config.ToolConfig{
+				Type:        "cli",
+				Description: "Fetch a webpage",
+				Command:     "curl",
+				Args:        []string{"-s", "{url}"},
+			}
+		}
+
+		// OpenAPI import
+		addOpenAPI := prompt(scanner, "Import tools from an OpenAPI spec? (y/n)", "n")
+		if strings.HasPrefix(strings.ToLower(addOpenAPI), "y") {
+			specPath := prompt(scanner, "OpenAPI spec path or URL", "")
+			if specPath != "" {
+				prefix := prompt(scanner, "Tool name prefix (leave empty for auto)", "")
+				tools, err := openapi.Generate(specPath, openapi.GenerateOpts{Prefix: prefix})
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "warning: failed to import OpenAPI spec: %v\n", err)
+				} else if toolsDir != "" {
+					// Write to tools dir
+					specName := filepath.Base(specPath)
+					specName = strings.TrimSuffix(specName, filepath.Ext(specName))
+					outFile := filepath.Join(toolsDir, specName+".yaml")
+					data, err := yaml.Marshal(tools)
+					if err == nil {
+						if err := os.WriteFile(outFile, data, 0o644); err != nil {
+							fmt.Fprintf(os.Stderr, "warning: failed to write %s: %v\n", outFile, err)
+						} else {
+							fmt.Fprintf(os.Stderr, "Wrote %d tools to %s\n", len(tools), outFile)
+						}
+					}
+				} else {
+					// Merge into main config
+					for name, tool := range tools {
+						cfg.Tools[name] = tool
+					}
+					fmt.Fprintf(os.Stderr, "Added %d tools from spec\n", len(tools))
+				}
+			}
+		}
+
+		data, err := yaml.Marshal(cfg)
+		if err != nil {
+			return fmt.Errorf("marshaling config: %w", err)
+		}
+
+		if err := os.WriteFile(outPath, data, 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w", outPath, err)
+		}
+
+		fmt.Printf("\nCreated %s\n", outPath)
+		fmt.Println("Run 'factorly tools' to see your configured tools.")
+		return nil
+	},
+}
+
+func prompt(scanner *bufio.Scanner, label string, defaultVal string) string {
+	if defaultVal != "" {
+		fmt.Printf("%s [%s]: ", label, defaultVal)
+	} else {
+		fmt.Printf("%s: ", label)
+	}
+	scanner.Scan()
+	val := strings.TrimSpace(scanner.Text())
+	if val == "" {
+		return defaultVal
+	}
+	return val
+}
+
 var importCmd = &cobra.Command{
 	Use:   "import",
 	Short: "Import tool definitions from external sources",
@@ -141,7 +250,7 @@ func init() {
 	importOpenAPICmd.Flags().StringVarP(&importOpenAPIPrefix, "prefix", "p", "", "tool name prefix (default: from spec title)")
 	importCmd.AddCommand(importOpenAPICmd)
 
-	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, importCmd)
+	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, importCmd, initCmd)
 }
 
 func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
