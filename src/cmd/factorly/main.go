@@ -91,8 +91,8 @@ var callCmd = &cobra.Command{
 		vlog("calling tool: %s", toolName)
 		vlog("  params: %v", params)
 
-		// Validate tool exists before opening vault or creating providers
-		_, reg, err := loadConfig()
+		// Load config and validate tool exists before opening vault
+		cfg, reg, err := loadConfig()
 		if err != nil {
 			return err
 		}
@@ -100,7 +100,7 @@ var callCmd = &cobra.Command{
 			return err
 		}
 
-		p, _, err := bootstrap()
+		p, err := bootstrapProviders(cfg, reg)
 		if err != nil {
 			return err
 		}
@@ -355,16 +355,14 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 	return cfg, reg, nil
 }
 
-// bootstrap loads config, opens the vault if needed, creates providers,
-// and wires everything together. Use for execution commands like `call`.
-func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
-	cfg, reg, err := loadConfig()
-	if err != nil {
-		return nil, nil, err
-	}
-
+// bootstrapProviders opens the vault if needed, creates providers, and
+// wires everything into a proxy. Takes config and registry from loadConfig().
+func bootstrapProviders(cfg *config.Config, reg *registry.Registry) (*proxy.Proxy, error) {
 	// Open vault resolver only when executing tools
-	resolver := initResolver(cfg)
+	resolver, err := initResolver(cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	providers := make(map[string]provider.Provider)
 	cliTools := make(map[string]provider.CLIToolDef)
@@ -412,7 +410,7 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 	if len(restTools) > 0 {
 		restProvider := provider.NewREST(restTools)
 		if err := restProvider.Setup(); err != nil {
-			return nil, nil, fmt.Errorf("rest provider setup: %w", err)
+			return nil, fmt.Errorf("rest provider setup: %w", err)
 		}
 		vlog("initialized rest provider (%d tools)", len(restTools))
 		providers["rest"] = restProvider
@@ -433,7 +431,7 @@ func bootstrap() (*proxy.Proxy, *registry.Registry, error) {
 	}
 
 	p := proxy.New(reg, providers, logIface)
-	return p, reg, nil
+	return p, nil
 }
 
 // extractGlobalFlags pulls out global flags (-v, --verbose, -c, --config)
@@ -462,9 +460,9 @@ func extractGlobalFlags(args []string) []string {
 }
 
 // initResolver checks if any config values contain vault references
-// and opens the vault if needed.
-func initResolver(cfg *config.Config) *vault.Resolver {
-	// Scan config for vault refs
+// and opens the vault if needed. Returns an error if vault refs exist
+// but the vault cannot be opened — never silently degrades.
+func initResolver(cfg *config.Config) (*vault.Resolver, error) {
 	hasRefs := false
 	for _, tool := range cfg.Tools {
 		if tool.Auth != nil {
@@ -494,20 +492,19 @@ func initResolver(cfg *config.Config) *vault.Resolver {
 	}
 
 	if !hasRefs {
-		return nil
+		return nil, nil
 	}
 
 	vlog("vault references detected, opening vault")
 	backend, err := openVault()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: failed to open vault: %v\n", err)
-		return nil
+		return nil, fmt.Errorf("vault required but failed to open: %w", err)
 	}
 
 	resolver := vault.NewResolver()
 	resolver.Register("vault", backend)
 	vlog("vault opened successfully")
-	return resolver
+	return resolver, nil
 }
 
 func resolveVaultRef(resolver *vault.Resolver, s string) string {

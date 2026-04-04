@@ -114,7 +114,10 @@ func openVault() (*vault.LocalBackend, error) {
 
 func resolveVaultPassword() (string, error) {
 	// 1. Environment variable
-	if pw := os.Getenv("FACTORLY_VAULT_PASSWORD"); pw != "" {
+	if pw, ok := os.LookupEnv("FACTORLY_VAULT_PASSWORD"); ok {
+		if pw == "" {
+			return "", fmt.Errorf("FACTORLY_VAULT_PASSWORD is set but empty")
+		}
 		vlog("vault password from FACTORLY_VAULT_PASSWORD")
 		return pw, nil
 	}
@@ -132,8 +135,12 @@ func resolveVaultPassword() (string, error) {
 			if err != nil {
 				return "", fmt.Errorf("reading vault key file: %w", err)
 			}
+			pw := strings.TrimSpace(string(data))
+			if pw == "" {
+				return "", fmt.Errorf("vault key file %s is empty", keyFile)
+			}
 			vlog("vault password from %s", keyFile)
-			return strings.TrimSpace(string(data)), nil
+			return pw, nil
 		}
 	}
 
