@@ -119,18 +119,33 @@ func resolveVaultPassword() (string, error) {
 		return pw, nil
 	}
 
-	// 2. Key file
+	// 2. Key file (must be 0600)
 	home, err := os.UserHomeDir()
 	if err == nil {
 		keyFile := home + "/.config/factorly/vault.key"
-		if data, err := os.ReadFile(keyFile); err == nil {
+		if info, err := os.Stat(keyFile); err == nil {
+			perm := info.Mode().Perm()
+			if perm != 0o600 {
+				return "", fmt.Errorf("vault key file %s has insecure permissions %04o (must be 0600)", keyFile, perm)
+			}
+			data, err := os.ReadFile(keyFile)
+			if err != nil {
+				return "", fmt.Errorf("reading vault key file: %w", err)
+			}
 			vlog("vault password from %s", keyFile)
 			return strings.TrimSpace(string(data)), nil
 		}
 	}
 
 	// 3. Interactive prompt
-	return promptSecret("Vault password: ")
+	pw, err := promptSecret("Vault password: ")
+	if err != nil {
+		return "", err
+	}
+	if pw == "" {
+		return "", fmt.Errorf("vault password cannot be empty")
+	}
+	return pw, nil
 }
 
 func promptSecret(label string) (string, error) {

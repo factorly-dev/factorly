@@ -18,8 +18,8 @@ const (
 	saltLen      = 32
 	nonceLen     = 12
 	keyLen       = 32
-	argonTime    = 1
-	argonMemory  = 64 * 1024
+	argonTime    = 2
+	argonMemory  = 128 * 1024
 	argonThreads = 4
 )
 

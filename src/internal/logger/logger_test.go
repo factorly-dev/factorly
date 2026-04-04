@@ -205,6 +205,25 @@ func TestJSONLLoggerErrorEntry(t *testing.T) {
 	}
 }
 
+func TestJSONLLoggerFilePermissions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.jsonl")
+	l, err := NewJSONL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = l.Log(&Entry{Timestamp: time.Now(), Tool: "test", Params: map[string]string{}, Status: "success"})
+	l.Close()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	perm := info.Mode().Perm()
+	if perm != 0o600 {
+		t.Errorf("expected log file permissions 0600, got %04o", perm)
+	}
+}
+
 func TestNopLogger(t *testing.T) {
 	l := NopLogger{}
 	if err := l.Log(&Entry{}); err != nil {

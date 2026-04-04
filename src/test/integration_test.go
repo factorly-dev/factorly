@@ -1208,6 +1208,138 @@ api.call:
 	}
 }
 
+// --- Security Hardening Tests ---
+
+func TestLogFilePermissions(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo.test:
+    type: cli
+    command: echo
+    args: ["{msg}"]
+`,
+	})
+
+	logPath := filepath.Join(t.TempDir(), "calls.jsonl")
+
+	// Run with logging enabled to a custom path — we need to test the
+	// actual log file permissions. Override via env since there's no flag.
+	cmd := exec.Command(binary, "call", "echo.test", "--msg", "test")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "HOME="+filepath.Dir(filepath.Dir(logPath)))
+	// Create the expected directory structure
+	_ = os.MkdirAll(filepath.Join(filepath.Dir(filepath.Dir(logPath)), ".config", "factorly"), 0o755)
+	_ = cmd.Run()
+
+	// Check that the log file was created — if it exists, verify permissions
+	configLogPath := filepath.Join(filepath.Dir(filepath.Dir(logPath)), ".config", "factorly", "calls.jsonl")
+	if info, err := os.Stat(configLogPath); err == nil {
+		perm := info.Mode().Perm()
+		if perm != 0o600 {
+			t.Errorf("expected log file permissions 0600, got %04o", perm)
+		}
+	}
+}
+
+func TestVaultSecretNotInVerboseOutput(t *testing.T) {
+	vp := filepath.Join(t.TempDir(), "vault.enc")
+	secret := "vault-verbose-leak-test-token"
+
+	runVault(t, vp, "vault", "set", "VERBOSE_SECRET", secret)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  api.test:
+    type: rest
+    base_url: %s
+    method: GET
+    path: /data
+    auth:
+      type: bearer
+      token: "${vault:VERBOSE_SECRET}"
+`, srv.URL),
+	})
+
+	// Run with verbose AND vault
+	cmd := exec.Command(binary, "call", "-v", "-c", filepath.Join(dir, "factorly.yaml"), "api.test")
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PASSWORD=testpass123",
+		"FACTORLY_VAULT_PATH="+vp,
+	)
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	_ = cmd.Run()
+
+	if strings.Contains(stdout.String(), secret) {
+		t.Error("SECRET LEAKED: vault secret appeared in stdout during verbose mode")
+	}
+	if strings.Contains(stderr.String(), secret) {
+		t.Error("SECRET LEAKED: vault secret appeared in stderr during verbose mode")
+	}
+}
+
+func TestVaultEmptyPasswordRejected(t *testing.T) {
+	// Empty password via stdin should be rejected
+	cmd := exec.Command(binary, "vault", "list")
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PATH="+filepath.Join(t.TempDir(), "vault.enc"),
+	)
+	cmd.Stdin = strings.NewReader("\n") // empty password
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected error for empty vault password")
+	}
+	if !strings.Contains(stderr.String(), "empty") {
+		t.Errorf("expected 'empty' in error message, got %q", stderr.String())
+	}
+}
+
+func TestVaultFilePermissions(t *testing.T) {
+	vp := filepath.Join(t.TempDir(), "vault.enc")
+
+	runVault(t, vp, "vault", "set", "KEY", "value")
+
+	info, err := os.Stat(vp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	perm := info.Mode().Perm()
+	if perm != 0o600 {
+		t.Errorf("expected vault file permissions 0600, got %04o", perm)
+	}
+}
+
+func TestVaultWrongPasswordFails(t *testing.T) {
+	vp := filepath.Join(t.TempDir(), "vault.enc")
+
+	// Create vault with known password
+	runVault(t, vp, "vault", "set", "KEY", "value")
+
+	// Try to access with wrong password
+	cmd := exec.Command(binary, "vault", "list")
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PASSWORD=wrong-password",
+		"FACTORLY_VAULT_PATH="+vp,
+	)
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected error for wrong vault password")
+	}
+}
+
 // helpers
 
 func findPetstoreSpec(t *testing.T) string {
