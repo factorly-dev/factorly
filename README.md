@@ -5,10 +5,10 @@
 Factorly wraps your existing agent tools — MCP servers, REST APIs, CLIs — into a single MCP endpoint. Configure once, connect once. Your tools don't change. Factorly just makes them all accessible from one place.
 
 ```bash
-factorly serve
+factorly init
+factorly tools
+factorly call web.fetch --url "https://example.com"
 ```
-
-Your agent connects to Factorly and sees every tool you've configured.
 
 ## Why
 
@@ -28,127 +28,150 @@ Factorly fixes this. One config file. One endpoint. Every tool.
 
 ```bash
 git clone https://github.com/factorly-dev/factorly.git
-cd factorly/src
+cd factorly
 make init
 make build
 ```
 
 The binary lands in `build/factorly`.
 
+### Initialize a project
+
+```bash
+factorly init
+```
+
+This creates `.factorly/factorly.yaml` with an interactive setup — optionally adds a tools directory, an example CLI tool, and can import tools from an OpenAPI spec.
+
+Use `--out factorly.yaml` to write to the project root instead.
+
 ### Configure your tools
 
 ```yaml
-# factorly.yaml
+# .factorly/factorly.yaml
 tools:
-  slack:
-    type: mcp
-    command: npx
-    args: ["@modelcontextprotocol/server-slack"]
-    env:
-      SLACK_TOKEN: ${SLACK_TOKEN}
-
-  postgres:
-    type: mcp
-    command: npx
-    args: ["@modelcontextprotocol/server-postgres"]
-    env:
-      DATABASE_URL: ${DATABASE_URL}
-
-  hubspot:
-    type: rest
-    base_url: https://api.hubapi.com
-    auth:
-      type: bearer
-      token: ${HUBSPOT_API_KEY}
-    tools:
-      - name: get_contacts
-        method: GET
-        path: /crm/v3/objects/contacts
-        description: "List HubSpot contacts"
-      - name: create_contact
-        method: POST
-        path: /crm/v3/objects/contacts
-        description: "Create a new contact"
-
   web.fetch:
     type: cli
     description: "Fetch a webpage"
     command: curl
     args: ["-s", "{url}"]
+
+  github.repos:
+    type: rest
+    description: "List repos for a user"
+    base_url: https://api.github.com
+    method: GET
+    path: /users/{username}/repos
+    auth:
+      type: bearer
+      token: ${GITHUB_TOKEN}
+    parameters:
+      - name: username
+        in: path
+        required: true
+      - name: per_page
+        in: query
 ```
 
 Environment variables (`${VAR}`) are resolved from your shell environment or a `.env` file.
 
-### Start Factorly
-
-```bash
-factorly serve
-```
-
-Factorly starts a single MCP server. It reads your config, connects to your tools, and exposes them all as MCP tools.
-
-### Connect your agent
-
-```json
-// .mcp.json (Claude Code)
-{
-  "factorly": {
-    "command": "factorly",
-    "args": ["serve"]
-  }
-}
-```
-
-Your agent sees every tool. Credentials never leave Factorly.
-
-## Two Ways to Use It
-
-### As an MCP Server
-
-```bash
-factorly serve
-```
-
-Your agent connects to Factorly as a single MCP server and sees all configured tools. Best for Claude Code, Cursor, and any MCP-compatible agent.
-
-### As a CLI
+### Use it
 
 ```bash
 # List available tools
 factorly tools
 
-# Call a tool directly
-factorly call slack.post_message --channel "#general" --text "deploy complete"
-
-# Query your database
-factorly call postgres.query --sql "SELECT count(*) FROM users"
-
-# Fetch a webpage
+# Call a CLI tool
 factorly call web.fetch --url "https://example.com"
 
-# Pipe output
-factorly call web.fetch --url "https://example.com" | factorly call llm.summarize
+# Call a REST API
+factorly call github.repos --username octocat --per_page 5
+
+# Verbose mode — see what's happening
+factorly -v call web.fetch --url "https://example.com"
 ```
 
-No MCP required. Any agent, script, or automation that can shell out can use Factorly. Credentials stay secured — the caller never sees the API keys.
+## Import from OpenAPI
 
-Works with:
-- Custom Python/Node agents that use `subprocess`
-- Shell scripts and cron jobs
-- LangChain/CrewAI via tool definitions that call `factorly call`
-- Makefiles, CI pipelines, anything that runs commands
+Generate tool definitions from any OpenAPI 3.x spec — local file or remote URL:
 
-### Both at once
+```bash
+# From a URL
+factorly import openapi https://petstore3.swagger.io/api/v3/openapi.json --out .factorly/tools/petstore.yaml
 
-`factorly serve` runs the MCP server AND the CLI works at the same time. Same config, same credentials, same log.
+# From a local file
+factorly import openapi ./api-spec.yaml --out .factorly/tools/api.yaml
+
+# With a custom prefix
+factorly import openapi ./spec.yaml --prefix myapi
+
+# Preview to stdout
+factorly import openapi ./spec.yaml
+```
+
+Each operation becomes a REST tool with method, path, parameters (query/path/header/body), auth, and base URL extracted automatically.
+
+## Project Directory
+
+Factorly supports a `.factorly/` project directory for per-repo tool configs — similar to `.github/`, `.vscode/`, or `.cursor/`:
+
+```
+my-project/
+├── .factorly/
+│   ├── factorly.yaml        # project config (optional)
+│   ├── tools/               # modular tool files (optional)
+│   │   ├── slack.yaml
+│   │   └── github.yaml
+│   └── petstore.yaml        # loose tool files work too
+├── factorly.yaml            # top-level config (optional, merges with .factorly/)
+└── ...
+```
+
+**How it loads:**
+
+1. Top-level `factorly.yaml` in cwd (if present, merges `.factorly/`)
+2. `.factorly/factorly.yaml` (if no top-level config)
+3. Loose YAML files in `.factorly/` (if no factorly.yaml inside it)
+4. `~/.config/factorly/factorly.yaml` (user-level fallback)
+
+Each YAML file in a tools directory is a flat map of tool definitions — no wrapper key needed:
+
+```yaml
+# .factorly/tools/slack.yaml
+slack.post:
+  type: rest
+  base_url: https://slack.com/api
+  method: POST
+  path: /chat.postMessage
+  auth:
+    type: bearer
+    token: "${SLACK_TOKEN}"
+  parameters:
+    - name: channel
+      required: true
+    - name: text
+      required: true
+```
+
+Use `tools_dir` in your config to point to a tools directory:
+
+```yaml
+# .factorly/factorly.yaml
+tools_dir: ./tools
+tools:
+  web.fetch:
+    type: cli
+    command: curl
+    args: ["-s", "{url}"]
+```
 
 ## What It Wraps
 
-| Type | How It Works |
-|---|---|
-| **MCP servers** | Factorly spawns and manages them. Exposed via MCP and CLI. |
-| **REST APIs** | Define endpoints in YAML. Exposed as callable tools via MCP and CLI. |
-| **CLI commands** | Define commands in YAML. Exposed as tools via MCP and CLI. |
+| Type | How It Works | Status |
+|---|---|---|
+| **CLI commands** | Define command + args in YAML. `{param}` placeholders substituted. | Working |
+| **REST APIs** | Define base URL, method, path, auth, parameters. HTTP calls with routing. | Working |
+| **MCP servers** | Spawn and manage child servers. Forward calls. | Planned |
 
 ## What You Get
 
@@ -156,100 +179,108 @@ Works with:
 - **Credentials secured** — API keys and tokens live in Factorly's config, not in your agent
 - **Every call logged** — every tool call is logged with timestamp, parameters, and response summary
 - **Zero lock-in** — your tools don't change. Remove Factorly and everything still works independently
-- **Any protocol** — MCP servers, REST APIs, CLI tools. One config format for all of them
+- **Any protocol** — REST APIs, CLI tools, and soon MCP servers. One config format for all of them
 
 ## CLI Reference
 
 ```bash
-factorly serve                  # start MCP server
-factorly tools                  # list all configured tools
-factorly call <tool> [args]     # call a tool
-factorly version                # print version
+factorly init                       # create .factorly/factorly.yaml (interactive)
+factorly init --out factorly.yaml   # create at custom path
+factorly tools                      # list all configured tools
+factorly call <tool> [--param val]  # call a tool
+factorly import openapi <spec>      # generate tools from OpenAPI spec
+factorly version                    # print version
+```
+
+**Global flags:**
+
+```bash
+-v, --verbose       # print debug info to stderr
+-c, --config <path> # path to factorly.yaml
+    --config-dir    # load tools from a directory (no config file needed)
 ```
 
 ## Call Log
 
-Every tool call — whether through the MCP server or the CLI — is logged to `~/.config/factorly/calls.jsonl`:
+Every tool call is logged to `~/.config/factorly/calls.jsonl`:
 
 ```json
 {"timestamp":"2026-04-03T09:15:32Z","interface":"cli","tool":"web.fetch","params":{"url":"https://example.com"},"status":"success","duration_ms":215,"output":"<!doctype html>..."}
 ```
 
-Same log regardless of how the tool was called. One source of truth.
+Set `FACTORLY_NO_LOG=1` to disable logging.
 
 ## Config Reference
 
 ```yaml
-# factorly.yaml
+# factorly.yaml or .factorly/factorly.yaml
+tools_dir: ./tools              # optional, scan directory for tool files
+
 tools:
   <tool-name>:
-    type: mcp | rest | cli        # required
-    description: "..."             # optional, shown to agent
+    type: cli | rest            # required
+    description: "..."          # optional, shown to agent
 
-    # For MCP servers:
-    command: npx                   # command to start the server
-    args: ["@org/server-name"]     # arguments
-    env:                           # environment variables (credentials)
-      KEY: ${ENV_VAR}
+    # For CLI commands:
+    command: curl               # executable to run
+    args: ["-s", "{url}"]      # {param} placeholders are substituted
 
     # For REST APIs:
     base_url: https://api.example.com
-    auth:
-      type: bearer | basic | header
-      token: ${API_KEY}
-    tools:
-      - name: get_thing
-        method: GET
-        path: /v1/things
-        description: "Get things"
-
-    # For CLI commands:
-    command: curl                  # executable to run
-    args: ["-s", "{url}"]         # {param} placeholders are substituted
-```
-
-Parameters are inferred automatically from `{placeholder}` patterns in `args`. You can also define them explicitly:
-
-```yaml
-tools:
-  web.fetch:
-    type: cli
-    command: curl
-    args: ["-s", "{url}"]
+    method: GET                 # GET, POST, PUT, PATCH, DELETE
+    path: /items/{id}           # {param} placeholders in path
+    headers:                    # static headers (optional)
+      Accept: application/json
+    auth:                       # optional
+      type: bearer              # bearer, basic, or header
+      token: ${API_KEY}         # for bearer
+      # header: X-Api-Key       # for header type
+      # value: ${API_KEY}       # for header type
     parameters:
-      - name: url
-        description: "The URL to fetch"
+      - name: id
+        in: path                # path, query, header, or body
         required: true
+      - name: limit
+        in: query
 ```
+
+**Parameter routing:** Parameters are routed by their `in` field. When `in` is omitted, defaults to `query` for GET/DELETE or `body` for POST/PUT/PATCH.
+
+**Parameter inference:** For CLI tools, parameters are automatically inferred from `{placeholder}` patterns in `args`.
 
 ## Development
 
 Requires Go 1.24+.
 
 ```bash
-make init       # download deps + install tooling
-make build      # build for host platform → build/factorly
-make test       # run all tests
-make lint       # run golangci-lint
-make fmt        # auto-fix lint issues + format code
-make vet        # go vet
-make clean      # remove build artifacts
-make version    # bump patch version (BUMP=minor|major)
-make release    # cross-platform binaries (linux, darwin, windows)
+make init               # download deps + install tooling (golangci-lint, gotestsum)
+make build              # build for host platform → build/factorly
+make test               # run unit + integration tests
+make test-unit          # unit tests only
+make test-integration   # integration tests only (builds binary first)
+make lint               # run golangci-lint
+make fmt                # auto-fix lint issues + format code
+make vet                # go vet
+make clean              # remove build artifacts
+make version            # bump patch version (BUMP=minor|major)
+make release            # cross-platform binaries (linux, darwin, windows)
 ```
 
 ## Roadmap
 
-- [x] Wrap CLI commands as tools
-- [x] `factorly call` — CLI mode
+- [x] CLI provider — wrap shell commands as tools
+- [x] REST provider — wrap HTTP APIs as tools
+- [x] `factorly call` — call any tool from the CLI
 - [x] `factorly tools` — list configured tools
+- [x] `factorly init` — interactive project setup
+- [x] `factorly import openapi` — generate tools from OpenAPI specs (local + remote)
+- [x] Tool directory — modular configs via `tools_dir` and `.factorly/`
 - [x] Call logging (JSONL)
-- [ ] OpenAPI / swagger tool import with rest mode
+- [x] `--verbose` flag
 - [ ] `factorly serve` — MCP server mode
-- [ ] Wrap MCP servers (spawn + manage child servers)
-- [ ] Wrap REST APIs as tools
+- [ ] MCP provider — spawn + manage child MCP servers
 - [ ] `factorly test` — verify all tools are reachable
-- [ ] `factorly add` — interactive tool setup
+- [ ] `factorly logs` — view/query the call log
 - [ ] Tool health checks
 - [ ] Hosted version (Factorly Cloud)
 - [ ] Team configs and shared credential vault
