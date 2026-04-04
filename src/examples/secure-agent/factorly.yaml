@@ -1,0 +1,8 @@
+tools_dir: ./tools
+
+tools:
+  web.fetch:
+    type: cli
+    description: "Fetch a webpage"
+    command: curl
+    args: ["-s", "{url}"]

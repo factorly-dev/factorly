@@ -1,0 +1,62 @@
+github.repos:
+  type: rest
+  description: "List repositories for a user"
+  base_url: https://api.github.com
+  method: GET
+  path: /users/{username}/repos
+  auth:
+    type: bearer
+    token: "${GITHUB_TOKEN}"
+  headers:
+    Accept: application/vnd.github.v3+json
+  parameters:
+    - name: username
+      in: path
+      required: true
+    - name: per_page
+      in: query
+    - name: sort
+      in: query
+
+github.issues:
+  type: rest
+  description: "List issues for a repository"
+  base_url: https://api.github.com
+  method: GET
+  path: /repos/{owner}/{repo}/issues
+  auth:
+    type: bearer
+    token: "${GITHUB_TOKEN}"
+  headers:
+    Accept: application/vnd.github.v3+json
+  parameters:
+    - name: owner
+      in: path
+      required: true
+    - name: repo
+      in: path
+      required: true
+    - name: state
+      in: query
+
+github.create_issue:
+  type: rest
+  description: "Create an issue in a repository"
+  base_url: https://api.github.com
+  method: POST
+  path: /repos/{owner}/{repo}/issues
+  auth:
+    type: bearer
+    token: "${GITHUB_TOKEN}"
+  headers:
+    Accept: application/vnd.github.v3+json
+  parameters:
+    - name: owner
+      in: path
+      required: true
+    - name: repo
+      in: path
+      required: true
+    - name: body
+      in: body
+      required: true

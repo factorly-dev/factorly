@@ -1,26 +1,42 @@
 # Factorly
 
-**One MCP server. All your tools.**
+**Your agent calls tools. Factorly holds the keys.**
 
-Factorly wraps your existing agent tools — MCP servers, REST APIs, CLIs — into a single MCP endpoint. Configure once, connect once. Your tools don't change. Factorly just makes them all accessible from one place.
+Factorly wraps your existing agent tools — REST APIs, CLIs, MCP servers — into a single endpoint where credentials never reach the agent. Your agent sees tool names and parameters. Factorly injects the auth, makes the call, and returns the data.
 
 ```bash
-factorly init
-factorly tools
-factorly call web.fetch --url "https://example.com"
+# Your agent runs this — no secrets anywhere in the command
+factorly call github.repos --username octocat --per_page 5
+
+# Factorly injects the token, makes the HTTP call, returns the data
+# The agent never sees GITHUB_TOKEN
 ```
 
 ## Why
 
-You're building an AI agent. It needs to talk to Slack, query a database, hit an API, read files. Each tool has its own credentials, its own connection, its own auth. You end up with:
+Your AI agent needs to call Slack, GitHub, Stripe, a database, an internal API. Today that means:
 
-- API keys scattered across `.env` files
-- MCP servers configured individually in every project
-- Auth logic duplicated everywhere
-- No log of what your agent actually called
-- Key rotation means hunting through configs
+- **Secrets in the agent's context** — every API key is one prompt injection away from exposure
+- **Auth logic duplicated** across every tool, every project
+- **No audit trail** — what did the agent actually call? With what parameters?
+- **Key rotation** means hunting through agent configs and .env files
 
-Factorly fixes this. One config file. One endpoint. Every tool.
+Factorly fixes this. Secrets live in Factorly's config. The agent only knows tool names.
+
+```
+┌──────────────────────┐         ┌──────────────────────────────┐
+│  Your Agent          │         │  Factorly                    │
+│                      │         │                              │
+│  Knows:              │  call   │  Injects:                    │
+│  - tool names        │────────▶│  - Authorization headers     │
+│  - parameter names   │         │  - API keys                  │
+│                      │◀────────│  - Base URLs                 │
+│  Never sees:         │  data   │                              │
+│  - API keys          │         │  Logs every call.            │
+│  - tokens            │         │  Returns only data.          │
+│  - credentials       │         │                              │
+└──────────────────────┘         └──────────────────────────────┘
+```
 
 ## Quick Start
 
@@ -247,6 +263,10 @@ tools:
 **Parameter routing:** Parameters are routed by their `in` field. When `in` is omitted, defaults to `query` for GET/DELETE or `body` for POST/PUT/PATCH.
 
 **Parameter inference:** For CLI tools, parameters are automatically inferred from `{placeholder}` patterns in `args`.
+
+## Examples
+
+- **[Secure Agent](src/examples/secure-agent/)** — Full example showing how Factorly keeps secrets out of your agent's context. GitHub, Slack, and Stripe APIs configured with modular tool files. The agent calls tools by name — credentials are injected by Factorly and never exposed.
 
 ## Development
 

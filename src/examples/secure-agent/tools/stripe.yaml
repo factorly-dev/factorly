@@ -1,0 +1,30 @@
+stripe.customers:
+  type: rest
+  description: "List Stripe customers"
+  base_url: https://api.stripe.com/v1
+  method: GET
+  path: /customers
+  auth:
+    type: bearer
+    token: "${STRIPE_SECRET_KEY}"
+  parameters:
+    - name: limit
+      in: query
+    - name: email
+      in: query
+
+stripe.charges:
+  type: rest
+  description: "List charges for a customer"
+  base_url: https://api.stripe.com/v1
+  method: GET
+  path: /charges
+  auth:
+    type: bearer
+    token: "${STRIPE_SECRET_KEY}"
+  parameters:
+    - name: customer
+      in: query
+      required: true
+    - name: limit
+      in: query

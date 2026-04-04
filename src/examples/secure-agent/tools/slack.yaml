@@ -1,0 +1,14 @@
+slack.post:
+  type: rest
+  description: "Post a message to a Slack channel"
+  base_url: https://slack.com/api
+  method: POST
+  path: /chat.postMessage
+  auth:
+    type: bearer
+    token: "${SLACK_BOT_TOKEN}"
+  parameters:
+    - name: body
+      in: body
+      required: true
+      description: "JSON with channel and text fields"

@@ -833,6 +833,273 @@ dupe:
 	}
 }
 
+// --- Credential Isolation ---
+// Verifies that secrets configured in Factorly never appear in the
+// agent-visible output (stdout/stderr) — only in the HTTP request
+// that Factorly sends on the agent's behalf.
+
+func TestCredentialIsolation(t *testing.T) {
+	secret := "super-secret-token-12345"
+
+	var capturedAuth string
+	var capturedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuth = r.Header.Get("Authorization")
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"user":"octocat","public_repos":8}`))
+	}))
+	defer srv.Close()
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  api.get_user:
+    type: rest
+    description: "Get a user"
+    base_url: %s
+    method: GET
+    path: /users/{username}
+    auth:
+      type: bearer
+      token: "%s"
+    parameters:
+      - name: username
+        in: path
+        required: true
+`, srv.URL, secret),
+	})
+
+	stdout, stderr, code := run(t, dir, "call", "api.get_user", "--username", "octocat")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+
+	// The server received the secret in the auth header
+	if capturedAuth != "Bearer "+secret {
+		t.Errorf("expected server to receive bearer token, got %q", capturedAuth)
+	}
+	if capturedPath != "/users/octocat" {
+		t.Errorf("expected path /users/octocat, got %s", capturedPath)
+	}
+
+	// The agent (stdout + stderr) NEVER sees the secret
+	if strings.Contains(stdout, secret) {
+		t.Error("SECRET LEAKED: token appeared in stdout (agent-visible output)")
+	}
+	if strings.Contains(stderr, secret) {
+		t.Error("SECRET LEAKED: token appeared in stderr (agent-visible output)")
+	}
+
+	// The agent only sees the response data
+	if !strings.Contains(stdout, "octocat") {
+		t.Error("expected response data in stdout")
+	}
+}
+
+func TestCredentialIsolationVerboseMode(t *testing.T) {
+	secret := "sk_live_stripe_key_99999"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer srv.Close()
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  payments.list:
+    type: rest
+    description: "List payments"
+    base_url: %s
+    method: GET
+    path: /v1/charges
+    auth:
+      type: bearer
+      token: "%s"
+    parameters:
+      - name: limit
+        in: query
+`, srv.URL, secret),
+	})
+
+	// Even in verbose mode, secrets must not leak
+	stdout, stderr, code := run(t, dir, "call", "-v", "payments.list", "--limit", "10")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+
+	if strings.Contains(stdout, secret) {
+		t.Error("SECRET LEAKED: token appeared in stdout during verbose mode")
+	}
+	if strings.Contains(stderr, secret) {
+		t.Error("SECRET LEAKED: token appeared in stderr during verbose mode")
+	}
+
+	// Verbose output should show tool name and params but not the token
+	if !strings.Contains(stderr, "payments.list") {
+		t.Error("expected verbose output to mention tool name")
+	}
+	if !strings.Contains(stderr, "limit") {
+		t.Error("expected verbose output to mention param name")
+	}
+}
+
+func TestCredentialIsolationMultipleProviders(t *testing.T) {
+	githubSecret := "ghp_github_secret_token"
+	slackSecret := "xoxb_slack_bot_token"
+
+	var githubAuth, slackAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/github"):
+			githubAuth = r.Header.Get("Authorization")
+			_, _ = w.Write([]byte(`[{"name":"repo1"}]`))
+		case strings.HasPrefix(r.URL.Path, "/slack"):
+			slackAuth = r.Header.Get("Authorization")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}
+	}))
+	defer srv.Close()
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  github.repos:
+    type: rest
+    base_url: %s
+    method: GET
+    path: /github/repos
+    auth:
+      type: bearer
+      token: "%s"
+  slack.post:
+    type: rest
+    base_url: %s
+    method: POST
+    path: /slack/chat
+    auth:
+      type: bearer
+      token: "%s"
+    parameters:
+      - name: body
+        in: body
+  echo.safe:
+    type: cli
+    command: echo
+    args: ["{msg}"]
+`, srv.URL, githubSecret, srv.URL, slackSecret),
+	})
+
+	// Call each tool and verify isolation
+	stdout1, stderr1, _ := run(t, dir, "call", "github.repos")
+	stdout2, stderr2, _ := run(t, dir, "call", "slack.post", "--body", `{"text":"hi"}`)
+	stdout3, stderr3, _ := run(t, dir, "call", "echo.safe", "--msg", "hello")
+
+	allOutput := stdout1 + stderr1 + stdout2 + stderr2 + stdout3 + stderr3
+
+	if strings.Contains(allOutput, githubSecret) {
+		t.Error("SECRET LEAKED: GitHub token appeared in agent-visible output")
+	}
+	if strings.Contains(allOutput, slackSecret) {
+		t.Error("SECRET LEAKED: Slack token appeared in agent-visible output")
+	}
+
+	// But both servers received their respective tokens
+	if githubAuth != "Bearer "+githubSecret {
+		t.Errorf("expected GitHub server to receive its token, got %q", githubAuth)
+	}
+	if slackAuth != "Bearer "+slackSecret {
+		t.Errorf("expected Slack server to receive its token, got %q", slackAuth)
+	}
+
+	// CLI tool works alongside REST tools
+	if strings.TrimSpace(stdout3) != "hello" {
+		t.Errorf("expected echo output 'hello', got %q", stdout3)
+	}
+}
+
+func TestCredentialIsolationHeaderAuth(t *testing.T) {
+	apiKey := "ak_custom_header_secret"
+
+	var capturedKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedKey = r.Header.Get("X-Api-Key")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  api.call:
+    type: rest
+    base_url: %s
+    method: GET
+    path: /data
+    auth:
+      type: header
+      header: X-Api-Key
+      value: "%s"
+`, srv.URL, apiKey),
+	})
+
+	stdout, stderr, code := run(t, dir, "call", "api.call")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+
+	// Server got the key
+	if capturedKey != apiKey {
+		t.Errorf("expected server to receive API key, got %q", capturedKey)
+	}
+
+	// Agent never sees it
+	if strings.Contains(stdout, apiKey) {
+		t.Error("SECRET LEAKED: API key appeared in stdout")
+	}
+	if strings.Contains(stderr, apiKey) {
+		t.Error("SECRET LEAKED: API key appeared in stderr")
+	}
+}
+
+func TestCredentialIsolationToolsDir(t *testing.T) {
+	secret := "secret-from-tools-dir"
+
+	var capturedAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	dir := setupDir(t, map[string]string{
+		".factorly/api.yaml": fmt.Sprintf(`
+api.call:
+  type: rest
+  base_url: %s
+  method: GET
+  path: /data
+  auth:
+    type: bearer
+    token: "%s"
+`, srv.URL, secret),
+	})
+
+	stdout, stderr, code := run(t, dir, "call", "api.call")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+
+	if capturedAuth != "Bearer "+secret {
+		t.Errorf("expected server to receive token, got %q", capturedAuth)
+	}
+	if strings.Contains(stdout+stderr, secret) {
+		t.Error("SECRET LEAKED: token from .factorly/ tool file appeared in output")
+	}
+}
+
 // helpers
 
 func findPetstoreSpec(t *testing.T) string {
