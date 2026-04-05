@@ -4,14 +4,17 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/hkdf"
 )
 
 const (
@@ -21,21 +24,38 @@ const (
 	argonTime    = 2
 	argonMemory  = 128 * 1024
 	argonThreads = 4
+
+	entrySaltLen = 16
+	hkdfInfo     = "factorly-vault-entry-v2"
 )
 
+// vaultData is the v1 format (kept for migration).
 type vaultData struct {
 	Version int               `json:"version"`
 	Secrets map[string]string `json:"secrets"`
 }
 
+// encryptedEntry is a single per-entry encrypted value.
+type encryptedEntry struct {
+	Salt       []byte `json:"salt"`       // 16 bytes, HKDF salt
+	Nonce      []byte `json:"nonce"`      // 12 bytes, AES-GCM nonce
+	Ciphertext []byte `json:"ciphertext"` // AES-256-GCM output
+}
+
+// vaultIndex is the v2 format: key names are visible, values are per-entry encrypted.
+type vaultIndex struct {
+	Version int                       `json:"version"`
+	Entries map[string]encryptedEntry `json:"entries"`
+}
+
 // LocalBackend stores secrets encrypted on disk using AES-256-GCM with
-// an Argon2id-derived key.
+// an Argon2id-derived key. Values are per-entry encrypted via HKDF.
 type LocalBackend struct {
 	path  string
-	key   []byte
-	salt  []byte
+	key   []byte // master key (Argon2id-derived, retained for HKDF)
+	salt  []byte // file-level Argon2 salt
 	mu    sync.RWMutex
-	data  *vaultData
+	index *vaultIndex
 	dirty bool
 }
 
@@ -62,17 +82,17 @@ func OpenLocalAt(path, password string) (*LocalBackend, error) {
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("reading vault: %w", err)
 		}
-		// New vault — generate fresh salt
+		// New vault — create v2 directly
 		b.salt = make([]byte, saltLen)
 		if _, err := rand.Read(b.salt); err != nil {
 			return nil, fmt.Errorf("generating salt: %w", err)
 		}
 		b.key = deriveKey(password, b.salt)
-		b.data = &vaultData{Version: 1, Secrets: make(map[string]string)}
+		b.index = &vaultIndex{Version: 2, Entries: make(map[string]encryptedEntry)}
 		return b, nil
 	}
 
-	// Existing vault — decrypt
+	// Existing vault — decrypt outer layer
 	if len(data) < saltLen+nonceLen+1 {
 		return nil, fmt.Errorf("vault file is corrupt (too small)")
 	}
@@ -97,15 +117,48 @@ func OpenLocalAt(path, password string) (*LocalBackend, error) {
 		return nil, fmt.Errorf("decrypting vault (wrong password?): %w", err)
 	}
 
-	var vd vaultData
-	if err := json.Unmarshal(plaintext, &vd); err != nil {
-		return nil, fmt.Errorf("parsing vault data: %w", err)
+	// Detect version
+	var probe struct {
+		Version int `json:"version"`
 	}
-	if vd.Secrets == nil {
-		vd.Secrets = make(map[string]string)
+	if err := json.Unmarshal(plaintext, &probe); err != nil {
+		return nil, fmt.Errorf("parsing vault version: %w", err)
 	}
 
-	b.data = &vd
+	switch probe.Version {
+	case 0, 1:
+		// Migrate v1 → v2: decrypt all values, re-encrypt per-entry
+		var vd vaultData
+		if err := json.Unmarshal(plaintext, &vd); err != nil {
+			return nil, fmt.Errorf("parsing v1 vault: %w", err)
+		}
+		b.index = &vaultIndex{Version: 2, Entries: make(map[string]encryptedEntry, len(vd.Secrets))}
+		for k, v := range vd.Secrets {
+			entry, err := encryptValue(b.key, v)
+			if err != nil {
+				return nil, fmt.Errorf("migrating entry %q: %w", k, err)
+			}
+			b.index.Entries[k] = entry
+		}
+		b.dirty = true
+		if err := b.save(); err != nil {
+			return nil, fmt.Errorf("saving migrated vault: %w", err)
+		}
+
+	case 2:
+		var vi vaultIndex
+		if err := json.Unmarshal(plaintext, &vi); err != nil {
+			return nil, fmt.Errorf("parsing v2 vault: %w", err)
+		}
+		if vi.Entries == nil {
+			vi.Entries = make(map[string]encryptedEntry)
+		}
+		b.index = &vi
+
+	default:
+		return nil, fmt.Errorf("unsupported vault version %d", probe.Version)
+	}
+
 	return b, nil
 }
 
@@ -113,18 +166,22 @@ func (b *LocalBackend) Get(key string) (string, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	val, ok := b.data.Secrets[key]
+	entry, ok := b.index.Entries[key]
 	if !ok {
 		return "", ErrNotFound
 	}
-	return val, nil
+	return decryptValue(b.key, entry)
 }
 
 func (b *LocalBackend) Set(key, value string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	b.data.Secrets[key] = value
+	entry, err := encryptValue(b.key, value)
+	if err != nil {
+		return fmt.Errorf("encrypting entry: %w", err)
+	}
+	b.index.Entries[key] = entry
 	b.dirty = true
 	return b.save()
 }
@@ -133,10 +190,10 @@ func (b *LocalBackend) Delete(key string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if _, ok := b.data.Secrets[key]; !ok {
+	if _, ok := b.index.Entries[key]; !ok {
 		return ErrNotFound
 	}
-	delete(b.data.Secrets, key)
+	delete(b.index.Entries, key)
 	b.dirty = true
 	return b.save()
 }
@@ -145,8 +202,8 @@ func (b *LocalBackend) List() ([]string, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	keys := make([]string, 0, len(b.data.Secrets))
-	for k := range b.data.Secrets {
+	keys := make([]string, 0, len(b.index.Entries))
+	for k := range b.index.Entries {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
@@ -154,11 +211,12 @@ func (b *LocalBackend) List() ([]string, error) {
 }
 
 func (b *LocalBackend) Close() error {
+	zeroize(b.key)
 	return nil
 }
 
 func (b *LocalBackend) save() error {
-	plaintext, err := json.Marshal(b.data)
+	plaintext, err := json.Marshal(b.index)
 	if err != nil {
 		return fmt.Errorf("marshaling vault: %w", err)
 	}
@@ -192,6 +250,78 @@ func (b *LocalBackend) save() error {
 	return os.WriteFile(b.path, out, 0o600)
 }
 
+// --- Key derivation ---
+
 func deriveKey(password string, salt []byte) []byte {
 	return argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, keyLen)
+}
+
+func deriveEntryKey(masterKey, entrySalt []byte) ([]byte, error) {
+	r := hkdf.New(sha256.New, masterKey, entrySalt, []byte(hkdfInfo))
+	key := make([]byte, keyLen)
+	if _, err := io.ReadFull(r, key); err != nil {
+		return nil, fmt.Errorf("deriving entry key: %w", err)
+	}
+	return key, nil
+}
+
+// --- Per-entry encrypt/decrypt ---
+
+func encryptValue(masterKey []byte, plaintext string) (encryptedEntry, error) {
+	salt := make([]byte, entrySaltLen)
+	if _, err := rand.Read(salt); err != nil {
+		return encryptedEntry{}, fmt.Errorf("generating entry salt: %w", err)
+	}
+
+	entryKey, err := deriveEntryKey(masterKey, salt)
+	if err != nil {
+		return encryptedEntry{}, err
+	}
+	defer zeroize(entryKey)
+
+	block, err := aes.NewCipher(entryKey)
+	if err != nil {
+		return encryptedEntry{}, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return encryptedEntry{}, err
+	}
+
+	nonce := make([]byte, nonceLen)
+	if _, err := rand.Read(nonce); err != nil {
+		return encryptedEntry{}, fmt.Errorf("generating entry nonce: %w", err)
+	}
+
+	ct := gcm.Seal(nil, nonce, []byte(plaintext), nil)
+	return encryptedEntry{Salt: salt, Nonce: nonce, Ciphertext: ct}, nil
+}
+
+func decryptValue(masterKey []byte, entry encryptedEntry) (string, error) {
+	entryKey, err := deriveEntryKey(masterKey, entry.Salt)
+	if err != nil {
+		return "", err
+	}
+	defer zeroize(entryKey)
+
+	block, err := aes.NewCipher(entryKey)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	plaintext, err := gcm.Open(nil, entry.Nonce, entry.Ciphertext, nil)
+	if err != nil {
+		return "", fmt.Errorf("decrypting entry: %w", err)
+	}
+	return string(plaintext), nil
+}
+
+func zeroize(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
 }

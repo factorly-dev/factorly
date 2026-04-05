@@ -123,12 +123,12 @@ func resolveVaultPath() string {
 }
 
 func openVault() (*vault.LocalBackend, error) {
+	path := resolveVaultPath()
+	vlog("vault path: %s", path)
 	password, err := resolveVaultPassword()
 	if err != nil {
 		return nil, err
 	}
-	path := resolveVaultPath()
-	vlog("vault path: %s", path)
 	return vault.OpenLocalAt(path, password)
 }
 
