@@ -49,6 +49,26 @@ var vaultSetCmd = &cobra.Command{
 	},
 }
 
+var vaultGetCmd = &cobra.Command{
+	Use:   "get <key>",
+	Short: "Retrieve a secret from the vault",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		backend, err := openVault()
+		if err != nil {
+			return err
+		}
+		defer backend.Close()
+
+		value, err := backend.Get(args[0])
+		if err != nil {
+			return err
+		}
+		fmt.Print(value)
+		return nil
+	},
+}
+
 var vaultListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List secret names in the vault",
@@ -179,5 +199,5 @@ func promptSecret(label string) (string, error) {
 
 func init() {
 	vaultCmd.PersistentFlags().StringVar(&vaultPath, "vault-path", "", "path to vault file (default: ~/.config/factorly/vault.enc)")
-	vaultCmd.AddCommand(vaultSetCmd, vaultListCmd, vaultDeleteCmd)
+	vaultCmd.AddCommand(vaultSetCmd, vaultGetCmd, vaultListCmd, vaultDeleteCmd)
 }
