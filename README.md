@@ -414,6 +414,7 @@ tools:
     # For CLI commands:
     command: curl               # executable to run
     args: ["-s", "{url}"]      # {param} placeholders are substituted
+    stdin: "{input}"            # optional, pipe to subprocess stdin
 
     # For REST APIs:
     base_url: https://api.example.com
@@ -437,6 +438,28 @@ tools:
 **Secret references:** Use `${ENV_VAR}` for environment variables or `${vault:KEY}` for encrypted vault secrets. Both are resolved at startup before the agent sees anything.
 
 **Parameter routing:** Parameters are routed by their `in` field. When `in` is omitted, defaults to `query` for GET/DELETE or `body` for POST/PUT/PATCH.
+
+**Stdin:** CLI tools can pipe a parameter to the subprocess's stdin using the `stdin` field with `{param}` placeholders:
+
+```yaml
+tools:
+  jq.filter:
+    type: cli
+    command: jq
+    args: ["{filter}"]
+    stdin: "{input}"
+
+  clipboard.copy:
+    type: cli
+    description: "Copy text to the system clipboard"
+    command: pbcopy        # macOS (use xclip -selection clipboard on Linux)
+    stdin: "{text}"
+```
+
+```bash
+factorly call jq.filter --filter ".name" --input '{"name":"Jordan","role":"VP Eng"}'
+factorly call clipboard.copy --text "copied to clipboard"
+```
 
 **Parameter inference:** For CLI tools, parameters are automatically inferred from `{placeholder}` patterns in `args`.
 

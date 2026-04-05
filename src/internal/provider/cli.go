@@ -13,6 +13,7 @@ import (
 type CLIToolDef struct {
 	Command string
 	Args    []string
+	Stdin   string // template with {param} placeholders, piped to subprocess stdin
 	Env     map[string]string
 	Timeout time.Duration
 }
@@ -70,6 +71,12 @@ func (p *CLIProvider) Execute(toolName string, params map[string]string) (*Resul
 		}
 	}
 
+	// Pipe stdin if configured
+	if def.Stdin != "" {
+		stdinVal := substituteString(def.Stdin, params)
+		cmd.Stdin = strings.NewReader(stdinVal)
+	}
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -94,6 +101,14 @@ func (p *CLIProvider) Execute(toolName string, params map[string]string) (*Resul
 	}
 
 	return result, nil
+}
+
+func substituteString(tmpl string, params map[string]string) string {
+	result := tmpl
+	for k, v := range params {
+		result = strings.ReplaceAll(result, "{"+k+"}", v)
+	}
+	return result
 }
 
 func substituteArgs(templates []string, params map[string]string) []string {

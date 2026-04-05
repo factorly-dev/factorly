@@ -181,6 +181,104 @@ func TestCLIExecuteTimeout(t *testing.T) {
 	}
 }
 
+func TestCLIExecuteStdin(t *testing.T) {
+	p := NewCLI(map[string]CLIToolDef{
+		"test.stdin": {
+			Command: "cat",
+			Stdin:   "{input}",
+		},
+	})
+
+	result, err := p.Execute("test.stdin", map[string]string{"input": "hello from stdin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Output != "hello from stdin" {
+		t.Errorf("expected 'hello from stdin', got %q", result.Output)
+	}
+}
+
+func TestCLIExecuteStdinWithArgs(t *testing.T) {
+	p := NewCLI(map[string]CLIToolDef{
+		"test.grep": {
+			Command: "grep",
+			Args:    []string{"{pattern}"},
+			Stdin:   "{input}",
+		},
+	})
+
+	result, err := p.Execute("test.grep", map[string]string{
+		"pattern": "hello",
+		"input":   "hello world\ngoodbye world\nhello again",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", result.ExitCode)
+	}
+	if result.Output != "hello world\nhello again\n" {
+		t.Errorf("expected grep output, got %q", result.Output)
+	}
+}
+
+func TestCLIExecuteStdinNoPlaceholder(t *testing.T) {
+	p := NewCLI(map[string]CLIToolDef{
+		"test.static": {
+			Command: "cat",
+			Stdin:   "static content",
+		},
+	})
+
+	result, err := p.Execute("test.static", map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Output != "static content" {
+		t.Errorf("expected 'static content', got %q", result.Output)
+	}
+}
+
+func TestCLIExecuteNoStdin(t *testing.T) {
+	// Verify existing behavior: no stdin field means no stdin piped
+	p := NewCLI(map[string]CLIToolDef{
+		"test.echo": {
+			Command: "echo",
+			Args:    []string{"{msg}"},
+		},
+	})
+
+	result, err := p.Execute("test.echo", map[string]string{"msg": "works"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Output != "works\n" {
+		t.Errorf("expected 'works\\n', got %q", result.Output)
+	}
+}
+
+func TestSubstituteString(t *testing.T) {
+	tests := []struct {
+		name   string
+		tmpl   string
+		params map[string]string
+		want   string
+	}{
+		{"single param", "{input}", map[string]string{"input": "hello"}, "hello"},
+		{"embedded param", "prefix {val} suffix", map[string]string{"val": "X"}, "prefix X suffix"},
+		{"multiple params", "{a} and {b}", map[string]string{"a": "1", "b": "2"}, "1 and 2"},
+		{"no params", "static", map[string]string{}, "static"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := substituteString(tt.tmpl, tt.params)
+			if got != tt.want {
+				t.Errorf("substituteString(%q) = %q, want %q", tt.tmpl, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSubstituteArgs(t *testing.T) {
 	tests := []struct {
 		name      string

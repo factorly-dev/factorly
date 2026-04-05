@@ -219,6 +219,72 @@ tools:
 	}
 }
 
+// --- Stdin ---
+
+func TestCallStdin(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  cat.input:
+    type: cli
+    command: cat
+    stdin: "{input}"
+`,
+	})
+
+	stdout, _, code := run(t, dir, "call", "cat.input", "--input", "hello from stdin")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "hello from stdin" {
+		t.Errorf("expected 'hello from stdin', got %q", stdout)
+	}
+}
+
+func TestCallStdinWithArgs(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  grep.filter:
+    type: cli
+    command: grep
+    args: ["{pattern}"]
+    stdin: "{input}"
+`,
+	})
+
+	stdout, _, code := run(t, dir, "call", "grep.filter",
+		"--pattern", "hello",
+		"--input", "hello world\ngoodbye world\nhello again")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "hello world") {
+		t.Errorf("expected grep match, got %q", stdout)
+	}
+}
+
+func TestCallStdinParamInference(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  cat.input:
+    type: cli
+    command: cat
+    stdin: "{data}"
+`,
+	})
+
+	// Tool should list "data" as a parameter (inferred from stdin)
+	stdout, _, code := run(t, dir, "tools")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "data") {
+		t.Error("expected inferred param 'data' in tools output")
+	}
+}
+
 // --- Tool Directory ---
 
 func TestToolsDirLoading(t *testing.T) {

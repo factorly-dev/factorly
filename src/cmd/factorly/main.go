@@ -374,6 +374,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry) (*proxy.Prox
 			cliTools[name] = provider.CLIToolDef{
 				Command: toolCfg.Command,
 				Args:    toolCfg.Args,
+				Stdin:   toolCfg.Stdin,
 				Env:     resolveVaultMap(resolver, toolCfg.Env),
 			}
 		case "rest":

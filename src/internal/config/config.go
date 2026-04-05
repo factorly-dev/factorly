@@ -30,6 +30,7 @@ type ToolConfig struct {
 	Description string            `yaml:"description"`
 	Command     string            `yaml:"command,omitempty"`
 	Args        []string          `yaml:"args,omitempty"`
+	Stdin       string            `yaml:"stdin,omitempty"`
 	Env         map[string]string `yaml:"env,omitempty"`
 	Parameters  []ParamConfig     `yaml:"parameters,omitempty"`
 
@@ -273,6 +274,7 @@ func resolveEnvVars(cfg *Config) {
 	for name, tool := range cfg.Tools {
 		tool.Command = resolveString(tool.Command)
 		tool.Description = resolveString(tool.Description)
+		tool.Stdin = resolveString(tool.Stdin)
 		for i, arg := range tool.Args {
 			tool.Args[i] = resolveString(arg)
 		}
@@ -309,8 +311,23 @@ func inferParameters(cfg *Config) {
 			continue
 		}
 		seen := make(map[string]bool)
+		// Infer from args
 		for _, arg := range tool.Args {
 			matches := placeholderPattern.FindAllStringSubmatch(arg, -1)
+			for _, m := range matches {
+				paramName := m[1]
+				if !seen[paramName] {
+					seen[paramName] = true
+					tool.Parameters = append(tool.Parameters, ParamConfig{
+						Name:     paramName,
+						Required: true,
+					})
+				}
+			}
+		}
+		// Infer from stdin
+		if tool.Stdin != "" {
+			matches := placeholderPattern.FindAllStringSubmatch(tool.Stdin, -1)
 			for _, m := range matches {
 				paramName := m[1]
 				if !seen[paramName] {
