@@ -20,20 +20,36 @@ func vlog(format string, args ...any) {
 	}
 }
 
+// slog logs with a session prefix: [session-id] message
+func slog(ctx context.Context, format string, args ...any) {
+	if Verbose == nil {
+		return
+	}
+	sid := ""
+	if session := server.ClientSessionFromContext(ctx); session != nil {
+		sid = session.SessionID()
+	}
+	if sid != "" {
+		Verbose("[%s] "+format, append([]any{sid}, args...)...)
+	} else {
+		Verbose(format, args...)
+	}
+}
+
 // New creates an MCP server with all registry tools exposed.
 func New(reg *registry.Registry, p *proxy.Proxy) *server.MCPServer {
 	hooks := &server.Hooks{}
 	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
-		vlog("client connected")
+		vlog("[%s] client connected", session.SessionID())
 	})
 	hooks.AddAfterInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
-		vlog("client initialized: %s %s (protocol: %s)",
+		slog(ctx, "client initialized: %s %s (protocol: %s)",
 			message.Params.ClientInfo.Name,
 			message.Params.ClientInfo.Version,
 			message.Params.ProtocolVersion)
 	})
 	hooks.AddAfterListTools(func(ctx context.Context, id any, message *mcp.ListToolsRequest, result *mcp.ListToolsResult) {
-		vlog("client listed tools (%d tools)", len(result.Tools))
+		slog(ctx, "client listed tools (%d tools)", len(result.Tools))
 	})
 
 	s := server.NewMCPServer(
@@ -80,16 +96,16 @@ func makeHandler(p *proxy.Proxy, toolName string) server.ToolHandlerFunc {
 			}
 		}
 
-		vlog("mcp call: %s params=%v", toolName, params)
+		slog(ctx, "mcp call: %s params=%v", toolName, params)
 
 		result, err := p.Execute(toolName, params, "mcp")
 		if err != nil {
-			vlog("mcp call %s: error: %v", toolName, err)
+			slog(ctx, "mcp call %s: error: %v", toolName, err)
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
 		if result.IsError() {
-			vlog("mcp call %s: failed (exit %d, %s)", toolName, result.ExitCode, result.Duration)
+			slog(ctx, "mcp call %s: failed (exit %d, %s)", toolName, result.ExitCode, result.Duration)
 			msg := result.Error
 			if msg == "" {
 				msg = result.Output
@@ -97,7 +113,7 @@ func makeHandler(p *proxy.Proxy, toolName string) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(msg), nil
 		}
 
-		vlog("mcp call %s: success (%s, %d bytes)", toolName, result.Duration, len(result.Output))
+		slog(ctx, "mcp call %s: success (%s, %d bytes)", toolName, result.Duration, len(result.Output))
 		return mcp.NewToolResultText(result.Output), nil
 	}
 }
