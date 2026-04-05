@@ -298,7 +298,7 @@ func init() {
 	importOpenAPICmd.Flags().StringVarP(&importOpenAPIPrefix, "prefix", "p", "", "tool name prefix (default: from spec title)")
 	importCmd.AddCommand(importOpenAPICmd)
 
-	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, importCmd, initCmd, vaultCmd)
+	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, importCmd, initCmd, vaultCmd, serveCmd)
 }
 
 // loadConfig loads config and builds a registry. Does not open the vault

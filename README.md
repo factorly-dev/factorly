@@ -101,9 +101,96 @@ factorly call web.fetch --url "https://example.com"
 # Call a REST API
 factorly call github.repos --username octocat --per_page 5
 
+# Start as an MCP server (stdio)
+factorly serve
+
+# Start as an HTTP MCP server (endpoint: http://localhost:3000/mcp)
+factorly serve --http :3000
+
 # Verbose mode — see what's happening
 factorly -v call web.fetch --url "https://example.com"
 ```
+
+## Connect to Your Agent
+
+### Claude Code
+
+Add to `.mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "factorly": {
+      "command": "factorly",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+Claude Code starts Factorly as a subprocess via stdio. All configured tools appear automatically.
+
+For HTTP mode (remote or shared server):
+
+```json
+{
+  "mcpServers": {
+    "factorly": {
+      "type": "streamable-http",
+      "url": "http://localhost:3000/mcp"
+    }
+  }
+}
+```
+
+### Cursor
+
+Add to `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "factorly": {
+      "command": "factorly",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+Or for HTTP mode:
+
+```json
+{
+  "mcpServers": {
+    "factorly": {
+      "url": "http://localhost:3000/mcp"
+    }
+  }
+}
+```
+
+### OpenAI Codex
+
+Add to `.codex/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "factorly": {
+      "command": "factorly",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+### Any MCP Client
+
+Factorly supports two transports:
+
+- **Stdio** (default) — `factorly serve` — the client starts Factorly as a subprocess. Best for local development.
+- **Streamable HTTP** — `factorly serve --http :3000` — Factorly runs as a standalone server at `http://localhost:3000/mcp`. Best for shared/remote/hosted setups.
 
 ## Vault — Encrypted Secret Storage
 
@@ -270,6 +357,8 @@ tools:
 ## CLI Reference
 
 ```bash
+factorly serve                      # start MCP server (stdio)
+factorly serve --http :3000         # start MCP server (HTTP at /mcp)
 factorly init                       # create .factorly/factorly.yaml (interactive)
 factorly init --out factorly.yaml   # create at custom path
 factorly tools                      # list all configured tools
@@ -385,9 +474,9 @@ make release            # cross-platform binaries (linux, darwin, windows)
 - [x] `factorly import openapi` — generate tools from OpenAPI specs (local + remote)
 - [x] Tool directory — modular configs via `tools_dir` and `.factorly/`
 - [x] Encrypted vault — `${vault:KEY}` with AES-256-GCM + Argon2id
+- [x] `factorly serve` — MCP server mode (stdio + HTTP)
 - [x] Call logging (JSONL)
 - [x] `--verbose` flag
-- [ ] `factorly serve` — MCP server mode
 - [ ] MCP provider — spawn + manage child MCP servers
 - [ ] `factorly test` — verify all tools are reachable
 - [ ] `factorly logs` — view/query the call log
