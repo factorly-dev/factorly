@@ -55,9 +55,16 @@ var toolsCmd = &cobra.Command{
 	Use:   "tools",
 	Short: "List all configured tools",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_, reg, err := loadConfig()
+		cfg, reg, err := loadConfig()
 		if err != nil {
 			return err
+		}
+
+		// Bootstrap providers to discover MCP sub-tools
+		if hasMCPTools(cfg) {
+			if _, err := bootstrapProviders(cfg, reg); err != nil {
+				return err
+			}
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -96,7 +103,9 @@ var callCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if _, err := reg.Get(toolName); err != nil {
+		// Skip early validation for MCP tools — sub-tools are discovered
+		// during bootstrapProviders, not loadConfig
+		if _, err := reg.Get(toolName); err != nil && !hasMCPTools(cfg) {
 			return err
 		}
 
@@ -367,6 +376,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry) (*proxy.Prox
 	providers := make(map[string]provider.Provider)
 	cliTools := make(map[string]provider.CLIToolDef)
 	restTools := make(map[string]provider.RESTToolDef)
+	mcpServers := make(map[string]provider.MCPServerDef)
 
 	for name, toolCfg := range cfg.Tools {
 		switch toolCfg.Type {
@@ -377,6 +387,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry) (*proxy.Prox
 				Stdin:   toolCfg.Stdin,
 				Env:     resolveVaultMap(resolver, toolCfg.Env),
 			}
+			vlog("  registered cli tool: %s", name)
 		case "rest":
 			restDef := provider.RESTToolDef{
 				Method:  toolCfg.Method,
@@ -400,8 +411,16 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry) (*proxy.Prox
 				})
 			}
 			restTools[name] = restDef
+			vlog("  registered rest tool: %s", name)
+		case "mcp":
+			mcpServers[name] = provider.MCPServerDef{
+				Command: toolCfg.Command,
+				Args:    toolCfg.Args,
+				Env:     resolveVaultMap(resolver, toolCfg.Env),
+				URL:     resolveVaultRef(resolver, toolCfg.URL),
+			}
+			vlog("  registered mcp server: %s", name)
 		}
-		vlog("  registered provider for tool: %s (type: %s)", name, toolCfg.Type)
 	}
 
 	if len(cliTools) > 0 {
@@ -415,6 +434,39 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry) (*proxy.Prox
 		}
 		vlog("initialized rest provider (%d tools)", len(restTools))
 		providers["rest"] = restProvider
+	}
+	if len(mcpServers) > 0 {
+		mcpProvider := provider.NewMCP(mcpServers)
+		if err := mcpProvider.Setup(); err != nil {
+			return nil, fmt.Errorf("mcp provider setup: %w", err)
+		}
+		discovered, err := mcpProvider.DiscoverTools()
+		if err != nil {
+			_ = mcpProvider.Teardown()
+			return nil, fmt.Errorf("mcp provider discovery: %w", err)
+		}
+		vlog("initialized mcp provider (%d servers, %d tools)", len(mcpServers), len(discovered))
+		providers["mcp"] = mcpProvider
+
+		// Register discovered tools in the registry
+		for _, dt := range discovered {
+			params := make([]registry.Parameter, len(dt.Parameters))
+			for i, dp := range dt.Parameters {
+				params[i] = registry.Parameter{
+					Name:        dp.Name,
+					Description: dp.Description,
+					Required:    dp.Required,
+				}
+			}
+			reg.Register(&registry.Tool{
+				Name:        dt.Name,
+				Type:        "mcp",
+				Description: dt.Description,
+				Parameters:  params,
+				ProviderKey: "mcp",
+			})
+			vlog("    discovered: %s (%d params)", dt.Name, len(dt.Parameters))
+		}
 	}
 
 	var logIface logger.Logger
@@ -529,6 +581,15 @@ func resolveVaultMap(resolver *vault.Resolver, m map[string]string) map[string]s
 		resolved[k] = resolveVaultRef(resolver, v)
 	}
 	return resolved
+}
+
+func hasMCPTools(cfg *config.Config) bool {
+	for _, tool := range cfg.Tools {
+		if tool.Type == "mcp" {
+			return true
+		}
+	}
+	return false
 }
 
 func parseToolArgs(args []string) map[string]string {

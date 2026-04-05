@@ -87,6 +87,17 @@ tools:
         required: true
       - name: per_page
         in: query
+
+  slack:
+    type: mcp
+    command: npx
+    args: ["@modelcontextprotocol/server-slack"]
+    env:
+      SLACK_TOKEN: ${vault:SLACK_TOKEN}
+
+  remote-tools:
+    type: mcp
+    url: http://other-factorly.internal:3000/mcp
 ```
 
 ### Use it
@@ -365,7 +376,7 @@ tools:
 |---|---|---|
 | **CLI commands** | Define command + args in YAML. `{param}` placeholders substituted. | Working |
 | **REST APIs** | Define base URL, method, path, auth, parameters. HTTP calls with routing. | Working |
-| **MCP servers** | Spawn and manage child servers. Forward calls. | Planned |
+| **MCP servers** | Spawn child servers (stdio) or connect to remote (HTTP). Tools discovered automatically. | Working |
 
 ## What You Get
 
@@ -373,7 +384,7 @@ tools:
 - **Credentials secured** — secrets live in the encrypted vault or env vars, never in the agent
 - **Every call logged** — every tool call is logged with timestamp, parameters, and response summary
 - **Zero lock-in** — your tools don't change. Remove Factorly and everything still works independently
-- **Any protocol** — REST APIs, CLI tools, and soon MCP servers. One config format for all of them
+- **Any protocol** — MCP servers, REST APIs, CLI tools. One config format for all of them
 
 ## CLI Reference
 
@@ -430,13 +441,22 @@ tools_dir: ./tools              # optional, scan directory for tool files
 
 tools:
   <tool-name>:
-    type: cli | rest            # required
+    type: cli | rest | mcp      # required
     description: "..."          # optional, shown to agent
 
     # For CLI commands:
     command: curl               # executable to run
     args: ["-s", "{url}"]      # {param} placeholders are substituted
     stdin: "{input}"            # optional, pipe to subprocess stdin
+
+    # For MCP servers (stdio — spawn subprocess):
+    command: npx                # executable to start the server
+    args: ["@org/server-name"] # arguments
+    env:                        # environment variables
+      KEY: ${vault:SECRET}
+
+    # For MCP servers (HTTP — connect to remote):
+    url: http://host:3000/mcp  # server URL
 
     # For REST APIs:
     base_url: https://api.example.com
@@ -522,7 +542,7 @@ make release            # cross-platform binaries (linux, darwin, windows)
 - [x] `factorly serve` — MCP server mode (stdio + HTTP)
 - [x] Call logging (JSONL)
 - [x] `--verbose` flag
-- [ ] MCP provider — spawn + manage child MCP servers
+- [x] MCP provider — spawn child servers (stdio) or connect to remote (HTTP)
 - [ ] `factorly doctor` — health check all tools, credentials, and connections
 - [ ] `factorly sync` — push MCP config into AI clients (Claude Code, Cursor, Codex)
 - [ ] `factorly status` — overview of tools, synced clients, connection health

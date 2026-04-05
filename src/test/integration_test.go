@@ -15,6 +15,7 @@ import (
 )
 
 var binary string
+var testserverBin string
 
 func TestMain(m *testing.M) {
 	// Allow override via env var
@@ -40,6 +41,10 @@ func TestMain(m *testing.M) {
 	if binary == "" {
 		panic("factorly binary not found — run 'make build' first or set FACTORLY_BIN")
 	}
+
+	// testserver is factorly itself (factorly serve acts as an MCP server)
+	testserverBin = binary
+
 	os.Exit(m.Run())
 }
 
@@ -667,6 +672,115 @@ tools:
 	}
 	if stdout != "ok" {
 		t.Errorf("expected 'ok', got %q", stdout)
+	}
+}
+
+// --- MCP Provider ---
+
+func TestCallMCPEcho(t *testing.T) {
+	// Create a child config with a CLI echo tool
+	dir := setupDir(t, map[string]string{
+		"child.yaml": `
+tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["{message}"]
+`,
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  child:
+    type: mcp
+    command: %s
+    args: ["serve", "-c", "child.yaml"]
+`, binary),
+	})
+
+	stdout, stderr, code := run(t, dir, "call", "child.echo", "--message", "hello from mcp")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "hello from mcp") {
+		t.Errorf("expected 'hello from mcp', got %q", stdout)
+	}
+}
+
+func TestToolsListMCP(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"child.yaml": `
+tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["{message}"]
+  cat:
+    type: cli
+    description: "Read a file"
+    command: cat
+    args: ["{path}"]
+`,
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  child:
+    type: mcp
+    command: %s
+    args: ["serve", "-c", "child.yaml"]
+`, binary),
+	})
+
+	stdout, _, code := run(t, dir, "tools")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "child.echo") {
+		t.Error("expected child.echo in tools output")
+	}
+	if !strings.Contains(stdout, "child.cat") {
+		t.Error("expected child.cat in tools output")
+	}
+	if !strings.Contains(stdout, "mcp") {
+		t.Error("expected 'mcp' type in tools output")
+	}
+}
+
+func TestMCPMixedWithCLI(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"child.yaml": `
+tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["{message}"]
+`,
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  remote:
+    type: mcp
+    command: %s
+    args: ["serve", "-c", "child.yaml"]
+  local.echo:
+    type: cli
+    command: echo
+    args: ["{msg}"]
+`, binary),
+	})
+
+	// MCP tool
+	stdout, _, code := run(t, dir, "call", "remote.echo", "--message", "from mcp")
+	if code != 0 {
+		t.Fatalf("mcp call failed with code %d", code)
+	}
+	if !strings.Contains(stdout, "from mcp") {
+		t.Errorf("expected 'from mcp', got %q", stdout)
+	}
+
+	// CLI tool
+	stdout, _, code = run(t, dir, "call", "local.echo", "--msg", "from cli")
+	if code != 0 {
+		t.Fatalf("cli call failed with code %d", code)
+	}
+	if strings.TrimSpace(stdout) != "from cli" {
+		t.Errorf("expected 'from cli', got %q", stdout)
 	}
 }
 

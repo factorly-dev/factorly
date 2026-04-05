@@ -34,6 +34,9 @@ type ToolConfig struct {
 	Env         map[string]string `yaml:"env,omitempty"`
 	Parameters  []ParamConfig     `yaml:"parameters,omitempty"`
 
+	// MCP fields
+	URL string `yaml:"url,omitempty"` // MCP HTTP transport URL
+
 	// REST fields
 	BaseURL string            `yaml:"base_url,omitempty"`
 	Method  string            `yaml:"method,omitempty"`
@@ -281,6 +284,8 @@ func resolveEnvVars(cfg *Config) {
 		for k, v := range tool.Env {
 			tool.Env[k] = resolveString(v)
 		}
+		// MCP fields
+		tool.URL = resolveString(tool.URL)
 		// REST fields
 		tool.BaseURL = resolveString(tool.BaseURL)
 		tool.Path = resolveString(tool.Path)
@@ -357,6 +362,11 @@ func validate(cfg *Config) error {
 		}
 		if tool.Type == "cli" && tool.Command == "" {
 			return fmt.Errorf("config: cli tool %q missing command", name)
+		}
+		if tool.Type == "mcp" {
+			if tool.Command == "" && tool.URL == "" {
+				return fmt.Errorf("config: mcp tool %q needs either command (stdio) or url (http)", name)
+			}
 		}
 		if tool.Type == "rest" {
 			if tool.BaseURL == "" {
