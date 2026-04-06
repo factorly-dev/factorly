@@ -386,10 +386,11 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry) (*proxy.Prox
 		switch toolCfg.Type {
 		case "cli":
 			cliTools[name] = provider.CLIToolDef{
-				Command: toolCfg.Command,
-				Args:    toolCfg.Args,
-				Stdin:   toolCfg.Stdin,
-				Env:     resolveVaultMap(resolver, toolCfg.Env),
+				Command:     toolCfg.Command,
+				Args:        toolCfg.Args,
+				Stdin:       toolCfg.Stdin,
+				Interactive: toolCfg.Interactive,
+				Env:         resolveVaultMap(resolver, toolCfg.Env),
 			}
 			vlog("  registered cli tool: %s", name)
 		case "rest":

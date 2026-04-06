@@ -257,6 +257,69 @@ func TestCLIExecuteNoStdin(t *testing.T) {
 	}
 }
 
+func TestCLIExecuteInteractive(t *testing.T) {
+	// Interactive mode connects to terminal — output goes directly to os.Stdout,
+	// not captured in Result.Output. We test with a non-interactive command
+	// to verify the code path works and returns correct exit code/duration.
+	p := NewCLI(map[string]CLIToolDef{
+		"test.interactive": {
+			Command:     "true", // exits 0
+			Interactive: true,
+		},
+	})
+
+	result, err := p.Execute("test.interactive", map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", result.ExitCode)
+	}
+	if result.Output != "" {
+		t.Errorf("expected empty output (interactive mode), got %q", result.Output)
+	}
+	if result.Duration == 0 {
+		t.Error("expected non-zero duration")
+	}
+}
+
+func TestCLIExecuteInteractiveFailing(t *testing.T) {
+	p := NewCLI(map[string]CLIToolDef{
+		"test.fail": {
+			Command:     "false", // exits 1
+			Interactive: true,
+		},
+	})
+
+	result, err := p.Execute("test.fail", map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExitCode == 0 {
+		t.Error("expected non-zero exit code")
+	}
+}
+
+func TestCLIExecuteInteractiveWithParams(t *testing.T) {
+	// Verify param substitution still works in interactive mode
+	p := NewCLI(map[string]CLIToolDef{
+		"test.param": {
+			Command:     "test",
+			Args:        []string{"-n", "{value}"},
+			Interactive: true,
+		},
+	})
+
+	result, err := p.Execute("test.param", map[string]string{"value": "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// `test -n hello` exits 0 (string is non-empty)
+	if result.ExitCode != 0 {
+		t.Errorf("expected exit 0, got %d", result.ExitCode)
+	}
+}
+
 func TestSubstituteString(t *testing.T) {
 	tests := []struct {
 		name   string

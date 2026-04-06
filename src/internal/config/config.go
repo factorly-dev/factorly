@@ -40,6 +40,7 @@ type ToolConfig struct {
 	Command     string            `yaml:"command,omitempty"`
 	Args        []string          `yaml:"args,omitempty"`
 	Stdin       string            `yaml:"stdin,omitempty"`
+	Interactive bool              `yaml:"interactive,omitempty"`
 	Env         map[string]string `yaml:"env,omitempty"`
 	Parameters  []ParamConfig     `yaml:"parameters,omitempty"`
 

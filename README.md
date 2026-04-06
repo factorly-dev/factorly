@@ -545,6 +545,7 @@ tools:
     command: curl               # executable to run
     args: ["-s", "{url}"]      # {param} placeholders are substituted
     stdin: "{input}"            # optional, pipe to subprocess stdin
+    interactive: true            # optional, connect to terminal (TTY)
 
     # For MCP servers (stdio — spawn subprocess):
     command: npx                # executable to start the server
@@ -599,6 +600,35 @@ tools:
 factorly call jq.filter --filter ".name" --input '{"name":"Jordan","role":"VP Eng"}'
 factorly call clipboard.copy --text "copied to clipboard"
 ```
+
+**Interactive mode:** CLI tools that need a TTY (database shells, SSH, REPLs) can set `interactive: true` to connect the subprocess directly to your terminal:
+
+```yaml
+tools:
+  db.shell:
+    type: cli
+    command: psql
+    args: ["-h", "localhost", "-U", "{user}", "{database}"]
+    interactive: true
+    env:
+      PGPASSWORD: ${vault:DB_PASSWORD}
+
+  ssh.connect:
+    type: cli
+    command: ssh
+    args: ["{host}"]
+    interactive: true
+```
+
+```bash
+factorly call db.shell --user admin --database myapp
+# Drops into an interactive psql session with vault-injected password
+
+factorly call ssh.connect --host prod-server
+# Opens an interactive SSH session
+```
+
+Interactive tools connect stdin/stdout/stderr directly to your terminal. Output is not captured (Result is empty), but the call is still logged with tool name, params, duration, and exit code. Interactive mode only works via `factorly call`, not through `factorly serve` (MCP has no terminal).
 
 **Parameter inference:** For CLI tools, parameters are automatically inferred from `{placeholder}` patterns in `args`.
 

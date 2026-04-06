@@ -11,11 +11,12 @@ import (
 )
 
 type CLIToolDef struct {
-	Command string
-	Args    []string
-	Stdin   string // template with {param} placeholders, piped to subprocess stdin
-	Env     map[string]string
-	Timeout time.Duration
+	Command     string
+	Args        []string
+	Stdin       string // template with {param} placeholders, piped to subprocess stdin
+	Interactive bool   // connect subprocess to terminal (stdin/stdout/stderr)
+	Env         map[string]string
+	Timeout     time.Duration
 }
 
 type CLIProvider struct {
@@ -69,6 +70,28 @@ func (p *CLIProvider) Execute(toolName string, params map[string]string) (*Resul
 		for k, v := range def.Env {
 			cmd.Env = append(cmd.Env, k+"="+v)
 		}
+	}
+
+	// Interactive mode: connect directly to terminal
+	if def.Interactive {
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		start := time.Now()
+		err := cmd.Run()
+		duration := time.Since(start)
+
+		result := &Result{Duration: duration}
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				result.ExitCode = exitErr.ExitCode()
+			} else {
+				result.ExitCode = 1
+				result.Error = err.Error()
+			}
+		}
+		return result, nil
 	}
 
 	// Pipe stdin if configured
