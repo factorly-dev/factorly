@@ -673,8 +673,9 @@ make release            # cross-platform binaries (linux, darwin, windows)
 - [x] OAuth authentication — `factorly auth login/status/logout` with PKCE + auto-refresh
 - [x] `factorly add` / `factorly remove` — interactive tool builder + removal
 - [x] `factorly health` — health check all tools, credentials, and connections
+- [x] Interactive CLI tools — `interactive: true` for TTY passthrough (psql, ssh, REPLs)
+- [x] Security hardening — param redaction in logs, HTTP token auth, vault ref validation, per-operation file locking, PKCE constant-time comparison
 - [ ] `factorly sync` — push MCP config into AI clients (Claude Code, Cursor, Codex)
-- [ ] `factorly status` — overview of tools, synced clients, connection health
 - [ ] `factorly logs` — view/query the call log
 - [ ] External vault backends (1Password, GCP Secret Manager, AWS)
 - [ ] Hosted version (Factorly Cloud)
