@@ -911,6 +911,122 @@ tools:
 	}
 }
 
+// --- Health Check ---
+
+func TestHealthAllHealthy(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo.test:
+    type: cli
+    command: echo
+    args: ["{msg}"]
+  cat.test:
+    type: cli
+    command: cat
+    args: ["{path}"]
+`,
+	})
+
+	stdout, _, code := run(t, dir, "health")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "✓") {
+		t.Error("expected checkmarks in output")
+	}
+	if !strings.Contains(stdout, "0 issues") {
+		t.Error("expected 0 issues")
+	}
+}
+
+func TestHealthBrokenCLI(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  good:
+    type: cli
+    command: echo
+    args: ["{msg}"]
+  broken:
+    type: cli
+    command: nonexistent-command-12345
+    args: []
+`,
+	})
+
+	stdout, _, code := run(t, dir, "health")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for broken tool")
+	}
+	if !strings.Contains(stdout, "✗") {
+		t.Error("expected cross mark for broken tool")
+	}
+	if !strings.Contains(stdout, "not found in PATH") {
+		t.Error("expected 'not found in PATH' message")
+	}
+	if !strings.Contains(stdout, "1 issues") {
+		t.Error("expected 1 issue")
+	}
+}
+
+func TestHealthRESTReachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  api.test:
+    type: rest
+    base_url: %s
+    method: GET
+    path: /
+`, srv.URL),
+	})
+
+	stdout, _, code := run(t, dir, "health")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "reachable") {
+		t.Error("expected 'reachable' in output")
+	}
+}
+
+func TestHealthMCPServer(t *testing.T) {
+	// Use factorly itself as a child MCP server
+	dir := setupDir(t, map[string]string{
+		"child.yaml": `
+tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["{msg}"]
+`,
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  child:
+    type: mcp
+    command: %s
+    args: ["serve", "-c", "child.yaml"]
+`, binary),
+	})
+
+	stdout, _, code := run(t, dir, "health")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "connected") {
+		t.Error("expected 'connected' in output")
+	}
+	if !strings.Contains(stdout, "ping") {
+		t.Error("expected 'ping' in output")
+	}
+}
+
 // --- Missing config ---
 
 func TestMissingConfig(t *testing.T) {

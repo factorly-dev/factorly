@@ -63,7 +63,7 @@ func NewMCP(servers map[string]MCPServerDef) *MCPProvider {
 // Setup connects to all configured MCP servers and initializes them.
 func (p *MCPProvider) Setup() error {
 	for name, def := range p.defs {
-		c, err := connectMCP(def)
+		c, err := ConnectMCP(def)
 		if err != nil {
 			// Clean up already-connected servers
 			for _, conn := range p.servers {
@@ -80,7 +80,7 @@ func (p *MCPProvider) Setup() error {
 	return nil
 }
 
-func connectMCP(def MCPServerDef) (*client.Client, error) {
+func ConnectMCP(def MCPServerDef) (*client.Client, error) {
 	var c *client.Client
 	var err error
 
