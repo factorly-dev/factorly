@@ -7,6 +7,10 @@ import (
 	"syscall"
 )
 
+func lockFileShared(f *os.File) error {
+	return syscall.Flock(int(f.Fd()), syscall.LOCK_SH)
+}
+
 func lockFileExclusive(f *os.File) error {
 	return syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
 }

@@ -50,7 +50,8 @@ type vaultIndex struct {
 
 // LocalBackend stores secrets encrypted on disk using AES-256-GCM with
 // an Argon2id-derived key. Values are per-entry encrypted via HKDF.
-// File-level flock prevents concurrent writes from multiple processes.
+// File locks are per-operation: shared for reads, exclusive for writes.
+// No lock is held between operations, allowing concurrent readers.
 type LocalBackend struct {
 	path     string
 	key      []byte // master key (Argon2id-derived, retained for HKDF)
@@ -58,7 +59,7 @@ type LocalBackend struct {
 	mu       sync.RWMutex
 	index    *vaultIndex
 	dirty    bool
-	lockFile *os.File // held for process-level flock
+	lockPath string // path to .lock file
 }
 
 // DefaultVaultPath returns the default vault file location.
@@ -76,38 +77,19 @@ func OpenLocal(password string) (*LocalBackend, error) {
 }
 
 // OpenLocalAt opens or creates an encrypted vault at the given path.
-// Acquires an exclusive file lock to prevent concurrent access.
+// Acquires a shared lock to read, releases after loading into memory.
 func OpenLocalAt(path, password string) (*LocalBackend, error) {
-	b := &LocalBackend{path: path}
+	b := &LocalBackend{
+		path:     path,
+		lockPath: path + ".lock",
+	}
 
-	// Ensure directory exists before locking
+	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("creating vault directory: %w", err)
 	}
 
-	// Acquire exclusive file lock
-	lockPath := path + ".lock"
-	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, fmt.Errorf("opening lock file: %w", err)
-	}
-	if err := lockFileExclusive(lockFile); err != nil {
-		lockFile.Close()
-		return nil, fmt.Errorf("acquiring vault lock: %w", err)
-	}
-	b.lockFile = lockFile
-
-	// Release lock on any error path
-	success := false
-	defer func() {
-		if !success {
-			if lockErr := b.releaseLock(); lockErr != nil {
-				fmt.Fprintf(os.Stderr, "warning: %v\n", lockErr)
-			}
-		}
-	}()
-
-	data, err := os.ReadFile(path)
+	data, err := b.readWithSharedLock()
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("reading vault: %w", err)
@@ -119,7 +101,6 @@ func OpenLocalAt(path, password string) (*LocalBackend, error) {
 		}
 		b.key = deriveKey(password, b.salt)
 		b.index = &vaultIndex{Version: 2, Entries: make(map[string]encryptedEntry)}
-		success = true
 		return b, nil
 	}
 
@@ -190,7 +171,6 @@ func OpenLocalAt(path, password string) (*LocalBackend, error) {
 		return nil, fmt.Errorf("unsupported vault version %d", probe.Version)
 	}
 
-	success = true
 	return b, nil
 }
 
@@ -244,21 +224,40 @@ func (b *LocalBackend) List() ([]string, error) {
 
 func (b *LocalBackend) Close() error {
 	zeroize(b.key)
-	return b.releaseLock()
+	return nil
 }
 
-func (b *LocalBackend) releaseLock() error {
-	if b.lockFile == nil {
-		return nil
+// readWithSharedLock reads the vault file while holding a shared lock.
+// Returns os.ErrNotExist if the file doesn't exist.
+func (b *LocalBackend) readWithSharedLock() ([]byte, error) {
+	lockFile, err := os.OpenFile(b.lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("opening lock file: %w", err)
 	}
-	if err := unlockFile(b.lockFile); err != nil {
-		b.lockFile.Close()
-		b.lockFile = nil
-		return fmt.Errorf("releasing vault lock: %w", err)
+	defer lockFile.Close()
+
+	if err := lockFileShared(lockFile); err != nil {
+		return nil, fmt.Errorf("acquiring shared lock: %w", err)
 	}
-	b.lockFile.Close()
-	b.lockFile = nil
-	return nil
+	defer func() { _ = unlockFile(lockFile) }()
+
+	return os.ReadFile(b.path)
+}
+
+// withExclusiveLock runs fn while holding an exclusive file lock.
+func (b *LocalBackend) withExclusiveLock(fn func() error) error {
+	lockFile, err := os.OpenFile(b.lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return fmt.Errorf("opening lock file: %w", err)
+	}
+	defer lockFile.Close()
+
+	if err := lockFileExclusive(lockFile); err != nil {
+		return fmt.Errorf("acquiring exclusive lock: %w", err)
+	}
+	defer func() { _ = unlockFile(lockFile) }()
+
+	return fn()
 }
 
 func (b *LocalBackend) save() error {
@@ -293,16 +292,18 @@ func (b *LocalBackend) save() error {
 		return fmt.Errorf("creating vault directory: %w", err)
 	}
 
-	// Atomic write: temp file + rename
-	tmp := b.path + ".tmp"
-	if err := os.WriteFile(tmp, out, 0o600); err != nil {
-		return fmt.Errorf("writing vault temp file: %w", err)
-	}
-	if err := os.Rename(tmp, b.path); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("renaming vault file: %w", err)
-	}
-	return nil
+	// Acquire exclusive lock for atomic write
+	return b.withExclusiveLock(func() error {
+		tmp := b.path + ".tmp"
+		if err := os.WriteFile(tmp, out, 0o600); err != nil {
+			return fmt.Errorf("writing vault temp file: %w", err)
+		}
+		if err := os.Rename(tmp, b.path); err != nil {
+			os.Remove(tmp)
+			return fmt.Errorf("renaming vault file: %w", err)
+		}
+		return nil
+	})
 }
 
 // --- Key derivation ---

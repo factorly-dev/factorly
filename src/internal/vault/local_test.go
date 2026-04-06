@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestLocalNewVault(t *testing.T) {
@@ -569,45 +568,73 @@ func TestUnsupportedVersion(t *testing.T) {
 	}
 }
 
-func TestFileLockPreventsDoubleOpen(t *testing.T) {
+func TestConcurrentReadsAllowed(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
 	b1, err := OpenLocalAt(path, "pw")
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = b1.Set("KEY", "value")
+	b1.Close()
 
-	// Second open should block — use a goroutine with a timeout
-	done := make(chan error, 1)
+	// Two concurrent opens should both succeed (shared read lock)
+	b2, err := OpenLocalAt(path, "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b3, err := OpenLocalAt(path, "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Both should be able to read
+	val2, err := b2.Get("KEY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	val3, err := b3.Get("KEY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if val2 != "value" || val3 != "value" {
+		t.Errorf("expected 'value' from both, got %q and %q", val2, val3)
+	}
+
+	b2.Close()
+	b3.Close()
+}
+
+func TestConcurrentWritesSerialized(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.enc")
+	b1, err := OpenLocalAt(path, "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b1.Close()
+
+	// Write from two goroutines — both should succeed (serialized by exclusive lock)
+	done := make(chan error, 2)
 	go func() {
-		b2, err := OpenLocalAt(path, "pw")
-		if err != nil {
-			done <- err
-			return
-		}
-		b2.Close()
-		done <- nil
+		done <- b1.Set("KEY_A", "value-a")
+	}()
+	go func() {
+		done <- b1.Set("KEY_B", "value-b")
 	}()
 
-	// The second open should be blocked by the lock.
-	// Wait briefly — if it completes, the lock isn't working.
-	select {
-	case <-done:
-		// Close first backend and try again — this time it should succeed
-		b1.Close()
-		b3, err := OpenLocalAt(path, "pw")
-		if err != nil {
-			t.Fatal(err)
+	for range 2 {
+		if err := <-done; err != nil {
+			t.Fatalf("concurrent write failed: %v", err)
 		}
-		b3.Close()
-	case <-time.After(200 * time.Millisecond):
-		// Good — second open is blocked. Release the lock.
-		b1.Close()
-		// Now the blocked goroutine should complete
-		err := <-done
-		if err != nil {
-			t.Fatalf("second open failed after lock release: %v", err)
-		}
+	}
+
+	// Both values should be present
+	valA, _ := b1.Get("KEY_A")
+	valB, _ := b1.Get("KEY_B")
+	if valA != "value-a" {
+		t.Errorf("expected value-a, got %q", valA)
+	}
+	if valB != "value-b" {
+		t.Errorf("expected value-b, got %q", valB)
 	}
 }
 

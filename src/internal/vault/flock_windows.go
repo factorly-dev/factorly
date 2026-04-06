@@ -16,11 +16,24 @@ var (
 
 const (
 	lockfileExclusiveLock = 0x00000002
-	lockfileFailImmediately = 0x00000001
 )
 
+func lockFileShared(f *os.File) error {
+	ol := new(syscall.Overlapped)
+	r1, _, err := procLockFileEx.Call(
+		uintptr(f.Fd()),
+		0, // no flags = shared lock
+		0,
+		1, 0,
+		uintptr(unsafe.Pointer(ol)),
+	)
+	if r1 == 0 {
+		return err
+	}
+	return nil
+}
+
 func lockFileExclusive(f *os.File) error {
-	// LockFileEx with exclusive lock, blocking (no FAIL_IMMEDIATELY)
 	ol := new(syscall.Overlapped)
 	r1, _, err := procLockFileEx.Call(
 		uintptr(f.Fd()),
