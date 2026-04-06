@@ -67,7 +67,11 @@ version:
 	esac; \
 	NEW="$$major.$$minor.$$patch"; \
 	sed -i "s/Version    = \"$(VERSION)\"/Version    = \"$$NEW\"/" $(SRCDIR)/internal/version.go; \
-	echo "$(VERSION) → $$NEW"
+	echo "$(VERSION) → $$NEW"; \
+	git add $(SRCDIR)/internal/version.go; \
+	git commit -m "Bump version to $$NEW"; \
+	git tag "v$$NEW"; \
+	echo "Tagged v$$NEW"
 
 # Cross-platform release builds
 release: clean build
