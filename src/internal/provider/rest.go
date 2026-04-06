@@ -8,7 +8,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/factorly-dev/factorly/internal/oauth"
 )
 
 type RESTParamDef struct {
@@ -17,11 +20,21 @@ type RESTParamDef struct {
 	Required bool
 }
 
+// TokenStore reads and writes OAuth token bundles from the vault.
+type TokenStore interface {
+	GetTokenBundle(key string) (*oauth.TokenBundle, error)
+	SetTokenBundle(key string, bundle *oauth.TokenBundle) error
+}
+
 type AuthDef struct {
-	Type   string // "bearer", "basic", "header"
+	Type   string // "bearer", "basic", "header", "oauth"
 	Token  string
 	Header string
 	Value  string
+
+	// OAuth fields (only when Type == "oauth")
+	OAuthProvider *oauth.ProviderConfig
+	TokenKey      string
 }
 
 type RESTToolDef struct {
@@ -35,12 +48,14 @@ type RESTToolDef struct {
 }
 
 type RESTProvider struct {
-	tools  map[string]RESTToolDef
-	client *http.Client
+	tools      map[string]RESTToolDef
+	client     *http.Client
+	tokenStore TokenStore // nil when no OAuth tools exist
+	mu         sync.Mutex // protects concurrent token refresh
 }
 
-func NewREST(tools map[string]RESTToolDef) *RESTProvider {
-	return &RESTProvider{tools: tools}
+func NewREST(tools map[string]RESTToolDef, tokenStore TokenStore) *RESTProvider {
+	return &RESTProvider{tools: tools, tokenStore: tokenStore}
 }
 
 func (p *RESTProvider) Setup() error {
@@ -157,7 +172,15 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 		req.Header.Set(k, v)
 	}
 	if def.Auth != nil {
-		applyAuth(req, def.Auth)
+		if def.Auth.Type == "oauth" {
+			token, err := p.ensureValidToken(def.Auth)
+			if err != nil {
+				return nil, fmt.Errorf("oauth token for tool %q: %w", toolName, err)
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+		} else {
+			applyAuth(req, def.Auth)
+		}
 	}
 	for name, value := range headerParams {
 		req.Header.Set(name, value)
@@ -212,6 +235,45 @@ func applyAuth(req *http.Request, auth *AuthDef) {
 	case "header":
 		req.Header.Set(auth.Header, auth.Value)
 	}
+}
+
+func (p *RESTProvider) ensureValidToken(auth *AuthDef) (string, error) {
+	if p.tokenStore == nil {
+		return "", fmt.Errorf("oauth configured but no token store available")
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	bundle, err := p.tokenStore.GetTokenBundle(auth.TokenKey)
+	if err != nil {
+		return "", fmt.Errorf("reading token %q: %w (run: factorly auth login)", auth.TokenKey, err)
+	}
+
+	if !bundle.IsExpired(30 * time.Second) {
+		return bundle.AccessToken, nil
+	}
+
+	if bundle.RefreshToken == "" {
+		return "", fmt.Errorf("token %q expired and no refresh token available (run: factorly auth login)", auth.TokenKey)
+	}
+
+	if auth.OAuthProvider == nil {
+		return "", fmt.Errorf("token %q expired but no oauth provider config for refresh", auth.TokenKey)
+	}
+
+	newBundle, err := oauth.RefreshAccessToken(
+		context.Background(), *auth.OAuthProvider, bundle.RefreshToken,
+	)
+	if err != nil {
+		return "", fmt.Errorf("refreshing token %q: %w (run: factorly auth login)", auth.TokenKey, err)
+	}
+
+	if err := p.tokenStore.SetTokenBundle(auth.TokenKey, newBundle); err != nil {
+		return "", fmt.Errorf("persisting refreshed token: %w", err)
+	}
+
+	return newBundle.AccessToken, nil
 }
 
 func defaultParamLocation(method string) string {

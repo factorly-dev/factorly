@@ -21,8 +21,17 @@ func vlog(format string, args ...any) {
 }
 
 type Config struct {
-	ToolsDir string                `yaml:"tools_dir,omitempty"`
-	Tools    map[string]ToolConfig `yaml:"tools"`
+	ToolsDir       string                         `yaml:"tools_dir,omitempty"`
+	Tools          map[string]ToolConfig          `yaml:"tools"`
+	OAuthProviders map[string]OAuthProviderConfig `yaml:"oauth_providers,omitempty"`
+}
+
+type OAuthProviderConfig struct {
+	ClientID     string   `yaml:"client_id"`
+	ClientSecret string   `yaml:"client_secret"`
+	AuthURL      string   `yaml:"auth_url"`
+	TokenURL     string   `yaml:"token_url"`
+	Scopes       []string `yaml:"scopes"`
 }
 
 type ToolConfig struct {
@@ -46,10 +55,21 @@ type ToolConfig struct {
 }
 
 type AuthConfig struct {
-	Type   string `yaml:"type"`             // "bearer", "basic", "header"
+	Type   string `yaml:"type"`             // "bearer", "basic", "header", "oauth"
 	Token  string `yaml:"token,omitempty"`  // for bearer
 	Header string `yaml:"header,omitempty"` // for header-based auth
 	Value  string `yaml:"value,omitempty"`  // for header-based auth
+
+	// OAuth fields (inline form)
+	ClientID     string   `yaml:"client_id,omitempty"`
+	ClientSecret string   `yaml:"client_secret,omitempty"`
+	AuthURL      string   `yaml:"auth_url,omitempty"`
+	TokenURL     string   `yaml:"token_url,omitempty"`
+	Scopes       []string `yaml:"scopes,omitempty"`
+
+	// OAuth fields (provider reference form)
+	Provider string `yaml:"provider,omitempty"` // key into oauth_providers
+	TokenKey string `yaml:"token_key,omitempty"`
 }
 
 type ParamConfig struct {
@@ -295,8 +315,20 @@ func resolveEnvVars(cfg *Config) {
 		if tool.Auth != nil {
 			tool.Auth.Token = resolveString(tool.Auth.Token)
 			tool.Auth.Value = resolveString(tool.Auth.Value)
+			tool.Auth.ClientID = resolveString(tool.Auth.ClientID)
+			tool.Auth.ClientSecret = resolveString(tool.Auth.ClientSecret)
+			tool.Auth.AuthURL = resolveString(tool.Auth.AuthURL)
+			tool.Auth.TokenURL = resolveString(tool.Auth.TokenURL)
 		}
 		cfg.Tools[name] = tool
+	}
+	// Resolve env vars in oauth_providers
+	for name, p := range cfg.OAuthProviders {
+		p.ClientID = resolveString(p.ClientID)
+		p.ClientSecret = resolveString(p.ClientSecret)
+		p.AuthURL = resolveString(p.AuthURL)
+		p.TokenURL = resolveString(p.TokenURL)
+		cfg.OAuthProviders[name] = p
 	}
 }
 
@@ -376,6 +408,29 @@ func validate(cfg *Config) error {
 				return fmt.Errorf("config: rest tool %q missing method", name)
 			}
 		}
+		if tool.Auth != nil && tool.Auth.Type == "oauth" {
+			if tool.Auth.Provider != "" {
+				if cfg.OAuthProviders == nil {
+					return fmt.Errorf("config: tool %q references oauth provider %q but no oauth_providers defined", name, tool.Auth.Provider)
+				}
+				if _, ok := cfg.OAuthProviders[tool.Auth.Provider]; !ok {
+					return fmt.Errorf("config: tool %q references unknown oauth provider %q", name, tool.Auth.Provider)
+				}
+			} else {
+				if tool.Auth.ClientID == "" {
+					return fmt.Errorf("config: oauth tool %q needs either provider ref or inline client_id", name)
+				}
+				if tool.Auth.AuthURL == "" {
+					return fmt.Errorf("config: oauth tool %q missing auth_url", name)
+				}
+				if tool.Auth.TokenURL == "" {
+					return fmt.Errorf("config: oauth tool %q missing token_url", name)
+				}
+				if tool.Auth.TokenKey == "" {
+					return fmt.Errorf("config: inline oauth tool %q requires token_key", name)
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -418,6 +473,52 @@ func (tc *ToolConfig) ParamNames() []string {
 }
 
 // HasPlaceholder checks if any arg contains {name} style placeholders.
+// ResolveOAuthProvider merges inline AuthConfig OAuth fields with a
+// referenced OAuthProviderConfig into a single resolved config.
+func (cfg *Config) ResolveOAuthProvider(auth *AuthConfig) *OAuthProviderConfig {
+	if auth.Provider != "" && cfg.OAuthProviders != nil {
+		if p, ok := cfg.OAuthProviders[auth.Provider]; ok {
+			// Provider ref — use provider config, inline fields can override
+			result := p
+			if auth.ClientID != "" {
+				result.ClientID = auth.ClientID
+			}
+			if auth.ClientSecret != "" {
+				result.ClientSecret = auth.ClientSecret
+			}
+			if auth.AuthURL != "" {
+				result.AuthURL = auth.AuthURL
+			}
+			if auth.TokenURL != "" {
+				result.TokenURL = auth.TokenURL
+			}
+			if len(auth.Scopes) > 0 {
+				result.Scopes = auth.Scopes
+			}
+			return &result
+		}
+	}
+	// Inline form
+	return &OAuthProviderConfig{
+		ClientID:     auth.ClientID,
+		ClientSecret: auth.ClientSecret,
+		AuthURL:      auth.AuthURL,
+		TokenURL:     auth.TokenURL,
+		Scopes:       auth.Scopes,
+	}
+}
+
+// OAuthTokenKey returns the vault key for an OAuth auth config's token bundle.
+func OAuthTokenKey(auth *AuthConfig) string {
+	if auth.TokenKey != "" {
+		return auth.TokenKey
+	}
+	if auth.Provider != "" {
+		return auth.Provider + "_oauth"
+	}
+	return ""
+}
+
 func HasPlaceholder(args []string, name string) bool {
 	target := "{" + name + "}"
 	for _, arg := range args {

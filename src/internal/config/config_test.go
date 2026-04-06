@@ -604,3 +604,188 @@ tools:
 		t.Errorf("expected param in=query, got %q", tool.Parameters[0].In)
 	}
 }
+
+// --- OAuth Config Tests ---
+
+func TestValidOAuthWithProvider(t *testing.T) {
+	path := writeTestConfig(t, `
+oauth_providers:
+  google:
+    client_id: "test-id"
+    client_secret: "test-secret"
+    auth_url: https://accounts.google.com/o/oauth2/v2/auth
+    token_url: https://oauth2.googleapis.com/token
+    scopes: ["drive.readonly"]
+tools:
+  google.files:
+    type: rest
+    base_url: https://www.googleapis.com
+    method: GET
+    path: /drive/v3/files
+    auth:
+      type: oauth
+      provider: google
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tool := cfg.Tools["google.files"]
+	if tool.Auth.Type != "oauth" {
+		t.Errorf("expected oauth auth type, got %s", tool.Auth.Type)
+	}
+	if tool.Auth.Provider != "google" {
+		t.Errorf("expected provider google, got %s", tool.Auth.Provider)
+	}
+}
+
+func TestValidOAuthInline(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  github.repos:
+    type: rest
+    base_url: https://api.github.com
+    method: GET
+    path: /user/repos
+    auth:
+      type: oauth
+      client_id: "test-id"
+      client_secret: "test-secret"
+      auth_url: https://github.com/login/oauth/authorize
+      token_url: https://github.com/login/oauth/access_token
+      scopes: ["repo"]
+      token_key: github_oauth
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tool := cfg.Tools["github.repos"]
+	if tool.Auth.ClientID != "test-id" {
+		t.Errorf("expected client_id, got %q", tool.Auth.ClientID)
+	}
+	if tool.Auth.TokenKey != "github_oauth" {
+		t.Errorf("expected token_key, got %q", tool.Auth.TokenKey)
+	}
+}
+
+func TestOAuthMissingProvider(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  test:
+    type: rest
+    base_url: https://api.example.com
+    method: GET
+    auth:
+      type: oauth
+      provider: nonexistent
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for missing oauth provider ref")
+	}
+}
+
+func TestOAuthInlineMissingClientID(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  test:
+    type: rest
+    base_url: https://api.example.com
+    method: GET
+    auth:
+      type: oauth
+      auth_url: https://example.com/auth
+      token_url: https://example.com/token
+      token_key: test_oauth
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for missing client_id in inline oauth")
+	}
+}
+
+func TestOAuthInlineMissingTokenKey(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  test:
+    type: rest
+    base_url: https://api.example.com
+    method: GET
+    auth:
+      type: oauth
+      client_id: "test"
+      auth_url: https://example.com/auth
+      token_url: https://example.com/token
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for missing token_key in inline oauth")
+	}
+}
+
+func TestResolveOAuthProviderFromRef(t *testing.T) {
+	cfg := &Config{
+		OAuthProviders: map[string]OAuthProviderConfig{
+			"google": {
+				ClientID:     "provider-id",
+				ClientSecret: "provider-secret",
+				AuthURL:      "https://google.com/auth",
+				TokenURL:     "https://google.com/token",
+				Scopes:       []string{"drive"},
+			},
+		},
+	}
+	auth := &AuthConfig{Type: "oauth", Provider: "google"}
+	resolved := cfg.ResolveOAuthProvider(auth)
+
+	if resolved.ClientID != "provider-id" {
+		t.Errorf("expected provider-id, got %s", resolved.ClientID)
+	}
+	if resolved.AuthURL != "https://google.com/auth" {
+		t.Errorf("expected auth URL from provider, got %s", resolved.AuthURL)
+	}
+}
+
+func TestResolveOAuthProviderInlineOverride(t *testing.T) {
+	cfg := &Config{
+		OAuthProviders: map[string]OAuthProviderConfig{
+			"google": {
+				ClientID: "provider-id",
+				AuthURL:  "https://google.com/auth",
+				TokenURL: "https://google.com/token",
+			},
+		},
+	}
+	auth := &AuthConfig{
+		Type:     "oauth",
+		Provider: "google",
+		ClientID: "override-id", // inline overrides provider
+	}
+	resolved := cfg.ResolveOAuthProvider(auth)
+
+	if resolved.ClientID != "override-id" {
+		t.Errorf("expected override-id, got %s", resolved.ClientID)
+	}
+	if resolved.AuthURL != "https://google.com/auth" {
+		t.Errorf("expected auth URL from provider, got %s", resolved.AuthURL)
+	}
+}
+
+func TestOAuthTokenKeyDefault(t *testing.T) {
+	auth := &AuthConfig{Type: "oauth", Provider: "google"}
+	key := OAuthTokenKey(auth)
+	if key != "google_oauth" {
+		t.Errorf("expected google_oauth, got %s", key)
+	}
+}
+
+func TestOAuthTokenKeyExplicit(t *testing.T) {
+	auth := &AuthConfig{Type: "oauth", Provider: "google", TokenKey: "my_custom_key"}
+	key := OAuthTokenKey(auth)
+	if key != "my_custom_key" {
+		t.Errorf("expected my_custom_key, got %s", key)
+	}
+}

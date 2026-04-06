@@ -1,0 +1,64 @@
+# GitHub OAuth Example
+#
+# Setup:
+#   1. Create a GitHub OAuth App at https://github.com/settings/developers
+#      - Set "Authorization callback URL" to http://127.0.0.1 (any port)
+#   2. Store your credentials:
+#      factorly vault set GITHUB_CLIENT_ID "Iv1.xxx"
+#      factorly vault set GITHUB_CLIENT_SECRET "xxx"
+#   3. Login:
+#      factorly auth login github
+#   4. Use:
+#      factorly call github.repos --per_page 5
+#      factorly call github.profile
+
+oauth_providers:
+  github:
+    client_id: ${vault:GITHUB_CLIENT_ID}
+    client_secret: ${vault:GITHUB_CLIENT_SECRET}
+    auth_url: https://github.com/login/oauth/authorize
+    token_url: https://github.com/login/oauth/access_token
+    scopes: ["repo", "read:user"]
+
+tools:
+  github.repos:
+    type: rest
+    description: "List your repositories"
+    base_url: https://api.github.com
+    method: GET
+    path: /user/repos
+    auth:
+      type: oauth
+      provider: github
+    parameters:
+      - name: per_page
+        in: query
+      - name: sort
+        in: query
+        description: "Sort by: created, updated, pushed, full_name"
+
+  github.profile:
+    type: rest
+    description: "Get your GitHub profile"
+    base_url: https://api.github.com
+    method: GET
+    path: /user
+    auth:
+      type: oauth
+      provider: github
+
+  github.starred:
+    type: rest
+    description: "List your starred repositories"
+    base_url: https://api.github.com
+    method: GET
+    path: /user/starred
+    auth:
+      type: oauth
+      provider: github
+    parameters:
+      - name: per_page
+        in: query
+      - name: sort
+        in: query
+        description: "Sort by: created, updated"

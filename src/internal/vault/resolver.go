@@ -20,6 +20,11 @@ func (r *Resolver) Register(prefix string, b Backend) {
 	r.backends[prefix] = b
 }
 
+// Backend returns a registered backend by name, or nil if not found.
+func (r *Resolver) Backend(name string) Backend {
+	return r.backends[name]
+}
+
 // Resolve replaces all ${backend:key} references in s with their secret values.
 func (r *Resolver) Resolve(s string) (string, error) {
 	var resolveErr error

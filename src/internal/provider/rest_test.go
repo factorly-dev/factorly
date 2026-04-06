@@ -2,18 +2,21 @@ package provider
 
 import (
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/factorly-dev/factorly/internal/oauth"
 )
 
 // --- Errors ---
 
 func TestRESTExecuteToolNotFound(t *testing.T) {
-	p := NewREST(map[string]RESTToolDef{})
+	p := NewREST(map[string]RESTToolDef{}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -33,7 +36,7 @@ func TestRESTExecuteMissingRequiredParam(t *testing.T) {
 				{Name: "id", In: "query", Required: true},
 			},
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -59,7 +62,7 @@ func TestRESTUnresolvedPathParam(t *testing.T) {
 			Path:    "/items/{id}",
 			Params:  []RESTParamDef{{Name: "id", In: "path", Required: false}},
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -90,7 +93,7 @@ func TestRESTPathParamSubstitution(t *testing.T) {
 			Path:    "/pets/{petId}",
 			Params:  []RESTParamDef{{Name: "petId", In: "path", Required: true}},
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -124,7 +127,7 @@ func TestRESTPathParamEscaping(t *testing.T) {
 			Path:    "/items/{name}",
 			Params:  []RESTParamDef{{Name: "name", In: "path"}},
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -154,7 +157,7 @@ func TestRESTQueryParams(t *testing.T) {
 				{Name: "offset", In: "query"},
 			},
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -184,7 +187,7 @@ func TestRESTHeaderParams(t *testing.T) {
 			Path:    "/items",
 			Params:  []RESTParamDef{{Name: "X-Request-Id", In: "header"}},
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -215,7 +218,7 @@ func TestRESTBodyParam(t *testing.T) {
 			Path:    "/items",
 			Params:  []RESTParamDef{{Name: "body", In: "body"}},
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -251,7 +254,7 @@ func TestRESTDefaultParamRoutingGET(t *testing.T) {
 			Path:    "/items",
 			// No Params defined — "In" will be empty
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -276,7 +279,7 @@ func TestRESTDefaultParamRoutingPOST(t *testing.T) {
 			BaseURL: srv.URL,
 			Path:    "/items",
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -317,7 +320,7 @@ func TestRESTMixedParams(t *testing.T) {
 				{Name: "body", In: "body"},
 			},
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -358,7 +361,7 @@ func TestRESTURLDoubleSlash(t *testing.T) {
 			BaseURL: srv.URL + "/",
 			Path:    "/items",
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -382,7 +385,7 @@ func TestRESTEmptyPath(t *testing.T) {
 			BaseURL: srv.URL,
 			Path:    "",
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -409,7 +412,7 @@ func TestRESTAuthBearer(t *testing.T) {
 			Path:    "/",
 			Auth:    &AuthDef{Type: "bearer", Token: "my-secret-token"},
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -434,7 +437,7 @@ func TestRESTAuthBasic(t *testing.T) {
 			Path:    "/",
 			Auth:    &AuthDef{Type: "basic", Token: "user:pass"},
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -460,7 +463,7 @@ func TestRESTAuthHeader(t *testing.T) {
 			Path:    "/",
 			Auth:    &AuthDef{Type: "header", Header: "X-Api-Key", Value: "key123"},
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -484,7 +487,7 @@ func TestRESTAuthNone(t *testing.T) {
 			BaseURL: srv.URL,
 			Path:    "/",
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -511,7 +514,7 @@ func TestRESTStaticHeaders(t *testing.T) {
 			Path:    "/",
 			Headers: map[string]string{"Accept": "application/xml"},
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -537,7 +540,7 @@ func TestRESTContentTypeOverride(t *testing.T) {
 			Headers: map[string]string{"Content-Type": "text/plain"},
 			Params:  []RESTParamDef{{Name: "body", In: "body"}},
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -559,7 +562,7 @@ func TestRESTSuccess200(t *testing.T) {
 
 	p := NewREST(map[string]RESTToolDef{
 		"test": {Method: "GET", BaseURL: srv.URL, Path: "/"},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -590,7 +593,7 @@ func TestRESTSuccess201(t *testing.T) {
 
 	p := NewREST(map[string]RESTToolDef{
 		"test": {Method: "POST", BaseURL: srv.URL, Path: "/"},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -609,7 +612,7 @@ func TestRESTError404(t *testing.T) {
 
 	p := NewREST(map[string]RESTToolDef{
 		"test": {Method: "GET", BaseURL: srv.URL, Path: "/"},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -640,7 +643,7 @@ func TestRESTError500(t *testing.T) {
 
 	p := NewREST(map[string]RESTToolDef{
 		"test": {Method: "GET", BaseURL: srv.URL, Path: "/"},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -660,7 +663,7 @@ func TestRESTNetworkError(t *testing.T) {
 
 	p := NewREST(map[string]RESTToolDef{
 		"test": {Method: "GET", BaseURL: srvURL, Path: "/"},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -691,7 +694,7 @@ func TestRESTTimeout(t *testing.T) {
 			Path:    "/",
 			Timeout: 100 * time.Millisecond,
 		},
-	})
+	}, nil)
 	_ = p.Setup()
 	defer func() { _ = p.Teardown() }()
 
@@ -704,10 +707,233 @@ func TestRESTTimeout(t *testing.T) {
 	}
 }
 
+// --- OAuth Token Refresh ---
+
+type mockTokenStore struct {
+	bundles  map[string]*oauth.TokenBundle
+	setCalls int
+}
+
+func (m *mockTokenStore) GetTokenBundle(key string) (*oauth.TokenBundle, error) {
+	b, ok := m.bundles[key]
+	if !ok {
+		return nil, fmt.Errorf("not found")
+	}
+	return b, nil
+}
+
+func (m *mockTokenStore) SetTokenBundle(key string, bundle *oauth.TokenBundle) error {
+	m.bundles[key] = bundle
+	m.setCalls++
+	return nil
+}
+
+func TestRESTOAuthValidToken(t *testing.T) {
+	var capturedAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	store := &mockTokenStore{
+		bundles: map[string]*oauth.TokenBundle{
+			"test_oauth": {
+				AccessToken:  "valid-token",
+				RefreshToken: "refresh",
+				Expiry:       time.Now().Add(1 * time.Hour),
+			},
+		},
+	}
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:  "GET",
+			BaseURL: srv.URL,
+			Path:    "/",
+			Auth: &AuthDef{
+				Type:     "oauth",
+				TokenKey: "test_oauth",
+				OAuthProvider: &oauth.ProviderConfig{
+					ClientID: "id",
+					TokenURL: "http://unused",
+				},
+			},
+		},
+	}, store)
+	_ = p.Setup()
+	defer func() { _ = p.Teardown() }()
+
+	result, err := p.Execute("test", map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExitCode != 0 {
+		t.Errorf("expected exit 0, got %d", result.ExitCode)
+	}
+	if capturedAuth != "Bearer valid-token" {
+		t.Errorf("expected Bearer valid-token, got %q", capturedAuth)
+	}
+	if store.setCalls != 0 {
+		t.Error("expected no token store writes for valid token")
+	}
+}
+
+func TestRESTOAuthExpiredTokenRefresh(t *testing.T) {
+	// API server
+	var capturedAuth string
+	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer apiSrv.Close()
+
+	// Token refresh server
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.FormValue("grant_type") != "refresh_token" {
+			t.Errorf("expected refresh_token grant, got %s", r.FormValue("grant_type"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"refreshed-token","token_type":"bearer","expires_in":3600}`))
+	}))
+	defer tokenSrv.Close()
+
+	store := &mockTokenStore{
+		bundles: map[string]*oauth.TokenBundle{
+			"test_oauth": {
+				AccessToken:  "expired-token",
+				RefreshToken: "my-refresh",
+				Expiry:       time.Now().Add(-1 * time.Hour), // expired
+			},
+		},
+	}
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:  "GET",
+			BaseURL: apiSrv.URL,
+			Path:    "/",
+			Auth: &AuthDef{
+				Type:     "oauth",
+				TokenKey: "test_oauth",
+				OAuthProvider: &oauth.ProviderConfig{
+					ClientID: "id",
+					TokenURL: tokenSrv.URL,
+				},
+			},
+		},
+	}, store)
+	_ = p.Setup()
+	defer func() { _ = p.Teardown() }()
+
+	result, err := p.Execute("test", map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExitCode != 0 {
+		t.Errorf("expected exit 0, got %d", result.ExitCode)
+	}
+	if capturedAuth != "Bearer refreshed-token" {
+		t.Errorf("expected Bearer refreshed-token, got %q", capturedAuth)
+	}
+	if store.setCalls != 1 {
+		t.Errorf("expected 1 token store write, got %d", store.setCalls)
+	}
+}
+
+func TestRESTOAuthRefreshError(t *testing.T) {
+	// Token refresh server that returns error
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(400)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"token revoked"}`))
+	}))
+	defer tokenSrv.Close()
+
+	store := &mockTokenStore{
+		bundles: map[string]*oauth.TokenBundle{
+			"test_oauth": {
+				AccessToken:  "expired",
+				RefreshToken: "revoked-refresh",
+				Expiry:       time.Now().Add(-1 * time.Hour),
+			},
+		},
+	}
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:  "GET",
+			BaseURL: "http://unused",
+			Path:    "/",
+			Auth: &AuthDef{
+				Type:     "oauth",
+				TokenKey: "test_oauth",
+				OAuthProvider: &oauth.ProviderConfig{
+					ClientID: "id",
+					TokenURL: tokenSrv.URL,
+				},
+			},
+		},
+	}, store)
+	_ = p.Setup()
+	defer func() { _ = p.Teardown() }()
+
+	_, err := p.Execute("test", map[string]string{})
+	if err == nil {
+		t.Fatal("expected error for failed refresh")
+	}
+	if !strings.Contains(err.Error(), "factorly auth login") {
+		t.Errorf("expected 'factorly auth login' in error message, got: %s", err.Error())
+	}
+}
+
+func TestRESTOAuthNoTokenStore(t *testing.T) {
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:  "GET",
+			BaseURL: "http://unused",
+			Path:    "/",
+			Auth:    &AuthDef{Type: "oauth", TokenKey: "test_oauth"},
+		},
+	}, nil) // nil token store
+	_ = p.Setup()
+	defer func() { _ = p.Teardown() }()
+
+	_, err := p.Execute("test", map[string]string{})
+	if err == nil {
+		t.Fatal("expected error for nil token store")
+	}
+}
+
+func TestRESTOAuthMissingToken(t *testing.T) {
+	store := &mockTokenStore{bundles: map[string]*oauth.TokenBundle{}}
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:  "GET",
+			BaseURL: "http://unused",
+			Path:    "/",
+			Auth:    &AuthDef{Type: "oauth", TokenKey: "nonexistent"},
+		},
+	}, store)
+	_ = p.Setup()
+	defer func() { _ = p.Teardown() }()
+
+	_, err := p.Execute("test", map[string]string{})
+	if err == nil {
+		t.Fatal("expected error for missing token")
+	}
+	if !strings.Contains(err.Error(), "factorly auth login") {
+		t.Errorf("expected 'factorly auth login' in error message, got: %s", err.Error())
+	}
+}
+
 // --- Lifecycle ---
 
 func TestRESTSetupTeardown(t *testing.T) {
-	p := NewREST(map[string]RESTToolDef{})
+	p := NewREST(map[string]RESTToolDef{}, nil)
 	if err := p.Setup(); err != nil {
 		t.Fatal(err)
 	}

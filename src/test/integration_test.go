@@ -784,6 +784,133 @@ tools:
 	}
 }
 
+// --- OAuth Auth Commands ---
+
+func TestAuthStatusWithToken(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+oauth_providers:
+  github:
+    client_id: "test-id"
+    client_secret: "test-secret"
+    auth_url: https://github.com/login/oauth/authorize
+    token_url: https://github.com/login/oauth/access_token
+    scopes: ["repo"]
+tools:
+  github.repos:
+    type: rest
+    base_url: https://api.github.com
+    method: GET
+    path: /user/repos
+    auth:
+      type: oauth
+      provider: github
+`,
+	})
+
+	vaultPath := filepath.Join(dir, "vault.enc")
+
+	// Store a token bundle in the vault
+	_, _, code := runVault(t, vaultPath, "vault", "set", "github_oauth",
+		`{"access_token":"test-token","refresh_token":"test-refresh","token_type":"bearer","expiry":"2099-01-01T00:00:00Z"}`)
+	if code != 0 {
+		t.Fatal("vault set failed")
+	}
+
+	// Check status
+	stdout, _, code := runVault(t, vaultPath, "-c", filepath.Join(dir, "factorly.yaml"), "auth", "status")
+	if code != 0 {
+		t.Fatalf("auth status failed with code %d", code)
+	}
+	if !strings.Contains(stdout, "github_oauth") {
+		t.Error("expected github_oauth in status output")
+	}
+	if !strings.Contains(stdout, "✓") {
+		t.Error("expected ✓ for valid token")
+	}
+}
+
+func TestAuthStatusExpiredToken(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  test.api:
+    type: rest
+    base_url: https://api.example.com
+    method: GET
+    path: /data
+    auth:
+      type: oauth
+      client_id: "test"
+      auth_url: https://example.com/auth
+      token_url: https://example.com/token
+      token_key: test_oauth
+`,
+	})
+
+	vaultPath := filepath.Join(dir, "vault.enc")
+
+	// Store an expired token
+	_, _, code := runVault(t, vaultPath, "vault", "set", "test_oauth",
+		`{"access_token":"expired","refresh_token":"refresh","token_type":"bearer","expiry":"2020-01-01T00:00:00Z"}`)
+	if code != 0 {
+		t.Fatal("vault set failed")
+	}
+
+	stdout, _, code := runVault(t, vaultPath, "-c", filepath.Join(dir, "factorly.yaml"), "auth", "status")
+	if code != 0 {
+		t.Fatalf("auth status failed with code %d", code)
+	}
+	if !strings.Contains(stdout, "✗") {
+		t.Error("expected ✗ for expired token")
+	}
+}
+
+func TestAuthLogout(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+oauth_providers:
+  github:
+    client_id: "test-id"
+    client_secret: "test-secret"
+    auth_url: https://github.com/login/oauth/authorize
+    token_url: https://github.com/login/oauth/access_token
+tools:
+  github.repos:
+    type: rest
+    base_url: https://api.github.com
+    method: GET
+    path: /user/repos
+    auth:
+      type: oauth
+      provider: github
+`,
+	})
+
+	vaultPath := filepath.Join(dir, "vault.enc")
+
+	// Store a token
+	_, _, code := runVault(t, vaultPath, "vault", "set", "github_oauth", `{"access_token":"token"}`)
+	if code != 0 {
+		t.Fatal("vault set failed")
+	}
+
+	// Logout
+	_, stderr, code := runVault(t, vaultPath, "-c", filepath.Join(dir, "factorly.yaml"), "auth", "logout", "github")
+	if code != 0 {
+		t.Fatalf("auth logout failed with code %d; stderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "Logged out") {
+		t.Error("expected 'Logged out' message")
+	}
+
+	// Verify token is gone
+	_, _, code = runVault(t, vaultPath, "vault", "get", "github_oauth")
+	if code == 0 {
+		t.Error("expected non-zero exit for deleted token")
+	}
+}
+
 // --- Missing config ---
 
 func TestMissingConfig(t *testing.T) {

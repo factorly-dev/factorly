@@ -296,6 +296,96 @@ token: "${gcp-sm:project-id/GITHUB_TOKEN}"
 token: "${aws-sm:prod/stripe-key}"
 ```
 
+## OAuth Authentication
+
+For tools that use OAuth 2.0 (Google, GitHub, Microsoft, Slack), Factorly handles the browser-based login flow, stores tokens in the vault, and auto-refreshes expired access tokens before each request.
+
+### Configure an OAuth provider
+
+```yaml
+# Shared provider definition (reused across tools)
+oauth_providers:
+  google:
+    client_id: ${vault:GOOGLE_CLIENT_ID}
+    client_secret: ${vault:GOOGLE_CLIENT_SECRET}
+    auth_url: https://accounts.google.com/o/oauth2/v2/auth
+    token_url: https://oauth2.googleapis.com/token
+    scopes: ["https://www.googleapis.com/auth/drive.readonly"]
+
+tools:
+  google.files:
+    type: rest
+    base_url: https://www.googleapis.com
+    method: GET
+    path: /drive/v3/files
+    auth:
+      type: oauth
+      provider: google
+```
+
+Or inline for a single tool:
+
+```yaml
+tools:
+  github.repos:
+    type: rest
+    base_url: https://api.github.com
+    method: GET
+    path: /user/repos
+    auth:
+      type: oauth
+      client_id: ${vault:GITHUB_CLIENT_ID}
+      client_secret: ${vault:GITHUB_CLIENT_SECRET}
+      auth_url: https://github.com/login/oauth/authorize
+      token_url: https://github.com/login/oauth/access_token
+      scopes: ["repo"]
+      token_key: github_oauth
+```
+
+### Example: GitHub OAuth
+
+See [`examples/github-oauth.yaml`](src/examples/github-oauth.yaml) for a complete working example.
+
+```bash
+# 1. Create a GitHub OAuth App at https://github.com/settings/developers
+#    Set callback URL to http://127.0.0.1
+
+# 2. Store credentials
+factorly vault set GITHUB_CLIENT_ID "Iv1.xxx"
+factorly vault set GITHUB_CLIENT_SECRET "xxx"
+
+# 3. Login — opens browser
+factorly auth login github
+# Opening browser for authorization...
+# Authenticated with github (expires in 59m)
+
+# 4. Use it
+factorly call github.repos --per_page 5
+factorly call github.profile
+
+# Check token status
+factorly auth status
+# github_oauth          ✓ valid (expires in 47m)
+
+# Tokens refresh automatically — no manual intervention
+```
+
+### How it works
+
+1. `factorly auth login` opens your browser to the provider's authorization page (with PKCE)
+2. You authorize the app, the browser redirects to a local callback server
+3. Factorly exchanges the authorization code for access + refresh tokens
+4. Tokens are stored as a JSON bundle in the encrypted vault
+5. On each `factorly call`, the REST provider checks token expiry (with 30s skew)
+6. If expired, it automatically refreshes using the refresh token and updates the vault
+7. The fresh access token is applied as a Bearer header — the agent never sees it
+
+### Logout
+
+```bash
+factorly auth logout google
+```
+
 ## Import from OpenAPI
 
 Generate tool definitions from any OpenAPI 3.x spec — local file or remote URL:
@@ -396,6 +486,9 @@ factorly init --out factorly.yaml   # create at custom path
 factorly tools                      # list all configured tools
 factorly call <tool> [--param val]  # call a tool
 factorly import openapi <spec>      # generate tools from OpenAPI spec
+factorly auth login <provider>      # OAuth login (opens browser)
+factorly auth status [provider]     # show OAuth token status
+factorly auth logout <provider>     # remove stored OAuth tokens
 factorly vault set <key> [value]    # store a secret (prompts if no value)
 factorly vault get <key>            # retrieve a secret (raw value to stdout)
 factorly vault list                 # list secret names
@@ -465,7 +558,7 @@ tools:
     headers:                    # static headers (optional)
       Accept: application/json
     auth:                       # optional
-      type: bearer              # bearer, basic, or header
+      type: bearer              # bearer, basic, header, or oauth
       token: ${vault:API_KEY}   # vault ref or ${ENV_VAR}
       # header: X-Api-Key       # for header type
       # value: ${vault:KEY}     # for header type
@@ -543,7 +636,9 @@ make release            # cross-platform binaries (linux, darwin, windows)
 - [x] Call logging (JSONL)
 - [x] `--verbose` flag
 - [x] MCP provider — spawn child servers (stdio) or connect to remote (HTTP)
-- [ ] `factorly doctor` — health check all tools, credentials, and connections
+- [x] OAuth authentication — `factorly auth login/status/logout` with PKCE + auto-refresh
+- [ ]  factorly add / factorly remove — interactive tool builder
+- [ ] `factorly health` — health check all tools, credentials, and connections
 - [ ] `factorly sync` — push MCP config into AI clients (Claude Code, Cursor, Codex)
 - [ ] `factorly status` — overview of tools, synced clients, connection health
 - [ ] `factorly logs` — view/query the call log

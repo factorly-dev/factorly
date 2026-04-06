@@ -8,9 +8,12 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"encoding/json"
+
 	"github.com/factorly-dev/factorly/internal"
 	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/logger"
+	"github.com/factorly-dev/factorly/internal/oauth"
 	"github.com/factorly-dev/factorly/internal/openapi"
 	"github.com/factorly-dev/factorly/internal/provider"
 	"github.com/factorly-dev/factorly/internal/proxy"
@@ -307,7 +310,7 @@ func init() {
 	importOpenAPICmd.Flags().StringVarP(&importOpenAPIPrefix, "prefix", "p", "", "tool name prefix (default: from spec title)")
 	importCmd.AddCommand(importOpenAPICmd)
 
-	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, importCmd, initCmd, vaultCmd, serveCmd)
+	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, importCmd, initCmd, vaultCmd, authCmd, serveCmd)
 }
 
 // loadConfig loads config and builds a registry. Does not open the vault
@@ -377,6 +380,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry) (*proxy.Prox
 	cliTools := make(map[string]provider.CLIToolDef)
 	restTools := make(map[string]provider.RESTToolDef)
 	mcpServers := make(map[string]provider.MCPServerDef)
+	hasOAuth := false
 
 	for name, toolCfg := range cfg.Tools {
 		switch toolCfg.Type {
@@ -396,12 +400,25 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry) (*proxy.Prox
 				Headers: resolveVaultMap(resolver, toolCfg.Headers),
 			}
 			if toolCfg.Auth != nil {
-				restDef.Auth = &provider.AuthDef{
+				authDef := &provider.AuthDef{
 					Type:   toolCfg.Auth.Type,
 					Token:  resolveVaultRef(resolver, toolCfg.Auth.Token),
 					Header: toolCfg.Auth.Header,
 					Value:  resolveVaultRef(resolver, toolCfg.Auth.Value),
 				}
+				if toolCfg.Auth.Type == "oauth" {
+					oauthCfg := cfg.ResolveOAuthProvider(toolCfg.Auth)
+					authDef.OAuthProvider = &oauth.ProviderConfig{
+						ClientID:     resolveVaultRef(resolver, oauthCfg.ClientID),
+						ClientSecret: resolveVaultRef(resolver, oauthCfg.ClientSecret),
+						AuthURL:      oauthCfg.AuthURL,
+						TokenURL:     oauthCfg.TokenURL,
+						Scopes:       oauthCfg.Scopes,
+					}
+					authDef.TokenKey = config.OAuthTokenKey(toolCfg.Auth)
+					hasOAuth = true
+				}
+				restDef.Auth = authDef
 			}
 			for _, p := range toolCfg.Parameters {
 				restDef.Params = append(restDef.Params, provider.RESTParamDef{
@@ -428,7 +445,13 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry) (*proxy.Prox
 		providers["cli"] = provider.NewCLI(cliTools)
 	}
 	if len(restTools) > 0 {
-		restProvider := provider.NewREST(restTools)
+		var tokenStore provider.TokenStore
+		if hasOAuth && resolver != nil {
+			if backend := resolver.Backend("vault"); backend != nil {
+				tokenStore = &vaultTokenStore{backend: backend}
+			}
+		}
+		restProvider := provider.NewREST(restTools, tokenStore)
 		if err := restProvider.Setup(); err != nil {
 			return nil, fmt.Errorf("rest provider setup: %w", err)
 		}
@@ -581,6 +604,31 @@ func resolveVaultMap(resolver *vault.Resolver, m map[string]string) map[string]s
 		resolved[k] = resolveVaultRef(resolver, v)
 	}
 	return resolved
+}
+
+// vaultTokenStore implements provider.TokenStore using the vault backend.
+type vaultTokenStore struct {
+	backend vault.Backend
+}
+
+func (s *vaultTokenStore) GetTokenBundle(key string) (*oauth.TokenBundle, error) {
+	raw, err := s.backend.Get(key)
+	if err != nil {
+		return nil, err
+	}
+	var bundle oauth.TokenBundle
+	if err := json.Unmarshal([]byte(raw), &bundle); err != nil {
+		return nil, fmt.Errorf("parsing token bundle: %w", err)
+	}
+	return &bundle, nil
+}
+
+func (s *vaultTokenStore) SetTokenBundle(key string, bundle *oauth.TokenBundle) error {
+	data, err := json.Marshal(bundle)
+	if err != nil {
+		return err
+	}
+	return s.backend.Set(key, string(data))
 }
 
 func hasMCPTools(cfg *config.Config) bool {
