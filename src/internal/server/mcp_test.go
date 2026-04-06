@@ -167,6 +167,56 @@ func TestMakeHandlerParamExtraction(t *testing.T) {
 	}
 }
 
+func TestRedactSensitiveParams(t *testing.T) {
+	params := map[string]string{
+		"url":           "https://example.com",
+		"token":         "secret-token",
+		"api_key":       "my-key",
+		"Authorization": "Bearer xyz",
+		"password":      "hunter2",
+		"client_secret": "shh",
+		"name":          "visible",
+		"query":         "SELECT 1",
+	}
+
+	redacted := redactSensitiveParams(params)
+
+	// Sensitive params should be redacted
+	if redacted["token"] != "[REDACTED]" {
+		t.Errorf("expected token redacted, got %q", redacted["token"])
+	}
+	if redacted["api_key"] != "[REDACTED]" {
+		t.Errorf("expected api_key redacted, got %q", redacted["api_key"])
+	}
+	if redacted["Authorization"] != "[REDACTED]" {
+		t.Errorf("expected Authorization redacted, got %q", redacted["Authorization"])
+	}
+	if redacted["password"] != "[REDACTED]" {
+		t.Errorf("expected password redacted, got %q", redacted["password"])
+	}
+	if redacted["client_secret"] != "[REDACTED]" {
+		t.Errorf("expected client_secret redacted, got %q", redacted["client_secret"])
+	}
+
+	// Non-sensitive params should be visible
+	if redacted["url"] != "https://example.com" {
+		t.Errorf("expected url visible, got %q", redacted["url"])
+	}
+	if redacted["name"] != "visible" {
+		t.Errorf("expected name visible, got %q", redacted["name"])
+	}
+	if redacted["query"] != "SELECT 1" {
+		t.Errorf("expected query visible, got %q", redacted["query"])
+	}
+}
+
+func TestRedactSensitiveParamsEmpty(t *testing.T) {
+	redacted := redactSensitiveParams(map[string]string{})
+	if len(redacted) != 0 {
+		t.Errorf("expected empty map, got %d entries", len(redacted))
+	}
+}
+
 func TestNewRegistersAllTools(t *testing.T) {
 	reg := registry.New()
 	reg.Register(&registry.Tool{Name: "tool.a", Type: "cli", ProviderKey: "cli"})

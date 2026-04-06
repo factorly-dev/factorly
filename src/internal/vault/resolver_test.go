@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -94,6 +95,25 @@ func TestResolveMissingKey(t *testing.T) {
 	_, err := r.Resolve("${vault:MISSING}")
 	if err == nil {
 		t.Fatal("expected error for missing key")
+	}
+}
+
+func TestResolveMissingKeyErrorDoesNotLeakKeyName(t *testing.T) {
+	r := NewResolver()
+	r.Register("vault", &mockBackend{secrets: map[string]string{}})
+
+	_, err := r.Resolve("${vault:SECRET_API_KEY}")
+	if err == nil {
+		t.Fatal("expected error for missing key")
+	}
+	// Error should NOT contain the key name (security: don't leak key names)
+	errMsg := err.Error()
+	if strings.Contains(errMsg, "SECRET_API_KEY") {
+		t.Errorf("error message should not contain key name, got: %s", errMsg)
+	}
+	// But should mention the backend
+	if !strings.Contains(errMsg, "vault") {
+		t.Errorf("error message should mention the backend, got: %s", errMsg)
 	}
 }
 

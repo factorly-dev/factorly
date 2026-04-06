@@ -224,6 +224,7 @@ func (b *LocalBackend) List() ([]string, error) {
 
 func (b *LocalBackend) Close() error {
 	zeroize(b.key)
+	zeroize(b.salt)
 	return nil
 }
 

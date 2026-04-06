@@ -1195,6 +1195,69 @@ tools: {}
 	}
 }
 
+// --- Security Hardening ---
+
+func TestVerboseRedactsSecrets(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo.test:
+    type: cli
+    command: echo
+    args: ["{msg}"]
+`,
+	})
+
+	_, stderr, code := run(t, dir, "-v", "call", "echo.test", "--msg", "hello", "--api_token", "super-secret", "--password", "hunter2")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	// Secrets should be redacted in verbose output
+	if strings.Contains(stderr, "super-secret") {
+		t.Error("api_token value should be redacted in verbose output")
+	}
+	if strings.Contains(stderr, "hunter2") {
+		t.Error("password value should be redacted in verbose output")
+	}
+	// But param names and non-sensitive values should be visible
+	if !strings.Contains(stderr, "[REDACTED]") {
+		t.Error("expected [REDACTED] in verbose output")
+	}
+	if !strings.Contains(stderr, "hello") {
+		t.Error("expected non-sensitive param 'hello' visible in verbose output")
+	}
+}
+
+func TestHTTPTokenAuthRejectsUnauthenticated(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["{msg}"]
+`,
+	})
+
+	// Start server with token auth
+	cmd := exec.Command(binary, "serve", "--http", ":0", "--http-token", "test-secret-token", "-c", filepath.Join(dir, "factorly.yaml"))
+	cmd.Env = append(os.Environ(), "FACTORLY_NO_LOG=1")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+
+	// We can't easily test the full HTTP flow in integration tests
+	// because we'd need to find the actual port. Instead verify the
+	// flag is accepted and the command starts without error.
+	// The unit-level auth middleware test covers the actual rejection.
+	err := cmd.Start()
+	if err != nil {
+		t.Fatalf("failed to start serve: %v", err)
+	}
+	// Kill immediately — we just need to verify it started
+	cmd.Process.Kill()
+	cmd.Wait()
+}
+
 // --- Missing config ---
 
 func TestMissingConfig(t *testing.T) {

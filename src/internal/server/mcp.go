@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/factorly-dev/factorly/internal"
 	"github.com/factorly-dev/factorly/internal/proxy"
@@ -10,6 +11,28 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
+
+var sensitiveParamNames = []string{"token", "secret", "password", "key", "auth", "credential"}
+
+func redactSensitiveParams(params map[string]string) map[string]string {
+	redacted := make(map[string]string, len(params))
+	for k, v := range params {
+		lower := strings.ToLower(k)
+		sensitive := false
+		for _, s := range sensitiveParamNames {
+			if strings.Contains(lower, s) {
+				sensitive = true
+				break
+			}
+		}
+		if sensitive {
+			redacted[k] = "[REDACTED]"
+		} else {
+			redacted[k] = v
+		}
+	}
+	return redacted
+}
 
 // Verbose is an optional log function for debug output. Set by the CLI --verbose flag.
 var Verbose func(format string, args ...any)
@@ -96,7 +119,7 @@ func makeHandler(p *proxy.Proxy, toolName string) server.ToolHandlerFunc {
 			}
 		}
 
-		slog(ctx, "mcp call: %s params=%v", toolName, params)
+		slog(ctx, "mcp call: %s params=%v", toolName, redactSensitiveParams(params))
 
 		result, err := p.Execute(toolName, params, "mcp")
 		if err != nil {

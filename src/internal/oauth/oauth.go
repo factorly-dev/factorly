@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net"
 	"net/http"
@@ -99,7 +101,7 @@ func LoginFlow(ctx context.Context, cfg ProviderConfig) (*TokenBundle, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("state") != state {
+		if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("state")), []byte(state)) != 1 {
 			errCh <- fmt.Errorf("state mismatch")
 			http.Error(w, "State mismatch", http.StatusBadRequest)
 			return
@@ -107,7 +109,7 @@ func LoginFlow(ctx context.Context, cfg ProviderConfig) (*TokenBundle, error) {
 		if errMsg := r.URL.Query().Get("error"); errMsg != "" {
 			desc := r.URL.Query().Get("error_description")
 			errCh <- fmt.Errorf("authorization error: %s (%s)", errMsg, desc)
-			fmt.Fprintf(w, "<html><body><h2>Authorization failed</h2><p>%s</p><p>You can close this tab.</p></body></html>", errMsg)
+			fmt.Fprintf(w, "<html><body><h2>Authorization failed</h2><p>%s</p><p>You can close this tab.</p></body></html>", html.EscapeString(errMsg))
 			return
 		}
 		code := r.URL.Query().Get("code")

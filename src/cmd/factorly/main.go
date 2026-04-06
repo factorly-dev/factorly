@@ -99,7 +99,7 @@ var callCmd = &cobra.Command{
 		params := parseToolArgs(args[1:])
 
 		vlog("calling tool: %s", toolName)
-		vlog("  params: %v", params)
+		vlog("  params: %v", redactSensitiveParams(params))
 
 		// Load config and validate tool exists before opening vault
 		cfg, reg, err := loadConfig()
@@ -440,6 +440,11 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry) (*proxy.Prox
 		}
 	}
 
+	// Validate no unresolved vault refs remain in provider configs
+	if err := validateNoVaultRefs(restTools); err != nil {
+		return nil, err
+	}
+
 	if len(cliTools) > 0 {
 		vlog("initialized cli provider (%d tools)", len(cliTools))
 		providers["cli"] = provider.NewCLI(cliTools)
@@ -629,6 +634,50 @@ func (s *vaultTokenStore) SetTokenBundle(key string, bundle *oauth.TokenBundle) 
 		return err
 	}
 	return s.backend.Set(key, string(data))
+}
+
+func validateNoVaultRefs(restTools map[string]provider.RESTToolDef) error {
+	for name, def := range restTools {
+		if vault.HasVaultRefs(def.BaseURL) {
+			return fmt.Errorf("unresolved vault reference in base_url for tool %q — check vault password and key", name)
+		}
+		if def.Auth != nil {
+			if vault.HasVaultRefs(def.Auth.Token) {
+				return fmt.Errorf("unresolved vault reference in auth token for tool %q — check vault password and key", name)
+			}
+			if vault.HasVaultRefs(def.Auth.Value) {
+				return fmt.Errorf("unresolved vault reference in auth value for tool %q — check vault password and key", name)
+			}
+		}
+		for k, v := range def.Headers {
+			if vault.HasVaultRefs(v) {
+				return fmt.Errorf("unresolved vault reference in header %q for tool %q — check vault password and key", k, name)
+			}
+		}
+	}
+	return nil
+}
+
+var sensitiveParamNames = []string{"token", "secret", "password", "key", "auth", "credential"}
+
+func redactSensitiveParams(params map[string]string) map[string]string {
+	redacted := make(map[string]string, len(params))
+	for k, v := range params {
+		lower := strings.ToLower(k)
+		sensitive := false
+		for _, s := range sensitiveParamNames {
+			if strings.Contains(lower, s) {
+				sensitive = true
+				break
+			}
+		}
+		if sensitive {
+			redacted[k] = "[REDACTED]"
+		} else {
+			redacted[k] = v
+		}
+	}
+	return redacted
 }
 
 func hasMCPTools(cfg *config.Config) bool {

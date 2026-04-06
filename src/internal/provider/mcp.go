@@ -88,8 +88,8 @@ func ConnectMCP(def MCPServerDef) (*client.Client, error) {
 		// HTTP transport
 		c, err = client.NewStreamableHttpClient(def.URL)
 	} else {
-		// Stdio transport
-		env := os.Environ()
+		// Stdio transport — only pass PATH + explicitly configured env vars
+		env := []string{"PATH=" + os.Getenv("PATH")}
 		for k, v := range def.Env {
 			env = append(env, k+"="+v)
 		}

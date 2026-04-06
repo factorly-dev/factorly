@@ -40,7 +40,7 @@ func (r *Resolver) Resolve(s string) (string, error) {
 		}
 		val, err := b.Get(key)
 		if err != nil {
-			resolveErr = fmt.Errorf("resolving ${%s:%s}: %w", backend, key, err)
+			resolveErr = fmt.Errorf("resolving vault reference from %s backend: %w", backend, err)
 			return match
 		}
 		return val

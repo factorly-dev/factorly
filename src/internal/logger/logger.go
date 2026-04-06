@@ -47,9 +47,12 @@ func NewJSONL(path string) (*JSONLLogger, error) {
 }
 
 func (l *JSONLLogger) Log(entry *Entry) error {
-	// Truncate output to 500 chars
+	// Truncate output and error to 500 chars
 	if len(entry.Output) > 500 {
 		entry.Output = entry.Output[:500] + "..."
+	}
+	if len(entry.Error) > 500 {
+		entry.Error = entry.Error[:500] + "..."
 	}
 
 	l.mu.Lock()

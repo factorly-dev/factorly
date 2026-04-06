@@ -669,3 +669,42 @@ func TestAtomicWrite(t *testing.T) {
 		t.Errorf("expected 'value', got %q", val)
 	}
 }
+
+func TestCloseZeroizesKeyAndSalt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.enc")
+	b, err := OpenLocalAt(path, "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = b.Set("KEY", "value")
+
+	// Grab references before close
+	key := b.key
+	salt := b.salt
+
+	b.Close()
+
+	// Key should be zeroed
+	allZero := true
+	for _, v := range key {
+		if v != 0 {
+			allZero = false
+			break
+		}
+	}
+	if !allZero {
+		t.Error("expected master key to be zeroized after Close")
+	}
+
+	// Salt should be zeroed
+	allZero = true
+	for _, v := range salt {
+		if v != 0 {
+			allZero = false
+			break
+		}
+	}
+	if !allZero {
+		t.Error("expected salt to be zeroized after Close")
+	}
+}

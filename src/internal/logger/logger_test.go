@@ -143,6 +143,47 @@ func TestJSONLLoggerTruncatesOutput(t *testing.T) {
 	}
 }
 
+func TestJSONLLoggerTruncatesError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.jsonl")
+	l, err := NewJSONL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+
+	longError := strings.Repeat("e", 1000)
+	entry := &Entry{
+		Timestamp: time.Now(),
+		Interface: "cli",
+		Tool:      "test",
+		Params:    map[string]string{},
+		Status:    "error",
+		Error:     longError,
+	}
+
+	if err := l.Log(entry); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var read Entry
+	if err := json.Unmarshal(data, &read); err != nil {
+		t.Fatal(err)
+	}
+
+	// 500 chars + "..."
+	if len(read.Error) != 503 {
+		t.Errorf("expected truncated error of 503 chars, got %d", len(read.Error))
+	}
+	if !strings.HasSuffix(read.Error, "...") {
+		t.Error("expected truncated error to end with '...'")
+	}
+}
+
 func TestJSONLLoggerCreatesDir(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nested", "deep", "test.jsonl")
