@@ -70,7 +70,7 @@ version:
 	echo "$(VERSION) → $$NEW"
 
 # Cross-platform release builds
-release: clean
+release: clean build
 	@mkdir -p $(OUTDIR)
 	cd $(SRCDIR) && GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o ../$(OUTDIR)/$(BINARY)-linux-amd64 ./cmd/factorly
 	cd $(SRCDIR) && GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o ../$(OUTDIR)/$(BINARY)-darwin-amd64 ./cmd/factorly
