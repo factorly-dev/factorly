@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	factorlyServer "github.com/factorly-dev/factorly/internal/server"
+	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 )
@@ -48,8 +49,22 @@ By default, uses stdio transport. Use --http to start an HTTP server instead.`,
 		defer stop()
 
 		if httpAddr != "" {
+			// Resolve token: flag → env var, then resolve vault refs
 			if httpToken == "" {
-				fmt.Fprintln(os.Stderr, "WARNING: HTTP server has no authentication. Use --http-token for production.")
+				httpToken = os.Getenv("FACTORLY_HTTP_TOKEN")
+			}
+			if httpToken != "" && vault.HasVaultRefs(httpToken) {
+				backend, err := openVault()
+				if err != nil {
+					return fmt.Errorf("resolving http-token vault ref: %w", err)
+				}
+				defer backend.Close()
+				resolver := vault.NewResolver()
+				resolver.Register("vault", backend)
+				httpToken = resolveVaultRef(resolver, httpToken)
+			}
+			if httpToken == "" {
+				fmt.Fprintln(os.Stderr, "WARNING: HTTP server has no authentication. Use --http-token or FACTORLY_HTTP_TOKEN for production.")
 			}
 			return serveHTTP(ctx, s, httpAddr)
 		}
