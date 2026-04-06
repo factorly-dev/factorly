@@ -7,11 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/spf13/cobra"
 )
 
 var syncHTTP string
 var syncCommand string
+var syncToken string
 var syncRemove bool
 var syncGlobal bool
 
@@ -55,6 +57,18 @@ Existing MCP server entries in the config files are preserved.`,
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
+	// Resolve vault refs in token before building entry
+	if syncToken != "" && vault.HasVaultRefs(syncToken) {
+		backend, err := openVault()
+		if err != nil {
+			return fmt.Errorf("resolving token vault ref: %w", err)
+		}
+		defer backend.Close()
+		resolver := vault.NewResolver()
+		resolver.Register("vault", backend)
+		syncToken = resolveVaultRef(resolver, syncToken)
+	}
+
 	entry := buildFactorlyEntry()
 	synced := 0
 	activeClients := getClients()
@@ -120,10 +134,16 @@ func buildFactorlyEntry() map[string]any {
 		if filepath.Ext(url) == "" && url[len(url)-1] != '/' {
 			url += "/mcp"
 		}
-		return map[string]any{
-			"type": "streamable-http",
+		entry := map[string]any{
+			"type": "http",
 			"url":  url,
 		}
+		if syncToken != "" {
+			entry["headers"] = map[string]any{
+				"Authorization": "Bearer " + syncToken,
+			}
+		}
+		return entry
 	}
 
 	// Stdio mode
@@ -227,6 +247,7 @@ func removeFactorlyFromJSON(path string) (bool, error) {
 
 func init() {
 	syncCmd.Flags().StringVar(&syncHTTP, "http", "", "sync HTTP mode with this address (e.g. localhost:3000)")
+	syncCmd.Flags().StringVar(&syncToken, "token", "", "include Bearer token auth header for HTTP mode")
 	syncCmd.Flags().StringVar(&syncCommand, "command", "", "custom factorly binary path")
 	syncCmd.Flags().BoolVar(&syncRemove, "remove", false, "remove factorly entry from client configs")
 	syncCmd.Flags().BoolVar(&syncGlobal, "global", false, "sync to user-level config (~/.claude/, ~/.cursor/, ~/.codex/)")

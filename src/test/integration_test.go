@@ -1339,8 +1339,8 @@ func TestSyncHTTPMode(t *testing.T) {
 
 	data, _ := os.ReadFile(filepath.Join(dir, ".mcp.json"))
 	content := string(data)
-	if !strings.Contains(content, "streamable-http") {
-		t.Error("expected streamable-http type")
+	if !strings.Contains(content, "http") {
+		t.Error("expected http type")
 	}
 	if !strings.Contains(content, "localhost:3000/mcp") {
 		t.Error("expected /mcp endpoint in URL")

@@ -80,6 +80,13 @@ FACTORLY_HTTP_TOKEN='${vault:HTTP_TOKEN}' factorly serve --http :3000
 
 When a token is set, all HTTP requests must include `Authorization: Bearer <token>`. Requests without a valid token receive a 401 response. A warning is printed to stderr when HTTP mode starts without any token configured.
 
+**Note:** If Factorly is running inside a container (Docker, devcontainer, Codespace), use the host-accessible address — not `localhost`. For Docker, this is typically `host.docker.internal`:
+
+```bash
+factorly serve --http 0.0.0.0:3000 --http-token '${vault:HTTP_TOKEN}'
+factorly sync --http host.docker.internal:3000 --token '${vault:HTTP_TOKEN}'
+```
+
 ---
 
 [← Back to README](../README.md)
