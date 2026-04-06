@@ -26,8 +26,8 @@ type healthResult struct {
 	Details []string
 }
 
-var healthCmd = &cobra.Command{
-	Use:   "health",
+var statusCmd = &cobra.Command{
+	Use:   "status",
 	Short: "Check that all configured tools are reachable",
 	RunE:  runHealth,
 }

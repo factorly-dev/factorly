@@ -56,31 +56,39 @@ var versionCmd = &cobra.Command{
 
 var toolsCmd = &cobra.Command{
 	Use:   "tools",
+	Short: "Manage and list configured tools",
+	RunE:  runToolsList, // default: list tools when no subcommand given
+}
+
+var toolsListCmd = &cobra.Command{
+	Use:   "list",
 	Short: "List all configured tools",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, reg, err := loadConfig()
-		if err != nil {
+	RunE:  runToolsList,
+}
+
+func runToolsList(cmd *cobra.Command, args []string) error {
+	cfg, reg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+
+	// Bootstrap providers to discover MCP sub-tools
+	if hasMCPTools(cfg) {
+		if _, err := bootstrapProviders(cfg, reg); err != nil {
 			return err
 		}
+	}
 
-		// Bootstrap providers to discover MCP sub-tools
-		if hasMCPTools(cfg) {
-			if _, err := bootstrapProviders(cfg, reg); err != nil {
-				return err
-			}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "NAME\tTYPE\tDESCRIPTION\tPARAMETERS")
+	for _, t := range reg.List() {
+		params := make([]string, len(t.Parameters))
+		for i, p := range t.Parameters {
+			params[i] = p.Name
 		}
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tTYPE\tDESCRIPTION\tPARAMETERS")
-		for _, t := range reg.List() {
-			params := make([]string, len(t.Parameters))
-			for i, p := range t.Parameters {
-				params[i] = p.Name
-			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Name, t.Type, t.Description, strings.Join(params, ", "))
-		}
-		return w.Flush()
-	},
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Name, t.Type, t.Description, strings.Join(params, ", "))
+	}
+	return w.Flush()
 }
 
 var callCmd = &cobra.Command{
@@ -310,7 +318,8 @@ func init() {
 	importOpenAPICmd.Flags().StringVarP(&importOpenAPIPrefix, "prefix", "p", "", "tool name prefix (default: from spec title)")
 	importCmd.AddCommand(importOpenAPICmd)
 
-	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, addCmd, removeCmd, importCmd, initCmd, vaultCmd, authCmd, healthCmd, serveCmd)
+	toolsCmd.AddCommand(toolsListCmd, addCmd, removeCmd, importCmd)
+	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, vaultCmd, authCmd, statusCmd, serveCmd)
 }
 
 // loadConfig loads config and builds a registry. Does not open the vault

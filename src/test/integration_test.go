@@ -397,7 +397,7 @@ func TestImportOpenAPIStdout(t *testing.T) {
 	// Find the petstore example spec
 	specPath := findPetstoreSpec(t)
 
-	stdout, _, code := run(t, "", "import", "openapi", specPath)
+	stdout, _, code := run(t, "", "tools", "import", "openapi", specPath)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -420,7 +420,7 @@ func TestImportOpenAPIToFile(t *testing.T) {
 	outDir := t.TempDir()
 	outPath := filepath.Join(outDir, "petstore.yaml")
 
-	_, stderr, code := run(t, "", "import", "openapi", specPath, "--out", outPath)
+	_, stderr, code := run(t, "", "tools", "import", "openapi", specPath, "--out", outPath)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
 	}
@@ -441,7 +441,7 @@ func TestImportOpenAPIToFile(t *testing.T) {
 func TestImportOpenAPIWithPrefix(t *testing.T) {
 	specPath := findPetstoreSpec(t)
 
-	stdout, _, code := run(t, "", "import", "openapi", specPath, "--prefix", "myapi")
+	stdout, _, code := run(t, "", "tools", "import", "openapi", specPath, "--prefix", "myapi")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -472,7 +472,7 @@ tools:
 
 	// Import OpenAPI spec into tools dir
 	outPath := filepath.Join(toolsDir, "petstore.yaml")
-	_, _, code := run(t, dir, "import", "openapi", specPath, "--out", outPath)
+	_, _, code := run(t, dir, "tools", "import", "openapi", specPath, "--out", outPath)
 	if code != 0 {
 		t.Fatal("import failed")
 	}
@@ -928,7 +928,7 @@ tools:
 `,
 	})
 
-	stdout, _, code := run(t, dir, "health")
+	stdout, _, code := run(t, dir, "status")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -955,7 +955,7 @@ tools:
 `,
 	})
 
-	stdout, _, code := run(t, dir, "health")
+	stdout, _, code := run(t, dir, "status")
 	if code == 0 {
 		t.Fatal("expected non-zero exit for broken tool")
 	}
@@ -987,7 +987,7 @@ tools:
 `, srv.URL),
 	})
 
-	stdout, _, code := run(t, dir, "health")
+	stdout, _, code := run(t, dir, "status")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -1015,7 +1015,7 @@ tools:
 `, binary),
 	})
 
-	stdout, _, code := run(t, dir, "health")
+	stdout, _, code := run(t, dir, "status")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -1036,7 +1036,7 @@ tools: {}
 `,
 	})
 
-	_, stderr, code := run(t, dir, "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{msg}")
+	_, stderr, code := run(t, dir, "tools", "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{msg}")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
 	}
@@ -1063,7 +1063,7 @@ tools: {}
 	})
 	os.MkdirAll(filepath.Join(dir, "tools"), 0o755)
 
-	_, _, code := run(t, dir, "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{msg}")
+	_, _, code := run(t, dir, "tools", "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{msg}")
 	if code != 0 {
 		t.Fatal("add failed")
 	}
@@ -1086,7 +1086,7 @@ tools:
 `,
 	})
 
-	_, _, code := run(t, dir, "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{msg}")
+	_, _, code := run(t, dir, "tools", "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{msg}")
 	if code == 0 {
 		t.Fatal("expected error for duplicate tool")
 	}
@@ -1107,7 +1107,7 @@ tools:
 `,
 	})
 
-	_, stderr, code := run(t, dir, "remove", "test.echo")
+	_, stderr, code := run(t, dir, "tools", "remove", "test.echo")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
 	}
@@ -1142,7 +1142,7 @@ test.echo:
 `,
 	})
 
-	_, _, code := run(t, dir, "remove", "test.echo")
+	_, _, code := run(t, dir, "tools", "remove", "test.echo")
 	if code != 0 {
 		t.Fatal("remove failed")
 	}
@@ -1165,7 +1165,7 @@ tools:
 `,
 	})
 
-	_, _, code := run(t, dir, "remove", "nonexistent")
+	_, _, code := run(t, dir, "tools", "remove", "nonexistent")
 	if code == 0 {
 		t.Fatal("expected error for nonexistent tool")
 	}
@@ -1178,7 +1178,7 @@ tools: {}
 `,
 	})
 
-	_, _, code := run(t, dir, "add", "--name", "api.test", "--type", "rest", "--base-url", "https://api.github.com", "--method", "GET", "--path", "/")
+	_, _, code := run(t, dir, "tools", "add", "--name", "api.test", "--type", "rest", "--base-url", "https://api.github.com", "--method", "GET", "--path", "/")
 	if code != 0 {
 		t.Fatal("add REST tool failed")
 	}

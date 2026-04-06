@@ -33,8 +33,8 @@ var addCmd = &cobra.Command{
 	Long: `Interactively create a new tool definition and add it to your config.
 
 Use flags for non-interactive mode:
-  factorly add --name web.fetch --type cli --command curl --args '-s,{url}'
-  factorly add --name slack --type mcp --command npx --args '@modelcontextprotocol/server-slack'`,
+  factorly tools add --name web.fetch --type cli --command curl --args '-s,{url}'
+  factorly tools add --name slack --type mcp --command npx --args '@modelcontextprotocol/server-slack'`,
 	RunE: runAdd,
 }
 

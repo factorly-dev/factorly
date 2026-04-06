@@ -392,16 +392,16 @@ Generate tool definitions from any OpenAPI 3.x spec — local file or remote URL
 
 ```bash
 # From a URL
-factorly import openapi https://petstore3.swagger.io/api/v3/openapi.json --out .factorly/tools/petstore.yaml
+factorly tools import openapi https://petstore3.swagger.io/api/v3/openapi.json --out .factorly/tools/petstore.yaml
 
 # From a local file
-factorly import openapi ./api-spec.yaml --out .factorly/tools/api.yaml
+factorly tools import openapi ./api-spec.yaml --out .factorly/tools/api.yaml
 
 # With a custom prefix
-factorly import openapi ./spec.yaml --prefix myapi
+factorly tools import openapi ./spec.yaml --prefix myapi
 
 # Preview to stdout
-factorly import openapi ./spec.yaml
+factorly tools import openapi ./spec.yaml
 ```
 
 Each operation becomes a REST tool with method, path, parameters (query/path/header/body), auth, and base URL extracted automatically.
@@ -484,12 +484,13 @@ factorly serve --http :3000         # start MCP server (HTTP at /mcp)
 factorly init                       # create .factorly/factorly.yaml (interactive)
 factorly init --out factorly.yaml   # create at custom path
 factorly tools                      # list all configured tools
+factorly tools list                 # same as above
+factorly tools add                  # add a tool (interactive)
+factorly tools add --name x --type cli  # add a tool (non-interactive)
+factorly tools remove <tool>        # remove a tool from config
 factorly call <tool> [--param val]  # call a tool
-factorly add                        # add a tool (interactive)
-factorly add --name x --type cli    # add a tool (non-interactive)
-factorly remove <tool>              # remove a tool from config
-factorly import openapi <spec>      # generate tools from OpenAPI spec
-factorly health                     # check all tools are reachable
+factorly tools import openapi <spec>      # generate tools from OpenAPI spec
+factorly status                     # check all tools are reachable
 factorly auth login <provider>      # OAuth login (opens browser)
 factorly auth status [provider]     # show OAuth token status
 factorly auth logout <provider>     # remove stored OAuth tokens
@@ -663,7 +664,7 @@ make release            # cross-platform binaries (linux, darwin, windows)
 - [x] `factorly call` — call any tool from the CLI
 - [x] `factorly tools` — list configured tools
 - [x] `factorly init` — interactive project setup
-- [x] `factorly import openapi` — generate tools from OpenAPI specs (local + remote)
+- [x] `factorly tools import openapi` — generate tools from OpenAPI specs (local + remote)
 - [x] Tool directory — modular configs via `tools_dir` and `.factorly/`
 - [x] Encrypted vault — `${vault:KEY}` with per-entry encryption (HKDF + AES-256-GCM)
 - [x] `factorly serve` — MCP server mode (stdio + HTTP)
@@ -671,8 +672,8 @@ make release            # cross-platform binaries (linux, darwin, windows)
 - [x] `--verbose` flag
 - [x] MCP provider — spawn child servers (stdio) or connect to remote (HTTP)
 - [x] OAuth authentication — `factorly auth login/status/logout` with PKCE + auto-refresh
-- [x] `factorly add` / `factorly remove` — interactive tool builder + removal
-- [x] `factorly health` — health check all tools, credentials, and connections
+- [x] `factorly tools add` / `factorly tools remove` — interactive tool builder + removal
+- [x] `factorly status` — health check all tools, credentials, and connections
 - [x] Interactive CLI tools — `interactive: true` for TTY passthrough (psql, ssh, REPLs)
 - [x] Security hardening — param redaction in logs, HTTP token auth, vault ref validation, per-operation file locking, PKCE constant-time comparison
 - [ ] `factorly sync` — push MCP config into AI clients (Claude Code, Cursor, Codex)
