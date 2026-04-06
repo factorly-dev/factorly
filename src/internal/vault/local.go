@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
-	"syscall"
 
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/hkdf"
@@ -92,7 +91,7 @@ func OpenLocalAt(path, password string) (*LocalBackend, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening lock file: %w", err)
 	}
-	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+	if err := lockFileExclusive(lockFile); err != nil {
 		lockFile.Close()
 		return nil, fmt.Errorf("acquiring vault lock: %w", err)
 	}
@@ -252,7 +251,7 @@ func (b *LocalBackend) releaseLock() error {
 	if b.lockFile == nil {
 		return nil
 	}
-	if err := syscall.Flock(int(b.lockFile.Fd()), syscall.LOCK_UN); err != nil {
+	if err := unlockFile(b.lockFile); err != nil {
 		b.lockFile.Close()
 		b.lockFile = nil
 		return fmt.Errorf("releasing vault lock: %w", err)
