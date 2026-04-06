@@ -15,6 +15,10 @@ factorly tools add --name x --type cli  # add a tool (non-interactive)
 factorly tools remove <tool>        # remove a tool from config
 factorly tools import openapi <spec>  # generate tools from OpenAPI spec
 factorly call <tool> [--param val]  # call a tool
+factorly sync                       # push MCP config to AI clients
+factorly sync --global              # sync to user-level config (~/.claude/, etc.)
+factorly sync --http localhost:3000 # sync HTTP mode
+factorly sync --remove              # remove factorly from client configs
 factorly status                     # check all tools are reachable
 factorly auth login <provider>      # OAuth login (opens browser)
 factorly auth status [provider]     # show OAuth token status

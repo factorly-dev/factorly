@@ -1,6 +1,16 @@
+```
+░█▀▀░█▀█░█▀▀░▀█▀░█▀█░█▀▄░█░░█░█
+░█▀▀░█▀█░█░░░░█░░█░█░█▀▄░█░░░█░
+░▀░░░▀░▀░▀▀▀░░▀░░▀▀▀░▀░▀░▀▀▀░▀░
+```
+
+<center>
+
 # Factorly
 
 Factorly wraps your existing agent tools — REST APIs, CLIs, MCP servers — into a single endpoint where credentials never reach the agent. Your agent sees tool names and parameters. Factorly injects the auth, makes the call, and returns the data.
+
+</center>
 
 ```bash
 # Your agent runs this — no secrets anywhere in the command
@@ -52,7 +62,10 @@ factorly tools add --name web.fetch --type cli --command curl --args '-s,{url}'
 # Use it on the command line
 factorly call web.fetch --url "https://example.com"
 
-# Start as an MCP server for Claude Code / Cursor
+# Connect to Claude Code / Cursor / Codex
+factorly sync
+
+# Or start manually as an MCP server
 factorly serve
 ```
 
@@ -184,7 +197,7 @@ For HTTP mode (remote/shared): `factorly serve --http :3000` — endpoint at `ht
 - [x] Interactive CLI tools — `interactive: true` for TTY passthrough
 - [x] Call logging (JSONL) + `--verbose` flag
 - [x] Security hardening — param redaction, HTTP token auth, vault ref validation
-- [ ] `factorly sync` — push MCP config into AI clients (Claude Code, Cursor, Codex)
+- [x] `factorly sync` — push MCP config into AI clients (Claude Code, Cursor, Codex)
 - [ ] `factorly logs` — view/query the call log
 - [ ] External vault backends (1Password, GCP Secret Manager, AWS)
 - [ ] Hosted version (Factorly Cloud)

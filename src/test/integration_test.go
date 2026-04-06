@@ -1258,6 +1258,118 @@ tools:
 	cmd.Wait()
 }
 
+// --- Sync ---
+
+func TestSyncCreatesClaudeCodeConfig(t *testing.T) {
+	dir := t.TempDir()
+
+	_, stderr, code := run(t, dir, "sync")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "Claude Code") {
+		t.Error("expected Claude Code in output")
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".mcp.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "factorly") {
+		t.Error("expected factorly in .mcp.json")
+	}
+	if !strings.Contains(string(data), "serve") {
+		t.Error("expected serve in .mcp.json")
+	}
+}
+
+func TestSyncPreservesExistingEntries(t *testing.T) {
+	dir := t.TempDir()
+
+	existing := `{"mcpServers":{"other":{"command":"other-server"}}}`
+	if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, code := run(t, dir, "sync")
+	if code != 0 {
+		t.Fatal("sync failed")
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, ".mcp.json"))
+	content := string(data)
+	if !strings.Contains(content, "other") {
+		t.Error("expected existing 'other' entry preserved")
+	}
+	if !strings.Contains(content, "factorly") {
+		t.Error("expected factorly entry added")
+	}
+}
+
+func TestSyncRemove(t *testing.T) {
+	dir := t.TempDir()
+
+	existing := `{"mcpServers":{"factorly":{"command":"factorly","args":["serve"]},"other":{"command":"other"}}}`
+	if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stderr, code := run(t, dir, "sync", "--remove")
+	if code != 0 {
+		t.Fatalf("sync --remove failed: %s", stderr)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, ".mcp.json"))
+	content := string(data)
+	if strings.Contains(content, "factorly") {
+		t.Error("expected factorly removed")
+	}
+	if !strings.Contains(content, "other") {
+		t.Error("expected other entry preserved")
+	}
+}
+
+func TestSyncHTTPMode(t *testing.T) {
+	dir := t.TempDir()
+
+	_, _, code := run(t, dir, "sync", "--http", "localhost:3000")
+	if code != 0 {
+		t.Fatal("sync --http failed")
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, ".mcp.json"))
+	content := string(data)
+	if !strings.Contains(content, "streamable-http") {
+		t.Error("expected streamable-http type")
+	}
+	if !strings.Contains(content, "localhost:3000/mcp") {
+		t.Error("expected /mcp endpoint in URL")
+	}
+}
+
+func TestSyncCursorDetection(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".cursor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stderr, code := run(t, dir, "sync")
+	if code != 0 {
+		t.Fatal("sync failed")
+	}
+	if !strings.Contains(stderr, "Cursor") {
+		t.Error("expected Cursor in output")
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".cursor", "mcp.json"))
+	if err != nil {
+		t.Fatal("expected .cursor/mcp.json to be created")
+	}
+	if !strings.Contains(string(data), "factorly") {
+		t.Error("expected factorly in cursor config")
+	}
+}
+
 // --- Missing config ---
 
 func TestMissingConfig(t *testing.T) {

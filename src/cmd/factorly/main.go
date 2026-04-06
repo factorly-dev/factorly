@@ -319,7 +319,7 @@ func init() {
 	importCmd.AddCommand(importOpenAPICmd)
 
 	toolsCmd.AddCommand(toolsListCmd, addCmd, removeCmd, importCmd)
-	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, vaultCmd, authCmd, statusCmd, serveCmd)
+	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, authCmd, statusCmd, serveCmd)
 }
 
 // loadConfig loads config and builds a registry. Does not open the vault
