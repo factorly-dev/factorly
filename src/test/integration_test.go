@@ -1027,6 +1027,174 @@ tools:
 	}
 }
 
+// --- Add / Remove ---
+
+func TestAddCLITool(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools: {}
+`,
+	})
+
+	_, stderr, code := run(t, dir, "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{msg}")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "Added test.echo") {
+		t.Error("expected 'Added' message")
+	}
+
+	// Verify tool works
+	stdout, _, code := run(t, dir, "call", "test.echo", "--msg", "hello from add")
+	if code != 0 {
+		t.Fatal("call failed")
+	}
+	if strings.TrimSpace(stdout) != "hello from add" {
+		t.Errorf("expected 'hello from add', got %q", stdout)
+	}
+}
+
+func TestAddToToolsDir(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools_dir: ./tools
+tools: {}
+`,
+	})
+	os.MkdirAll(filepath.Join(dir, "tools"), 0o755)
+
+	_, _, code := run(t, dir, "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{msg}")
+	if code != 0 {
+		t.Fatal("add failed")
+	}
+
+	// Verify file was created in tools dir
+	toolFile := filepath.Join(dir, "tools", "test.echo.yaml")
+	if _, err := os.Stat(toolFile); os.IsNotExist(err) {
+		t.Error("expected tool file in tools dir")
+	}
+}
+
+func TestAddDuplicateTool(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  test.echo:
+    type: cli
+    command: echo
+    args: ["{msg}"]
+`,
+	})
+
+	_, _, code := run(t, dir, "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{msg}")
+	if code == 0 {
+		t.Fatal("expected error for duplicate tool")
+	}
+}
+
+func TestRemoveTool(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  test.echo:
+    type: cli
+    command: echo
+    args: ["{msg}"]
+  keep.this:
+    type: cli
+    command: cat
+    args: ["{path}"]
+`,
+	})
+
+	_, stderr, code := run(t, dir, "remove", "test.echo")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "Removed test.echo") {
+		t.Error("expected 'Removed' message")
+	}
+
+	// Verify tool is gone but other tool remains
+	stdout, _, code := run(t, dir, "tools")
+	if code != 0 {
+		t.Fatal("tools failed")
+	}
+	if strings.Contains(stdout, "test.echo") {
+		t.Error("test.echo should be removed")
+	}
+	if !strings.Contains(stdout, "keep.this") {
+		t.Error("keep.this should remain")
+	}
+}
+
+func TestRemoveFromToolsDir(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools_dir: ./tools
+tools: {}
+`,
+		"tools/test.echo.yaml": `
+test.echo:
+  type: cli
+  command: echo
+  args: ["{msg}"]
+`,
+	})
+
+	_, _, code := run(t, dir, "remove", "test.echo")
+	if code != 0 {
+		t.Fatal("remove failed")
+	}
+
+	// File should be deleted (was the only tool)
+	toolFile := filepath.Join(dir, "tools", "test.echo.yaml")
+	if _, err := os.Stat(toolFile); !os.IsNotExist(err) {
+		t.Error("expected tool file to be deleted")
+	}
+}
+
+func TestRemoveNonexistent(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  test.echo:
+    type: cli
+    command: echo
+    args: ["{msg}"]
+`,
+	})
+
+	_, _, code := run(t, dir, "remove", "nonexistent")
+	if code == 0 {
+		t.Fatal("expected error for nonexistent tool")
+	}
+}
+
+func TestAddRESTTool(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools: {}
+`,
+	})
+
+	_, _, code := run(t, dir, "add", "--name", "api.test", "--type", "rest", "--base-url", "https://api.github.com", "--method", "GET", "--path", "/")
+	if code != 0 {
+		t.Fatal("add REST tool failed")
+	}
+
+	stdout, _, code := run(t, dir, "tools")
+	if code != 0 {
+		t.Fatal("tools failed")
+	}
+	if !strings.Contains(stdout, "api.test") {
+		t.Error("expected api.test in tools output")
+	}
+	if !strings.Contains(stdout, "rest") {
+		t.Error("expected 'rest' type")
+	}
+}
+
 // --- Missing config ---
 
 func TestMissingConfig(t *testing.T) {

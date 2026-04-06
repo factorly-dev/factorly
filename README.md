@@ -485,6 +485,9 @@ factorly init                       # create .factorly/factorly.yaml (interactiv
 factorly init --out factorly.yaml   # create at custom path
 factorly tools                      # list all configured tools
 factorly call <tool> [--param val]  # call a tool
+factorly add                        # add a tool (interactive)
+factorly add --name x --type cli    # add a tool (non-interactive)
+factorly remove <tool>              # remove a tool from config
 factorly import openapi <spec>      # generate tools from OpenAPI spec
 factorly health                     # check all tools are reachable
 factorly auth login <provider>      # OAuth login (opens browser)
@@ -638,7 +641,7 @@ make release            # cross-platform binaries (linux, darwin, windows)
 - [x] `--verbose` flag
 - [x] MCP provider — spawn child servers (stdio) or connect to remote (HTTP)
 - [x] OAuth authentication — `factorly auth login/status/logout` with PKCE + auto-refresh
-- [ ]  factorly add / factorly remove — interactive tool builder
+- [x] `factorly add` / `factorly remove` — interactive tool builder + removal
 - [x] `factorly health` — health check all tools, credentials, and connections
 - [ ] `factorly sync` — push MCP config into AI clients (Claude Code, Cursor, Codex)
 - [ ] `factorly status` — overview of tools, synced clients, connection health
