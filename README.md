@@ -13,6 +13,7 @@
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen?logo=github)](https://github.com/factorly-hq/factorly-cli/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/badge/Release-v0.1.0-blue?logo=github)](https://github.com/factorly-hq/factorly-cli/releases)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
+[![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](docs/)
 
 Factorly wraps your existing agent tools — REST APIs, CLIs, MCP servers — into a single endpoint where credentials never reach the agent. Your agent sees tool names and parameters. Factorly injects the auth, makes the call, and returns the data.
 
@@ -65,7 +66,7 @@ factorly init
 # Add a tool
 factorly tools add --name web.fetch --type cli --command curl --args '-s,{url}'
 
-# Use it on the command line
+# Use it
 factorly call web.fetch --url "https://example.com"
 
 # Connect to Claude Code / Cursor / Codex
@@ -110,54 +111,6 @@ tools:
 
 See the full [Config Reference](docs/config-reference.md) for all options.
 
-## Connect to Your Agent
-
-### Claude Code
-
-```json
-// .mcp.json
-{
-  "mcpServers": {
-    "factorly": {
-      "command": "factorly",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-### Cursor
-
-```json
-// .cursor/mcp.json
-{
-  "mcpServers": {
-    "factorly": {
-      "command": "factorly",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-### OpenAI Codex
-
-```json
-// .codex/mcp.json
-{
-  "mcpServers": {
-    "factorly": {
-      "command": "factorly",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-For HTTP mode (remote/shared): `factorly serve --http :3000` — endpoint at `http://localhost:3000/mcp`. Secure with `--http-token` or `FACTORLY_HTTP_TOKEN`. See [CLI Reference](docs/cli-reference.md) for all options.
-
-> **Note on MCP authorization:** The [MCP spec](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization) defines OAuth 2.1 as the standard HTTP auth mechanism, but notes it is **optional**. Factorly currently uses static Bearer token auth (`--http-token`), which works with all major MCP clients (Claude Code, Cursor, Codex). OAuth 2.1 server support is [planned](docs/oauth-server-spec.md) for multi-tenant and hosted deployments. For production OAuth today, place Factorly behind a reverse proxy (nginx, Caddy) with OAuth at the proxy layer.
-
 ## What You Get
 
 - **One endpoint** — your agent connects to Factorly, sees everything
@@ -172,19 +125,11 @@ For HTTP mode (remote/shared): `factorly serve --http :3000` — endpoint at `ht
 | **REST APIs** | Define base URL, method, path, auth, parameters. HTTP calls with routing. | Working |
 | **MCP servers** | Spawn child servers (stdio) or connect to remote (HTTP). Tools discovered automatically. | Working |
 
+> **Note on MCP authorization:** The [MCP spec](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization) defines OAuth 2.1 as the standard HTTP auth mechanism, but notes it is **optional**. Factorly uses static Bearer token auth (`--http-token`), which works with all major MCP clients. OAuth 2.1 server support is [planned](docs/oauth-server-spec.md) for hosted deployments.
+
 ## Documentation
 
-| Topic | Description |
-|-------|-------------|
-| [Config Reference](docs/config-reference.md) | Full YAML schema, auth types, parameters, stdin, interactive mode |
-| [CLI Reference](docs/cli-reference.md) | All commands, subcommands, and flags |
-| [Vault](docs/vault.md) | Encrypted secret storage with per-entry encryption |
-| [OAuth](docs/oauth.md) | OAuth 2.0 authentication with PKCE and auto-refresh |
-| [OpenAPI Import](docs/openapi-import.md) | Generate tools from OpenAPI/Swagger specs |
-| [Project Directory](docs/project-directory.md) | Modular configs with `.factorly/` and `tools_dir` |
-| [Logging](docs/logging.md) | Call log format, location, and security |
-| [OAuth Server Spec](docs/oauth-server-spec.md) | Planned: MCP-spec OAuth 2.1 authorization server design |
-| [Development](docs/development.md) | Building, testing, and contributing |
+Full documentation is in the **[docs/](docs/)** directory — config reference, CLI reference, vault, OAuth, OpenAPI import, project directory, logging, and development guide.
 
 ## Examples
 
@@ -201,12 +146,12 @@ For HTTP mode (remote/shared): `factorly serve --http :3000` — endpoint at `ht
 - [x] `factorly tools` — list, add, remove, import
 - [x] `factorly status` — health check all tools and connections
 - [x] `factorly init` — interactive project setup
+- [x] `factorly sync` — push MCP config into AI clients (Claude Code, Cursor, Codex)
 - [x] Encrypted vault — `${vault:KEY}` with per-entry encryption (HKDF + AES-256-GCM)
 - [x] OAuth authentication — `factorly auth login/status/logout` with PKCE + auto-refresh
 - [x] Interactive CLI tools — `interactive: true` for TTY passthrough
 - [x] Call logging (JSONL) + `--verbose` flag
 - [x] Security hardening — param redaction, HTTP token auth, vault ref validation
-- [x] `factorly sync` — push MCP config into AI clients (Claude Code, Cursor, Codex)
 - [ ] OAuth 2.1 server — [MCP-spec auth](docs/oauth-server-spec.md) with PKCE, dynamic registration, token endpoints
 - [ ] `factorly logs` — view/query the call log
 - [ ] External vault backends (1Password, GCP Secret Manager, AWS)
