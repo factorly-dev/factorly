@@ -10,8 +10,8 @@
 
 [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CI](https://img.shields.io/badge/CI-passing-brightgreen?logo=github)](https://github.com/factorly-dev/factorly/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/Release-v0.1.0-blue?logo=github)](https://github.com/factorly-dev/factorly/releases)
+[![CI](https://img.shields.io/badge/CI-passing-brightgreen?logo=github)](https://github.com/factorly-hq/factorly/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/badge/Release-v0.1.0-blue?logo=github)](https://github.com/factorly-hq/factorly/releases)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 
 Factorly wraps your existing agent tools — REST APIs, CLIs, MCP servers — into a single endpoint where credentials never reach the agent. Your agent sees tool names and parameters. Factorly injects the auth, makes the call, and returns the data.
@@ -56,7 +56,7 @@ Factorly fixes this. Secrets live in Factorly's config — or encrypted in the v
 
 ```bash
 # Install
-git clone https://github.com/factorly-dev/factorly.git
+git clone https://github.com/factorly-hq/factorly.git
 cd factorly && make init && make build
 
 # Initialize a project
