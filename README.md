@@ -148,7 +148,9 @@ See the full [Config Reference](docs/config-reference.md) for all options.
 }
 ```
 
-For HTTP mode (remote/shared): `factorly serve --http :3000` — endpoint at `http://localhost:3000/mcp`. See [CLI Reference](docs/cli-reference.md) for all options.
+For HTTP mode (remote/shared): `factorly serve --http :3000` — endpoint at `http://localhost:3000/mcp`. Secure with `--http-token` or `FACTORLY_HTTP_TOKEN`. See [CLI Reference](docs/cli-reference.md) for all options.
+
+> **Note on MCP authorization:** The [MCP spec](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization) defines OAuth 2.1 as the standard HTTP auth mechanism, but notes it is **optional**. Factorly currently uses static Bearer token auth (`--http-token`), which works with all major MCP clients (Claude Code, Cursor, Codex). OAuth 2.1 server support is [planned](docs/oauth-server-spec.md) for multi-tenant and hosted deployments. For production OAuth today, place Factorly behind a reverse proxy (nginx, Caddy) with OAuth at the proxy layer.
 
 ## What You Get
 
@@ -175,6 +177,7 @@ For HTTP mode (remote/shared): `factorly serve --http :3000` — endpoint at `ht
 | [OpenAPI Import](docs/openapi-import.md) | Generate tools from OpenAPI/Swagger specs |
 | [Project Directory](docs/project-directory.md) | Modular configs with `.factorly/` and `tools_dir` |
 | [Logging](docs/logging.md) | Call log format, location, and security |
+| [OAuth Server Spec](docs/oauth-server-spec.md) | Planned: MCP-spec OAuth 2.1 authorization server design |
 | [Development](docs/development.md) | Building, testing, and contributing |
 
 ## Examples
@@ -198,6 +201,7 @@ For HTTP mode (remote/shared): `factorly serve --http :3000` — endpoint at `ht
 - [x] Call logging (JSONL) + `--verbose` flag
 - [x] Security hardening — param redaction, HTTP token auth, vault ref validation
 - [x] `factorly sync` — push MCP config into AI clients (Claude Code, Cursor, Codex)
+- [ ] OAuth 2.1 server — [MCP-spec auth](docs/oauth-server-spec.md) with PKCE, dynamic registration, token endpoints
 - [ ] `factorly logs` — view/query the call log
 - [ ] External vault backends (1Password, GCP Secret Manager, AWS)
 - [ ] Hosted version (Factorly Cloud)
