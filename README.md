@@ -63,7 +63,10 @@ cd factorly && make init && make build
 # Initialize a project
 factorly init
 
-# Add a tool
+# Add a tool from a curl command
+echo 'curl -H "Authorization: Bearer $TOKEN" https://api.example.com/data' | factorly tools record
+
+# Or add interactively
 factorly tools add --name web.fetch --type cli --command curl --args '-s,{url}'
 
 # Use it

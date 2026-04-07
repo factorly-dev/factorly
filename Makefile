@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-integration clean vet lint fix fmt tidy ci release version run init
+.PHONY: build test test-unit test-integration test-coverage clean vet lint fix fmt tidy ci release version run init
 
 BINARY  := factorly
 OUTDIR  := build
@@ -17,7 +17,13 @@ run:
 test: test-unit test-integration
 
 test-unit:
-	cd $(SRCDIR) && $(GOTESTSUM) --format testname -- ./...
+	cd $(SRCDIR) && $(GOTESTSUM) --format testname -- -cover ./...
+
+test-coverage:
+	@mkdir -p $(OUTDIR)
+	cd $(SRCDIR) && go test -coverprofile=../$(OUTDIR)/coverage.out ./...
+	cd $(SRCDIR) && go tool cover -func=../$(OUTDIR)/coverage.out | tail -1
+	@echo "Full report: go tool cover -html=$(OUTDIR)/coverage.out"
 
 test-integration: build
 	cd $(SRCDIR) && $(GOTESTSUM) --format testname -- -tags integration ./test/...
