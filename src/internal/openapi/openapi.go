@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-hq/factorly-cli/internal/config"
 	"gopkg.in/yaml.v3"
 )
 

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"syscall"
 
-	factorlyServer "github.com/factorly-dev/factorly/internal/server"
-	"github.com/factorly-dev/factorly/internal/vault"
+	factorlyServer "github.com/factorly-hq/factorly-cli/internal/server"
+	"github.com/factorly-hq/factorly-cli/internal/vault"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 )

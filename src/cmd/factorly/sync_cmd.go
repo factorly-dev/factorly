@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/factorly-dev/factorly/internal/vault"
+	"github.com/factorly-hq/factorly-cli/internal/vault"
 	"github.com/spf13/cobra"
 )
 

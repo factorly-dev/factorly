@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/factorly-dev/factorly/internal/oauth"
+	"github.com/factorly-hq/factorly-cli/internal/oauth"
 )
 
 type RESTParamDef struct {

@@ -10,10 +10,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/factorly-dev/factorly/internal/config"
-	"github.com/factorly-dev/factorly/internal/oauth"
-	"github.com/factorly-dev/factorly/internal/provider"
-	"github.com/factorly-dev/factorly/internal/vault"
+	"github.com/factorly-hq/factorly-cli/internal/config"
+	"github.com/factorly-hq/factorly-cli/internal/oauth"
+	"github.com/factorly-hq/factorly-cli/internal/provider"
+	"github.com/factorly-hq/factorly-cli/internal/vault"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/spf13/cobra"
 )
