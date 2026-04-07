@@ -111,25 +111,9 @@ tools:
 
 See the full [Config Reference](docs/config-reference.md) for all options.
 
-## What You Get
-
-- **One endpoint** — your agent connects to Factorly, sees everything
-- **Credentials secured** — secrets live in the encrypted vault or env vars, never in the agent
-- **Every call logged** — every tool call is logged with timestamp, parameters, and response summary
-- **Zero lock-in** — your tools don't change. Remove Factorly and everything still works independently
-- **Any protocol** — MCP servers, REST APIs, CLI tools. One config format for all of them
-
-| Type | How It Works | Status |
-|---|---|---|
-| **CLI commands** | Define command + args in YAML. `{param}` placeholders substituted. | Working |
-| **REST APIs** | Define base URL, method, path, auth, parameters. HTTP calls with routing. | Working |
-| **MCP servers** | Spawn child servers (stdio) or connect to remote (HTTP). Tools discovered automatically. | Working |
-
-> **Note on MCP authorization:** The [MCP spec](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization) defines OAuth 2.1 as the standard HTTP auth mechanism, but notes it is **optional**. Factorly uses static Bearer token auth (`--http-token`), which works with all major MCP clients. OAuth 2.1 server support is [planned](docs/oauth-server-spec.md) for hosted deployments.
-
 ## Documentation
 
-Full documentation is in the **[docs/](docs/)** directory — config reference, CLI reference, vault, OAuth, OpenAPI import, project directory, logging, and development guide.
+Full documentation is in the **[docs/](docs/)** directory — [getting started](docs/getting-started.md), config reference, CLI reference, vault, OAuth, OpenAPI import, and more.
 
 ## Examples
 
@@ -158,13 +142,6 @@ Full documentation is in the **[docs/](docs/)** directory — config reference, 
 - [ ] Hosted version (Factorly Cloud)
 - [ ] Team configs and shared credential vault
 - [ ] Dashboard and audit log UI
-
-## Philosophy
-
-- **Wrap, don't replace.** Your tools don't change. Factorly sits in front.
-- **Zero lock-in.** Remove Factorly and everything still works.
-- **Credentials are not your agent's business.** Secrets live in Factorly, not in your agent.
-- **Log everything.** If an agent did it, there's a record.
 
 ## License
 
