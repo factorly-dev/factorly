@@ -38,3 +38,14 @@ jobs:
             build/factorly-darwin-amd64
             build/factorly-darwin-arm64
             build/factorly-windows-amd64.exe
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        working-directory: npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-integration test-coverage clean vet lint fix fmt tidy ci release version run init
+.PHONY: build test test-unit test-integration test-coverage clean vet lint fix fmt tidy ci release version check-version run init
 
 BINARY  := factorly
 OUTDIR  := build
@@ -51,7 +51,16 @@ fix:
 
 fmt: fix
 
-ci: tidy fmt vet lint test
+check-version:
+	@GO_VERSION=$(VERSION); \
+	NPM_VERSION=$$(node -p "require('./npm/package.json').version" 2>/dev/null || echo "missing"); \
+	if [ "$$GO_VERSION" != "$$NPM_VERSION" ]; then \
+		echo "Version mismatch: Go=$$GO_VERSION npm=$$NPM_VERSION" >&2; \
+		exit 1; \
+	fi; \
+	echo "Versions aligned: $$GO_VERSION"
+
+ci: tidy fmt vet lint check-version test
 
 clean:
 	rm -rf $(OUTDIR)
@@ -73,8 +82,9 @@ version:
 	esac; \
 	NEW="$$major.$$minor.$$patch"; \
 	sed -i "s/Version    = \"$(VERSION)\"/Version    = \"$$NEW\"/" $(SRCDIR)/internal/version.go; \
+	sed -i "s/\"version\": \"$(VERSION)\"/\"version\": \"$$NEW\"/" npm/package.json; \
 	echo "$(VERSION) → $$NEW"; \
-	git add $(SRCDIR)/internal/version.go; \
+	git add $(SRCDIR)/internal/version.go npm/package.json; \
 	git commit -m "Bump version to $$NEW"; \
 	git tag "v$$NEW"; \
 	echo "Tagged v$$NEW"

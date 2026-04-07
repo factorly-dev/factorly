@@ -1,0 +1,32 @@
+{
+  "name": "factorly",
+  "version": "0.1.0",
+  "description": "Your agent calls tools. Factorly holds the keys.",
+  "homepage": "https://github.com/factorly-hq/factorly-cli",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/factorly-hq/factorly-cli.git"
+  },
+  "license": "MIT",
+  "bin": {
+    "factorly": "./bin/factorly"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "keywords": [
+    "mcp",
+    "agent",
+    "tools",
+    "cli",
+    "vault",
+    "oauth",
+    "openapi",
+    "factorly"
+  ],
+  "files": [
+    "install.js",
+    "bin/",
+    "binary/"
+  ]
+}

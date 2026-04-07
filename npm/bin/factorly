@@ -1,0 +1,25 @@
+#!/bin/sh
+# Shell wrapper for the factorly binary.
+# The actual binary is downloaded by install.js during npm postinstall.
+
+# Resolve symlinks to find the real script location
+SCRIPT="$0"
+while [ -L "$SCRIPT" ]; do
+  SCRIPT_DIR="$(cd "$(dirname "$SCRIPT")" && pwd)"
+  SCRIPT="$(readlink "$SCRIPT")"
+  # Handle relative symlinks
+  case "$SCRIPT" in /*) ;; *) SCRIPT="$SCRIPT_DIR/$SCRIPT" ;; esac
+done
+BASEDIR="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
+BINARY="$BASEDIR/binary/factorly"
+
+if [ "$(uname -s)" = "Windows_NT" ] || [ -n "$COMSPEC" ]; then
+  BINARY="$BASEDIR/binary/factorly.exe"
+fi
+
+if [ ! -f "$BINARY" ]; then
+  echo "factorly binary not found. Run 'npm install' to download it." >&2
+  exit 1
+fi
+
+exec "$BINARY" "$@"
