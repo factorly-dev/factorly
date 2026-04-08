@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/factorly-hq/factorly-cli/internal/vault"
 	"gopkg.in/yaml.v3"
 )
 
@@ -80,7 +81,6 @@ type ParamConfig struct {
 	In          string `yaml:"in,omitempty"` // "query", "path", "header", "body"
 }
 
-var envVarPattern = regexp.MustCompile(`\{\{env:([A-Za-z_][A-Za-z0-9_]*)\}\}`)
 var placeholderPattern = regexp.MustCompile(`\{\{([A-Za-z_][A-Za-z0-9_-]*)\}\}`)
 
 func Load(path string) (*Config, error) {
@@ -145,7 +145,7 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
-	resolveEnvVars(&cfg)
+	resolveBackendRefs(&cfg)
 	inferParameters(&cfg)
 
 	if err := validate(&cfg); err != nil {
@@ -163,7 +163,7 @@ func LoadDir(dirPath string) (*Config, error) {
 	}
 
 	cfg := &Config{Tools: tools}
-	resolveEnvVars(cfg)
+	resolveBackendRefs(cfg)
 	inferParameters(cfg)
 
 	if err := validate(cfg); err != nil {
@@ -294,53 +294,50 @@ func mergeProjectDir(cfg *Config, baseDir string) error {
 	return nil
 }
 
-func resolveEnvVars(cfg *Config) {
+// resolveBackendRefs resolves {{env:VAR}} references in config using the env backend.
+// Other backends (vault, 1password, etc.) are resolved later in bootstrapProviders.
+func resolveBackendRefs(cfg *Config) {
+	r := vault.NewResolver()
+	r.Register("env", vault.EnvBackend{})
+
+	resolve := func(s string) string {
+		resolved, _ := r.Resolve(s)
+		return resolved
+	}
+
 	for name, tool := range cfg.Tools {
-		tool.Command = resolveString(tool.Command)
-		tool.Description = resolveString(tool.Description)
-		tool.Stdin = resolveString(tool.Stdin)
+		tool.Command = resolve(tool.Command)
+		tool.Description = resolve(tool.Description)
+		tool.Stdin = resolve(tool.Stdin)
 		for i, arg := range tool.Args {
-			tool.Args[i] = resolveString(arg)
+			tool.Args[i] = resolve(arg)
 		}
 		for k, v := range tool.Env {
-			tool.Env[k] = resolveString(v)
+			tool.Env[k] = resolve(v)
 		}
-		// MCP fields
-		tool.URL = resolveString(tool.URL)
-		// REST fields
-		tool.BaseURL = resolveString(tool.BaseURL)
-		tool.Path = resolveString(tool.Path)
+		tool.URL = resolve(tool.URL)
+		tool.BaseURL = resolve(tool.BaseURL)
+		tool.Path = resolve(tool.Path)
 		for k, v := range tool.Headers {
-			tool.Headers[k] = resolveString(v)
+			tool.Headers[k] = resolve(v)
 		}
 		if tool.Auth != nil {
-			tool.Auth.Token = resolveString(tool.Auth.Token)
-			tool.Auth.Value = resolveString(tool.Auth.Value)
-			tool.Auth.ClientID = resolveString(tool.Auth.ClientID)
-			tool.Auth.ClientSecret = resolveString(tool.Auth.ClientSecret)
-			tool.Auth.AuthURL = resolveString(tool.Auth.AuthURL)
-			tool.Auth.TokenURL = resolveString(tool.Auth.TokenURL)
+			tool.Auth.Token = resolve(tool.Auth.Token)
+			tool.Auth.Value = resolve(tool.Auth.Value)
+			tool.Auth.ClientID = resolve(tool.Auth.ClientID)
+			tool.Auth.ClientSecret = resolve(tool.Auth.ClientSecret)
+			tool.Auth.AuthURL = resolve(tool.Auth.AuthURL)
+			tool.Auth.TokenURL = resolve(tool.Auth.TokenURL)
 		}
 		cfg.Tools[name] = tool
 	}
-	// Resolve env vars in oauth_providers
 	for name, p := range cfg.OAuthProviders {
-		p.ClientID = resolveString(p.ClientID)
-		p.ClientSecret = resolveString(p.ClientSecret)
-		p.AuthURL = resolveString(p.AuthURL)
-		p.TokenURL = resolveString(p.TokenURL)
+		p.ClientID = resolve(p.ClientID)
+		p.ClientSecret = resolve(p.ClientSecret)
+		p.AuthURL = resolve(p.AuthURL)
+		p.TokenURL = resolve(p.TokenURL)
 		cfg.OAuthProviders[name] = p
 	}
-}
-
-func resolveString(s string) string {
-	return envVarPattern.ReplaceAllStringFunc(s, func(match string) string {
-		varName := envVarPattern.FindStringSubmatch(match)[1]
-		if val, ok := os.LookupEnv(varName); ok {
-			return val
-		}
-		return match
-	})
 }
 
 func inferParameters(cfg *Config) {
