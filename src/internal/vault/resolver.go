@@ -48,7 +48,16 @@ func (r *Resolver) Resolve(s string) (string, error) {
 	return result, resolveErr
 }
 
-// HasVaultRefs returns true if the string contains any {{backend:key}} references.
+// HasVaultRefs returns true if the string contains any {{backend:key}} references
+// that require vault access. Excludes {{env:VAR}} since env vars are resolved
+// at config load time — unresolved env refs mean the var isn't set, not that
+// the vault is needed.
 func HasVaultRefs(s string) bool {
-	return refPattern.MatchString(s)
+	matches := refPattern.FindAllStringSubmatch(s, -1)
+	for _, m := range matches {
+		if len(m) >= 2 && m[1] != "env" {
+			return true
+		}
+	}
+	return false
 }
