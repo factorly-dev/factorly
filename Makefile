@@ -83,8 +83,10 @@ version:
 	NEW="$$major.$$minor.$$patch"; \
 	sed -i "s/Version    = \"$(VERSION)\"/Version    = \"$$NEW\"/" $(SRCDIR)/internal/version.go; \
 	sed -i "s/\"version\": \"$(VERSION)\"/\"version\": \"$$NEW\"/" npm/package.json; \
+	sed -i "s/Release-v$(VERSION)-/Release-v$$NEW-/" README.md; \
+	sed -i "s/Release-v$(VERSION)-/Release-v$$NEW-/" npm/README.md; \
 	echo "$(VERSION) → $$NEW"; \
-	git add $(SRCDIR)/internal/version.go npm/package.json; \
+	git add $(SRCDIR)/internal/version.go npm/package.json README.md npm/README.md; \
 	git commit -m "Bump version to $$NEW"; \
 	git tag "v$$NEW"; \
 	echo "Tagged v$$NEW"
