@@ -6,7 +6,7 @@ stripe.customers:
   path: /customers
   auth:
     type: bearer
-    token: "${STRIPE_SECRET_KEY}"
+    token: "{{env:STRIPE_SECRET_KEY}}"
   parameters:
     - name: limit
       in: query
@@ -21,7 +21,7 @@ stripe.charges:
   path: /charges
   auth:
     type: bearer
-    token: "${STRIPE_SECRET_KEY}"
+    token: "{{env:STRIPE_SECRET_KEY}}"
   parameters:
     - name: customer
       in: query

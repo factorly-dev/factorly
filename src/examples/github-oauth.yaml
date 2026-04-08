@@ -14,8 +14,8 @@
 
 oauth_providers:
   github:
-    client_id: ${vault:GITHUB_CLIENT_ID}
-    client_secret: ${vault:GITHUB_CLIENT_SECRET}
+    client_id: {{vault:GITHUB_CLIENT_ID}}
+    client_secret: {{vault:GITHUB_CLIENT_SECRET}}
     auth_url: https://github.com/login/oauth/authorize
     token_url: https://github.com/login/oauth/access_token
     scopes: ["repo", "read:user"]

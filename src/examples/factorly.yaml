@@ -3,9 +3,9 @@ tools:
     type: cli
     description: "Fetch a webpage"
     command: curl
-    args: ["-s", "{url}"]
+    args: ["-s", "{{url}}"]
   file.read:
     type: cli
     description: "Read a file"
     command: cat
-    args: ["{path}"]
+    args: ["{{path}}"]

@@ -119,15 +119,15 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 	// Substitute path parameters
 	urlPath := def.Path
 	for name, value := range pathParams {
-		urlPath = strings.ReplaceAll(urlPath, "{"+name+"}", url.PathEscape(value))
+		urlPath = strings.ReplaceAll(urlPath, "{{"+name+"}}", url.PathEscape(value))
 	}
 
 	// Check for unresolved path placeholders
-	if idx := strings.Index(urlPath, "{"); idx != -1 {
-		end := strings.Index(urlPath[idx:], "}")
+	if idx := strings.Index(urlPath, "{{"); idx != -1 {
+		end := strings.Index(urlPath[idx:], "}}")
 		if end != -1 {
-			placeholder := urlPath[idx+1 : idx+end]
-			return nil, fmt.Errorf("rest provider: unresolved path parameter {%s} in tool %q", placeholder, toolName)
+			placeholder := urlPath[idx+2 : idx+end]
+			return nil, fmt.Errorf("rest provider: unresolved path parameter {{%s}} in tool %q", placeholder, toolName)
 		}
 	}
 

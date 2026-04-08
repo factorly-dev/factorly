@@ -26,7 +26,7 @@ func TestResolveVaultRef(t *testing.T) {
 	r := NewResolver()
 	r.Register("vault", &mockBackend{secrets: map[string]string{"TOKEN": "secret123"}})
 
-	result, err := r.Resolve("Bearer ${vault:TOKEN}")
+	result, err := r.Resolve("Bearer {{vault:TOKEN}}")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestResolveMultipleRefs(t *testing.T) {
 		"PASS": "s3cret",
 	}})
 
-	result, err := r.Resolve("${vault:USER}:${vault:PASS}")
+	result, err := r.Resolve("{{vault:USER}}:{{vault:PASS}}")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,13 +66,13 @@ func TestResolveNoRefs(t *testing.T) {
 func TestResolveEnvVarPassesThrough(t *testing.T) {
 	r := NewResolver()
 
-	// ${ENV_VAR} (no colon) should not be matched by the resolver
-	result, err := r.Resolve("${ENV_VAR}")
+	// {{ENV_VAR}} (no colon) should not be matched by the resolver
+	result, err := r.Resolve("{{ENV_VAR}}")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result != "${ENV_VAR}" {
-		t.Errorf("expected '${ENV_VAR}' unchanged, got %q", result)
+	if result != "{{ENV_VAR}}" {
+		t.Errorf("expected '{{ENV_VAR}}' unchanged, got %q", result)
 	}
 }
 
@@ -92,7 +92,7 @@ func TestResolveMissingKey(t *testing.T) {
 	r := NewResolver()
 	r.Register("vault", &mockBackend{secrets: map[string]string{}})
 
-	_, err := r.Resolve("${vault:MISSING}")
+	_, err := r.Resolve("{{vault:MISSING}}")
 	if err == nil {
 		t.Fatal("expected error for missing key")
 	}
@@ -102,7 +102,7 @@ func TestResolveMissingKeyErrorDoesNotLeakKeyName(t *testing.T) {
 	r := NewResolver()
 	r.Register("vault", &mockBackend{secrets: map[string]string{}})
 
-	_, err := r.Resolve("${vault:SECRET_API_KEY}")
+	_, err := r.Resolve("{{vault:SECRET_API_KEY}}")
 	if err == nil {
 		t.Fatal("expected error for missing key")
 	}
@@ -122,7 +122,7 @@ func TestResolveMultipleBackends(t *testing.T) {
 	r.Register("vault", &mockBackend{secrets: map[string]string{"A": "from-vault"}})
 	r.Register("other", &mockBackend{secrets: map[string]string{"B": "from-other"}})
 
-	result, err := r.Resolve("${vault:A} and ${other:B}")
+	result, err := r.Resolve("{{vault:A}} and {{other:B}}")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestResolvePathStyle(t *testing.T) {
 		"Development/GitHub/token": "ghp_xxx",
 	}})
 
-	result, err := r.Resolve("${1password:Development/GitHub/token}")
+	result, err := r.Resolve("{{1password:Development/GitHub/token}}")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,10 +151,10 @@ func TestHasVaultRefs(t *testing.T) {
 		input string
 		want  bool
 	}{
-		{"${vault:TOKEN}", true},
-		{"${1password:vault/item}", true},
-		{"prefix ${vault:KEY} suffix", true},
-		{"${ENV_VAR}", false},
+		{"{{vault:TOKEN}}", true},
+		{"{{1password:vault/item}}", true},
+		{"prefix {{vault:KEY}} suffix", true},
+		{"{{ENV_VAR}}", false},
 		{"no refs here", false},
 		{"", false},
 	}

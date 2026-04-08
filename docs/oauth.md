@@ -8,8 +8,8 @@ For tools that use OAuth 2.0 (Google, GitHub, Microsoft, Slack), Factorly handle
 # Shared provider definition (reused across tools)
 oauth_providers:
   google:
-    client_id: ${vault:GOOGLE_CLIENT_ID}
-    client_secret: ${vault:GOOGLE_CLIENT_SECRET}
+    client_id: {{vault:GOOGLE_CLIENT_ID}}
+    client_secret: {{vault:GOOGLE_CLIENT_SECRET}}
     auth_url: https://accounts.google.com/o/oauth2/v2/auth
     token_url: https://oauth2.googleapis.com/token
     scopes: ["https://www.googleapis.com/auth/drive.readonly"]
@@ -36,8 +36,8 @@ tools:
     path: /user/repos
     auth:
       type: oauth
-      client_id: ${vault:GITHUB_CLIENT_ID}
-      client_secret: ${vault:GITHUB_CLIENT_SECRET}
+      client_id: {{vault:GITHUB_CLIENT_ID}}
+      client_secret: {{vault:GITHUB_CLIENT_SECRET}}
       auth_url: https://github.com/login/oauth/authorize
       token_url: https://github.com/login/oauth/access_token
       scopes: ["repo"]

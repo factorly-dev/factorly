@@ -82,7 +82,7 @@ func TestConvertToolNoParams(t *testing.T) {
 
 func TestMakeHandlerSuccess(t *testing.T) {
 	p, _ := buildTestProxy(map[string]provider.CLIToolDef{
-		"echo.test": {Command: "echo", Args: []string{"{msg}"}},
+		"echo.test": {Command: "echo", Args: []string{"{{msg}}"}},
 	})
 
 	handler := makeHandler(p, "echo.test")
@@ -126,7 +126,7 @@ func TestMakeHandlerToolError(t *testing.T) {
 
 func TestMakeHandlerProxyError(t *testing.T) {
 	p, _ := buildTestProxy(map[string]provider.CLIToolDef{
-		"echo.test": {Command: "echo", Args: []string{"{msg}"}},
+		"echo.test": {Command: "echo", Args: []string{"{{msg}}"}},
 	})
 
 	// Call a tool that doesn't exist
@@ -145,7 +145,7 @@ func TestMakeHandlerProxyError(t *testing.T) {
 
 func TestMakeHandlerParamExtraction(t *testing.T) {
 	p, _ := buildTestProxy(map[string]provider.CLIToolDef{
-		"echo.test": {Command: "echo", Args: []string{"{msg}"}},
+		"echo.test": {Command: "echo", Args: []string{"{{msg}}"}},
 	})
 
 	handler := makeHandler(p, "echo.test")

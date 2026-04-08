@@ -25,14 +25,14 @@ factorly vault delete OLD_KEY
 
 ## Reference in config
 
-Use `${vault:KEY}` anywhere you'd use `${ENV_VAR}`:
+Use `{{vault:KEY}}` anywhere you'd use `{{env:ENV_VAR}}`:
 
 ```yaml
 # Env var (plain text in environment)
-token: "${GITHUB_TOKEN}"
+token: "{{env:GITHUB_TOKEN}}"
 
 # Vault (encrypted on disk, decrypted on demand)
-token: "${vault:GITHUB_TOKEN}"
+token: "{{vault:GITHUB_TOKEN}}"
 ```
 
 Both work. Mix and match per tool. Vault references are resolved at call time — the agent never sees either form.
@@ -48,7 +48,7 @@ factorly vault set GITHUB_TOKEN
   → re-encrypts vault file to disk
 
 factorly call github.repos --username octocat
-  → loads config, finds ${vault:GITHUB_TOKEN}
+  → loads config, finds {{vault:GITHUB_TOKEN}}
   → decrypts vault index (key names + encrypted blobs)
   → decrypts only the requested entry on demand
   → injects into Authorization header
@@ -86,9 +86,9 @@ The vault uses a `Backend` interface. The local encrypted file is the default ba
 
 ```yaml
 # Coming soon
-token: "${1password:Development/GitHub/token}"
-token: "${gcp-sm:project-id/GITHUB_TOKEN}"
-token: "${aws-sm:prod/stripe-key}"
+token: "{{1password:Development/GitHub/token}}"
+token: "{{gcp-sm:project-id/GITHUB_TOKEN}}"
+token: "{{aws-sm:prod/stripe-key}}"
 ```
 
 ---

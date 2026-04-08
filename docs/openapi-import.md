@@ -41,7 +41,7 @@ petstore.listPets:
   path: /pets
   auth:
     type: bearer
-    token: ${PET_STORE_TOKEN}
+    token: {{env:PET_STORE_TOKEN}}
   parameters:
     - name: limit
       description: How many items to return

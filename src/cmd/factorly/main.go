@@ -125,6 +125,23 @@ var callCmd = &cobra.Command{
 			return err
 		}
 
+		// Resolve {{vault:KEY}} refs in parameter values
+		for _, v := range params {
+			if vault.HasVaultRefs(v) {
+				backend, err := openVault()
+				if err != nil {
+					return fmt.Errorf("resolving vault refs in params: %w", err)
+				}
+				defer backend.Close()
+				resolver := vault.NewResolver()
+				resolver.Register("vault", backend)
+				for k, pv := range params {
+					params[k] = resolveVaultRef(resolver, pv)
+				}
+				break
+			}
+		}
+
 		result, err := p.Execute(toolName, params, "cli")
 		if err != nil {
 			return err

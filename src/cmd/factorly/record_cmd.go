@@ -86,7 +86,7 @@ func runRecord(cmd *cobra.Command, args []string) error {
 				} else {
 					fmt.Fprintf(os.Stderr, "  Stored %s in vault\n", vaultKey)
 					// Update tool auth to use vault ref
-					vaultRef := "${vault:" + vaultKey + "}"
+					vaultRef := "{{vault:" + vaultKey + "}}"
 					if tool.Auth != nil {
 						switch tool.Auth.Type {
 						case "bearer":

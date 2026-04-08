@@ -33,7 +33,7 @@ var addCmd = &cobra.Command{
 	Long: `Interactively create a new tool definition and add it to your config.
 
 Use flags for non-interactive mode:
-  factorly tools add --name web.fetch --type cli --command curl --args '-s,{url}'
+  factorly tools add --name web.fetch --type cli --command curl --args '-s,{{url}}'
   factorly tools add --name slack --type mcp --command npx --args '@modelcontextprotocol/server-slack'`,
 	RunE: runAdd,
 }
@@ -188,11 +188,11 @@ func promptForTool(scanner *bufio.Scanner) (string, config.ToolConfig, error) {
 		if tool.Command == "" {
 			return "", tool, fmt.Errorf("command is required")
 		}
-		argsStr := prompt(scanner, "Args (comma-separated, use {param} for placeholders)", "")
+		argsStr := prompt(scanner, "Args (comma-separated, use {{param}} for placeholders)", "")
 		if argsStr != "" {
 			tool.Args = splitArgs(argsStr)
 		}
-		stdinStr := prompt(scanner, "Stdin template (optional, use {param} for placeholders)", "")
+		stdinStr := prompt(scanner, "Stdin template (optional, use {{param}} for placeholders)", "")
 		if stdinStr != "" {
 			tool.Stdin = stdinStr
 		}
@@ -203,14 +203,14 @@ func promptForTool(scanner *bufio.Scanner) (string, config.ToolConfig, error) {
 			return "", tool, fmt.Errorf("base_url is required")
 		}
 		tool.Method = strings.ToUpper(prompt(scanner, "Method", "GET"))
-		tool.Path = prompt(scanner, "Path (e.g., /api/v1/items/{id})", "")
+		tool.Path = prompt(scanner, "Path (e.g., /api/v1/items/{{id}})", "")
 
 		authType := prompt(scanner, "Auth type (bearer/basic/header/oauth/none)", "none")
 		if authType != "none" && authType != "" {
 			tool.Auth = &config.AuthConfig{Type: authType}
 			switch authType {
 			case "bearer":
-				tool.Auth.Token = prompt(scanner, "Token (or vault ref like ${vault:KEY})", "")
+				tool.Auth.Token = prompt(scanner, "Token (or vault ref like {{vault:KEY}}})", "")
 			case "basic":
 				tool.Auth.Token = prompt(scanner, "Credentials (user:pass or vault ref)", "")
 			case "header":

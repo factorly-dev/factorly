@@ -6,7 +6,7 @@ slack.post:
   path: /chat.postMessage
   auth:
     type: bearer
-    token: "${SLACK_BOT_TOKEN}"
+    token: "{{env:SLACK_BOT_TOKEN}}"
   parameters:
     - name: body
       in: body

@@ -10,7 +10,7 @@
 
 | Type | How It Works | Status |
 |---|---|---|
-| **CLI commands** | Define command + args in YAML. `{param}` placeholders substituted. | Working |
+| **CLI commands** | Define command + args in YAML. `{{param}}` placeholders substituted. | Working |
 | **REST APIs** | Define base URL, method, path, auth, parameters. HTTP calls with routing. | Working |
 | **MCP servers** | Spawn child servers (stdio) or connect to remote (HTTP). Tools discovered automatically. | Working |
 

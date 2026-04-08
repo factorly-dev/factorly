@@ -3,10 +3,10 @@ github.repos:
   description: "List repositories for a user"
   base_url: https://api.github.com
   method: GET
-  path: /users/{username}/repos
+  path: /users/{{username}}/repos
   auth:
     type: bearer
-    token: "${GITHUB_TOKEN}"
+    token: "{{env:GITHUB_TOKEN}}"
   headers:
     Accept: application/vnd.github.v3+json
   parameters:
@@ -23,10 +23,10 @@ github.issues:
   description: "List issues for a repository"
   base_url: https://api.github.com
   method: GET
-  path: /repos/{owner}/{repo}/issues
+  path: /repos/{{owner}}/{{repo}}/issues
   auth:
     type: bearer
-    token: "${GITHUB_TOKEN}"
+    token: "{{env:GITHUB_TOKEN}}"
   headers:
     Accept: application/vnd.github.v3+json
   parameters:
@@ -44,10 +44,10 @@ github.create_issue:
   description: "Create an issue in a repository"
   base_url: https://api.github.com
   method: POST
-  path: /repos/{owner}/{repo}/issues
+  path: /repos/{{owner}}/{{repo}}/issues
   auth:
     type: bearer
-    token: "${GITHUB_TOKEN}"
+    token: "{{env:GITHUB_TOKEN}}"
   headers:
     Accept: application/vnd.github.v3+json
   parameters:

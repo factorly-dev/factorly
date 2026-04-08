@@ -23,7 +23,7 @@ tools:
     type: cli
     description: "Fetch a webpage"
     command: curl
-    args: ["-s", "{url}"]
+    args: ["-s", "{{url}}"]
 `)
 	cfg, err := Load(path)
 	if err != nil {
@@ -55,11 +55,11 @@ tools:
   web.fetch:
     type: cli
     command: curl
-    args: ["-s", "{url}"]
+    args: ["-s", "{{url}}"]
   file.read:
     type: cli
     command: cat
-    args: ["{path}"]
+    args: ["{{path}}"]
 `)
 	cfg, err := Load(path)
 	if err != nil {
@@ -78,7 +78,7 @@ tools:
   api:
     type: cli
     command: curl
-    args: ["-H", "Authorization: ${FACTORLY_TEST_TOKEN}", "{url}"]
+    args: ["-H", "Authorization: {{env:FACTORLY_TEST_TOKEN}}", "{{url}}"]
 `)
 	cfg, err := Load(path)
 	if err != nil {
@@ -99,7 +99,7 @@ tools:
   api:
     type: cli
     command: curl
-    args: ["${FACTORLY_NONEXISTENT_VAR}"]
+    args: ["{{env:FACTORLY_NONEXISTENT_VAR}}"]
 `)
 	cfg, err := Load(path)
 	if err != nil {
@@ -107,7 +107,7 @@ tools:
 	}
 
 	tool := cfg.Tools["api"]
-	if tool.Args[0] != "${FACTORLY_NONEXISTENT_VAR}" {
+	if tool.Args[0] != "{{env:FACTORLY_NONEXISTENT_VAR}}" {
 		t.Errorf("expected unresolved placeholder, got %q", tool.Args[0])
 	}
 }
@@ -120,9 +120,9 @@ tools:
   api:
     type: cli
     command: curl
-    args: ["{url}"]
+    args: ["{{url}}"]
     env:
-      API_KEY: "${FACTORLY_TEST_KEY}"
+      API_KEY: "{{env:FACTORLY_TEST_KEY}}"
 `)
 	cfg, err := Load(path)
 	if err != nil {
@@ -141,7 +141,7 @@ tools:
   web.fetch:
     type: cli
     command: curl
-    args: ["-s", "-o", "{output}", "{url}"]
+    args: ["-s", "-o", "{{output}}", "{{url}}"]
 `)
 	cfg, err := Load(path)
 	if err != nil {
@@ -176,7 +176,7 @@ tools:
   web.fetch:
     type: cli
     command: curl
-    args: ["-s", "{url}"]
+    args: ["-s", "{{url}}"]
     parameters:
       - name: url
         description: "The URL to fetch"
@@ -202,7 +202,7 @@ tools:
   test:
     type: cli
     command: echo
-    args: ["{name}", "hello", "{name}"]
+    args: ["{{name}}", "hello", "{{name}}"]
 `)
 	cfg, err := Load(path)
 	if err != nil {
@@ -282,15 +282,15 @@ tools:
 }
 
 func TestHasPlaceholder(t *testing.T) {
-	args := []string{"-s", "{url}", "-o", "{output}"}
+	args := []string{"-s", "{{url}}", "-o", "{{output}}"}
 	if !HasPlaceholder(args, "url") {
-		t.Error("expected to find {url}")
+		t.Error("expected to find {{url}}")
 	}
 	if !HasPlaceholder(args, "output") {
-		t.Error("expected to find {output}")
+		t.Error("expected to find {{output}}")
 	}
 	if HasPlaceholder(args, "missing") {
-		t.Error("did not expect to find {missing}")
+		t.Error("did not expect to find {{missing}}")
 	}
 }
 
@@ -316,7 +316,7 @@ func TestToolsDirLoading(t *testing.T) {
 echo.test:
   type: cli
   command: echo
-  args: ["{msg}"]
+  args: ["{{msg}}"]
 `,
 	})
 
@@ -326,7 +326,7 @@ tools:
   web.fetch:
     type: cli
     command: curl
-    args: ["-s", "{url}"]
+    args: ["-s", "{{url}}"]
 `
 	path := writeTestConfig(t, configContent)
 	cfg, err := Load(path)
@@ -386,7 +386,7 @@ func TestToolsDirConflictWithInline(t *testing.T) {
 web.fetch:
   type: cli
   command: wget
-  args: ["{url}"]
+  args: ["{{url}}"]
 `,
 	})
 
@@ -396,7 +396,7 @@ tools:
   web.fetch:
     type: cli
     command: curl
-    args: ["-s", "{url}"]
+    args: ["-s", "{{url}}"]
 `
 	path := writeTestConfig(t, configContent)
 	_, err := Load(path)
@@ -437,7 +437,7 @@ func TestToolsDirOnly(t *testing.T) {
 echo.test:
   type: cli
   command: echo
-  args: ["{msg}"]
+  args: ["{{msg}}"]
 `,
 	})
 
@@ -463,11 +463,11 @@ func TestLoadDirDirectly(t *testing.T) {
 echo.test:
   type: cli
   command: echo
-  args: ["{msg}"]
+  args: ["{{msg}}"]
 web.fetch:
   type: cli
   command: curl
-  args: ["-s", "{url}"]
+  args: ["-s", "{{url}}"]
 `,
 	})
 
@@ -487,7 +487,7 @@ func TestToolsDirIgnoresNonYAML(t *testing.T) {
 echo.test:
   type: cli
   command: echo
-  args: ["{msg}"]
+  args: ["{{msg}}"]
 `,
 		"readme.txt": `this is not a yaml file`,
 		".hidden":    `also not yaml`,
@@ -509,7 +509,7 @@ func TestToolsDirParameterInference(t *testing.T) {
 echo.test:
   type: cli
   command: echo
-  args: ["{msg}", "{name}"]
+  args: ["{{msg}}", "{{name}}"]
 `,
 	})
 
@@ -531,7 +531,7 @@ tools:
   web.fetch:
     type: cli
     command: curl
-    args: ["-s", "{url}"]
+    args: ["-s", "{{url}}"]
 `
 	path := writeTestConfig(t, configContent)
 	_, err := Load(path)
@@ -579,7 +579,7 @@ tools:
     path: /data
     auth:
       type: bearer
-      token: "${API_TOKEN}"
+      token: "{{env:API_TOKEN}}"
     parameters:
       - name: limit
         in: query

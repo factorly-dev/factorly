@@ -5,9 +5,9 @@ import (
 	"regexp"
 )
 
-var refPattern = regexp.MustCompile(`\$\{([A-Za-z0-9_][A-Za-z0-9_-]*):([A-Za-z0-9_./-]+)\}`)
+var refPattern = regexp.MustCompile(`\{\{([A-Za-z0-9_][A-Za-z0-9_-]*):([A-Za-z0-9_./-]+)\}\}`)
 
-// Resolver resolves ${backend:key} references by dispatching to registered backends.
+// Resolver resolves {{backend:key}} references by dispatching to registered backends.
 type Resolver struct {
 	backends map[string]Backend
 }
@@ -25,7 +25,7 @@ func (r *Resolver) Backend(name string) Backend {
 	return r.backends[name]
 }
 
-// Resolve replaces all ${backend:key} references in s with their secret values.
+// Resolve replaces all {{backend:key}} references in s with their secret values.
 func (r *Resolver) Resolve(s string) (string, error) {
 	var resolveErr error
 	result := refPattern.ReplaceAllStringFunc(s, func(match string) string {
@@ -48,7 +48,14 @@ func (r *Resolver) Resolve(s string) (string, error) {
 	return result, resolveErr
 }
 
-// HasVaultRefs returns true if the string contains any ${backend:key} references.
+// HasVaultRefs returns true if the string contains any {{backend:key}} references,
+// excluding {{env:VAR}} which is handled by the config env var resolver.
 func HasVaultRefs(s string) bool {
-	return refPattern.MatchString(s)
+	matches := refPattern.FindAllStringSubmatch(s, -1)
+	for _, m := range matches {
+		if len(m) >= 2 && m[1] != "env" {
+			return true
+		}
+	}
+	return false
 }

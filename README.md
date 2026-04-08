@@ -67,7 +67,7 @@ factorly init
 echo 'curl -H "Authorization: Bearer $TOKEN" https://api.example.com/data' | factorly tools record
 
 # Or add interactively
-factorly tools add --name web.fetch --type cli --command curl --args '-s,{url}'
+factorly tools add --name web.fetch --type cli --command curl --args '-s,{{url}}'
 
 # Use it
 factorly call web.fetch --url "https://example.com"
@@ -88,17 +88,17 @@ tools:
     type: cli
     description: "Fetch a webpage"
     command: curl
-    args: ["-s", "{url}"]
+    args: ["-s", "{{url}}"]
 
   github.repos:
     type: rest
     description: "List repos for a user"
     base_url: https://api.github.com
     method: GET
-    path: /users/{username}/repos
+    path: /users/{{username}}/repos
     auth:
       type: bearer
-      token: "${vault:GITHUB_TOKEN}"
+      token: "{{vault:GITHUB_TOKEN}}"
     parameters:
       - name: username
         in: path
@@ -109,7 +109,7 @@ tools:
     command: npx
     args: ["@modelcontextprotocol/server-slack"]
     env:
-      SLACK_TOKEN: ${vault:SLACK_TOKEN}
+      SLACK_TOKEN: {{vault:SLACK_TOKEN}}
 ```
 
 See the full [Config Reference](docs/config-reference.md) for all options.
@@ -134,7 +134,7 @@ Full documentation is in the **[docs/](docs/)** directory — [getting started](
 - [x] `factorly status` — health check all tools and connections
 - [x] `factorly init` — interactive project setup
 - [x] `factorly sync` — push MCP config into AI clients (Claude Code, Cursor, Codex)
-- [x] Encrypted vault — `${vault:KEY}` with per-entry encryption (HKDF + AES-256-GCM)
+- [x] Encrypted vault — `{{vault:KEY}}` with per-entry encryption (HKDF + AES-256-GCM)
 - [x] OAuth authentication — `factorly auth login/status/logout` with PKCE + auto-refresh
 - [x] Interactive CLI tools — `interactive: true` for TTY passthrough
 - [x] Call logging (JSONL) + `--verbose` flag

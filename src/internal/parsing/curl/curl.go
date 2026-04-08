@@ -311,7 +311,7 @@ func DetectAuth(headers map[string]string, basicAuth string) *AuthDetection {
 	return nil
 }
 
-// ParameterizePath detects ID-like segments and replaces them with {param} placeholders.
+// ParameterizePath detects ID-like segments and replaces them with {{param}} placeholders.
 func ParameterizePath(path string) (string, []config.ParamConfig) {
 	segments := strings.Split(path, "/")
 	var params []config.ParamConfig
@@ -332,7 +332,7 @@ func ParameterizePath(path string) (string, []config.ParamConfig) {
 				}
 				paramName = slugify(prev) + "_id"
 			}
-			segments[i] = "{" + paramName + "}"
+			segments[i] = "{{" + paramName + "}}"
 			params = append(params, config.ParamConfig{
 				Name:     paramName,
 				In:       "path",

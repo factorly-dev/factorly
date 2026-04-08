@@ -107,12 +107,12 @@ tools:
     type: cli
     description: "Fetch a webpage"
     command: curl
-    args: ["-s", "{url}"]
+    args: ["-s", "{{url}}"]
   file.read:
     type: cli
     description: "Read a file"
     command: cat
-    args: ["{path}"]
+    args: ["{{path}}"]
 `,
 	})
 
@@ -140,7 +140,7 @@ tools:
   echo.test:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
 `,
 	})
 
@@ -160,7 +160,7 @@ tools:
   echo.multi:
     type: cli
     command: echo
-    args: ["{first}", "{second}"]
+    args: ["{{first}}", "{{second}}"]
 `,
 	})
 
@@ -180,7 +180,7 @@ tools:
   echo.test:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
 `,
 	})
 
@@ -197,7 +197,7 @@ tools:
   echo.test:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
 `,
 	})
 
@@ -233,7 +233,7 @@ tools:
   cat.input:
     type: cli
     command: cat
-    stdin: "{input}"
+    stdin: "{{input}}"
 `,
 	})
 
@@ -253,8 +253,8 @@ tools:
   grep.filter:
     type: cli
     command: grep
-    args: ["{pattern}"]
-    stdin: "{input}"
+    args: ["{{pattern}}"]
+    stdin: "{{input}}"
 `,
 	})
 
@@ -276,7 +276,7 @@ tools:
   cat.input:
     type: cli
     command: cat
-    stdin: "{data}"
+    stdin: "{{data}}"
 `,
 	})
 
@@ -300,13 +300,13 @@ tools:
   web.fetch:
     type: cli
     command: curl
-    args: ["-s", "{url}"]
+    args: ["-s", "{{url}}"]
 `,
 		"tools/echo.yaml": `
 echo.test:
   type: cli
   command: echo
-  args: ["{msg}"]
+  args: ["{{msg}}"]
 `,
 	})
 
@@ -332,7 +332,7 @@ tools: {}
 echo.test:
   type: cli
   command: echo
-  args: ["{msg}"]
+  args: ["{{msg}}"]
 `,
 	})
 
@@ -378,7 +378,7 @@ func TestConfigDirFlag(t *testing.T) {
 echo.test:
   type: cli
   command: echo
-  args: ["{msg}"]
+  args: ["{{msg}}"]
 `,
 	})
 
@@ -461,7 +461,7 @@ tools:
   echo.test:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
 `,
 	})
 
@@ -490,9 +490,9 @@ tools:
 	}
 
 	// Call the inline CLI tool — should still work
-	stdout, _, code = run(t, dir, "call", "echo.test", "--msg", "pipeline works")
+	stdout, stderrOut, code := run(t, dir, "call", "echo.test", "--msg", "pipeline works")
 	if code != 0 {
-		t.Fatal("call failed")
+		t.Fatalf("call failed (code %d): %s", code, stderrOut)
 	}
 	if strings.TrimSpace(stdout) != "pipeline works" {
 		t.Errorf("expected 'pipeline works', got %q", stdout)
@@ -574,7 +574,7 @@ tools:
     type: rest
     base_url: %s
     method: GET
-    path: /items/{id}
+    path: /items/{{id}}
     parameters:
       - name: id
         in: path
@@ -685,7 +685,7 @@ tools:
   echo:
     type: cli
     command: echo
-    args: ["{message}"]
+    args: ["{{message}}"]
 `,
 		"factorly.yaml": fmt.Sprintf(`
 tools:
@@ -712,12 +712,12 @@ tools:
   echo:
     type: cli
     command: echo
-    args: ["{message}"]
+    args: ["{{message}}"]
   cat:
     type: cli
     description: "Read a file"
     command: cat
-    args: ["{path}"]
+    args: ["{{path}}"]
 `,
 		"factorly.yaml": fmt.Sprintf(`
 tools:
@@ -750,7 +750,7 @@ tools:
   echo:
     type: cli
     command: echo
-    args: ["{message}"]
+    args: ["{{message}}"]
 `,
 		"factorly.yaml": fmt.Sprintf(`
 tools:
@@ -761,7 +761,7 @@ tools:
   local.echo:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
 `, binary),
 	})
 
@@ -920,11 +920,11 @@ tools:
   echo.test:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
   cat.test:
     type: cli
     command: cat
-    args: ["{path}"]
+    args: ["{{path}}"]
 `,
 	})
 
@@ -947,7 +947,7 @@ tools:
   good:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
   broken:
     type: cli
     command: nonexistent-command-12345
@@ -1004,7 +1004,7 @@ tools:
   echo:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
 `,
 		"factorly.yaml": fmt.Sprintf(`
 tools:
@@ -1036,7 +1036,7 @@ tools: {}
 `,
 	})
 
-	_, stderr, code := run(t, dir, "tools", "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{msg}")
+	_, stderr, code := run(t, dir, "tools", "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{{msg}}")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
 	}
@@ -1063,7 +1063,7 @@ tools: {}
 	})
 	os.MkdirAll(filepath.Join(dir, "tools"), 0o755)
 
-	_, _, code := run(t, dir, "tools", "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{msg}")
+	_, _, code := run(t, dir, "tools", "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{{msg}}")
 	if code != 0 {
 		t.Fatal("add failed")
 	}
@@ -1082,11 +1082,11 @@ tools:
   test.echo:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
 `,
 	})
 
-	_, _, code := run(t, dir, "tools", "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{msg}")
+	_, _, code := run(t, dir, "tools", "add", "--name", "test.echo", "--type", "cli", "--command", "echo", "--args", "{{msg}}")
 	if code == 0 {
 		t.Fatal("expected error for duplicate tool")
 	}
@@ -1099,11 +1099,11 @@ tools:
   test.echo:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
   keep.this:
     type: cli
     command: cat
-    args: ["{path}"]
+    args: ["{{path}}"]
 `,
 	})
 
@@ -1138,7 +1138,7 @@ tools: {}
 test.echo:
   type: cli
   command: echo
-  args: ["{msg}"]
+  args: ["{{msg}}"]
 `,
 	})
 
@@ -1161,7 +1161,7 @@ tools:
   test.echo:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
 `,
 	})
 
@@ -1204,7 +1204,7 @@ tools:
   echo.test:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
 `,
 	})
 
@@ -1235,7 +1235,7 @@ tools:
   echo:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
 `,
 	})
 
@@ -1367,6 +1367,38 @@ func TestSyncCursorDetection(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "factorly") {
 		t.Error("expected factorly in cursor config")
+	}
+}
+
+// --- Vault Refs in Params ---
+
+func TestCallParamWithVaultRef(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo.test:
+    type: cli
+    command: echo
+    args: ["{{text}}"]
+`,
+	})
+
+	vaultPath := filepath.Join(dir, "vault.enc")
+
+	// Store a secret
+	_, _, code := runVault(t, vaultPath, "vault", "set", "MY_SECRET", "resolved-value")
+	if code != 0 {
+		t.Fatal("vault set failed")
+	}
+
+	// Call with {{vault:KEY}} as param value — should resolve
+	stdout, _, code := runVault(t, vaultPath, "-c", filepath.Join(dir, "factorly.yaml"),
+		"call", "echo.test", "--text", "{{vault:MY_SECRET}}")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if strings.TrimSpace(stdout) != "resolved-value" {
+		t.Errorf("expected 'resolved-value', got %q", stdout)
 	}
 }
 
@@ -1514,7 +1546,7 @@ tools:
   echo.project:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
 `,
 	})
 
@@ -1534,7 +1566,7 @@ func TestProjectDirLooseFiles(t *testing.T) {
 echo.loose:
   type: cli
   command: echo
-  args: ["{msg}"]
+  args: ["{{msg}}"]
 `,
 	})
 
@@ -1554,13 +1586,13 @@ tools:
   web.fetch:
     type: cli
     command: curl
-    args: ["-s", "{url}"]
+    args: ["-s", "{{url}}"]
 `,
 		".factorly/echo.yaml": `
 echo.project:
   type: cli
   command: echo
-  args: ["{msg}"]
+  args: ["{{msg}}"]
 `,
 	})
 
@@ -1660,7 +1692,7 @@ tools:
     path: /data
     auth:
       type: bearer
-      token: "${vault:API_SECRET}"
+      token: "{{vault:API_SECRET}}"
 `, srv.URL),
 	})
 
@@ -1733,7 +1765,7 @@ tools:
     description: "Get a user"
     base_url: %s
     method: GET
-    path: /users/{username}
+    path: /users/{{username}}
     auth:
       type: bearer
       token: "%s"
@@ -1862,7 +1894,7 @@ tools:
   echo.safe:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
 `, srv.URL, githubSecret, srv.URL, slackSecret),
 	})
 
@@ -1983,7 +2015,7 @@ tools:
   echo.test:
     type: cli
     command: echo
-    args: ["{msg}"]
+    args: ["{{msg}}"]
 `,
 	})
 
@@ -2029,7 +2061,7 @@ tools:
     path: /data
     auth:
       type: bearer
-      token: "${vault:VERBOSE_SECRET}"
+      token: "{{vault:VERBOSE_SECRET}}"
 `, srv.URL),
 	})
 

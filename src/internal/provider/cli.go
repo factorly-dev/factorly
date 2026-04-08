@@ -13,7 +13,7 @@ import (
 type CLIToolDef struct {
 	Command     string
 	Args        []string
-	Stdin       string // template with {param} placeholders, piped to subprocess stdin
+	Stdin       string // template with {{param}} placeholders, piped to subprocess stdin
 	Interactive bool   // connect subprocess to terminal (stdin/stdout/stderr)
 	Env         map[string]string
 	Timeout     time.Duration
@@ -41,18 +41,22 @@ func (p *CLIProvider) Execute(toolName string, params map[string]string) (*Resul
 		return nil, fmt.Errorf("cli provider: tool %q not registered", toolName)
 	}
 
-	args := substituteArgs(def.Args, params)
-
-	// Check for unresolved placeholders
-	for _, arg := range args {
-		if idx := strings.Index(arg, "{"); idx != -1 {
-			end := strings.Index(arg[idx:], "}")
+	// Check for unresolved placeholders in templates before substitution.
+	for _, tmpl := range def.Args {
+		remaining := tmpl
+		for k := range params {
+			remaining = strings.ReplaceAll(remaining, "{{"+k+"}}", "")
+		}
+		if idx := strings.Index(remaining, "{{"); idx != -1 {
+			end := strings.Index(remaining[idx:], "}}")
 			if end != -1 {
-				placeholder := arg[idx+1 : idx+end]
-				return nil, fmt.Errorf("cli provider: unresolved parameter {%s} in tool %q", placeholder, toolName)
+				placeholder := remaining[idx+2 : idx+end]
+				return nil, fmt.Errorf("cli provider: unresolved parameter {{%s}} in tool %q", placeholder, toolName)
 			}
 		}
 	}
+
+	args := substituteArgs(def.Args, params)
 
 	timeout := def.Timeout
 	if timeout == 0 {
@@ -129,7 +133,7 @@ func (p *CLIProvider) Execute(toolName string, params map[string]string) (*Resul
 func substituteString(tmpl string, params map[string]string) string {
 	result := tmpl
 	for k, v := range params {
-		result = strings.ReplaceAll(result, "{"+k+"}", v)
+		result = strings.ReplaceAll(result, "{{"+k+"}}", v)
 	}
 	return result
 }
@@ -139,7 +143,7 @@ func substituteArgs(templates []string, params map[string]string) []string {
 	for i, tmpl := range templates {
 		result := tmpl
 		for k, v := range params {
-			result = strings.ReplaceAll(result, "{"+k+"}", v)
+			result = strings.ReplaceAll(result, "{{"+k+"}}", v)
 		}
 		args[i] = result
 	}

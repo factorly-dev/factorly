@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -29,7 +30,7 @@ func TestCLIExecuteEcho(t *testing.T) {
 	p := NewCLI(map[string]CLIToolDef{
 		"test.echo": {
 			Command: "echo",
-			Args:    []string{"{message}"},
+			Args:    []string{"{{message}}"},
 		},
 	})
 
@@ -52,7 +53,7 @@ func TestCLIExecuteMultipleParams(t *testing.T) {
 	p := NewCLI(map[string]CLIToolDef{
 		"test.multi": {
 			Command: "echo",
-			Args:    []string{"{first}", "{second}"},
+			Args:    []string{"{{first}}", "{{second}}"},
 		},
 	})
 
@@ -89,7 +90,7 @@ func TestCLIExecuteUnresolvedPlaceholder(t *testing.T) {
 	p := NewCLI(map[string]CLIToolDef{
 		"test.missing": {
 			Command: "echo",
-			Args:    []string{"{url}"},
+			Args:    []string{"{{url}}"},
 		},
 	})
 
@@ -163,6 +164,43 @@ func TestCLIExecuteWithEnv(t *testing.T) {
 	}
 }
 
+func TestCLIExecuteParamValueWithBraces(t *testing.T) {
+	// Parameter values containing braces (like {{vault:KEY}}) should not
+	// be flagged as unresolved placeholders.
+	p := NewCLI(map[string]CLIToolDef{
+		"test.echo": {
+			Command: "echo",
+			Args:    []string{"{{text}}"},
+		},
+	})
+
+	result, err := p.Execute("test.echo", map[string]string{"text": "{{vault:NPM_TOKEN}}"})
+	if err != nil {
+		t.Fatalf("braces in param value should not cause error, got: %v", err)
+	}
+	if strings.TrimSpace(result.Output) != "{{vault:NPM_TOKEN}}" {
+		t.Errorf("expected '{{vault:NPM_TOKEN}}', got %q", result.Output)
+	}
+}
+
+func TestCLIExecuteParamValueWithJSON(t *testing.T) {
+	// JSON values contain braces — should not be treated as unresolved placeholders.
+	p := NewCLI(map[string]CLIToolDef{
+		"test.echo": {
+			Command: "echo",
+			Args:    []string{"{{data}}"},
+		},
+	})
+
+	result, err := p.Execute("test.echo", map[string]string{"data": `{"name":"test"}`})
+	if err != nil {
+		t.Fatalf("braces in JSON param should not cause error, got: %v", err)
+	}
+	if strings.TrimSpace(result.Output) != `{"name":"test"}` {
+		t.Errorf("expected JSON output, got %q", result.Output)
+	}
+}
+
 func TestCLIExecuteTimeout(t *testing.T) {
 	p := NewCLI(map[string]CLIToolDef{
 		"test.slow": {
@@ -185,7 +223,7 @@ func TestCLIExecuteStdin(t *testing.T) {
 	p := NewCLI(map[string]CLIToolDef{
 		"test.stdin": {
 			Command: "cat",
-			Stdin:   "{input}",
+			Stdin:   "{{input}}",
 		},
 	})
 
@@ -202,8 +240,8 @@ func TestCLIExecuteStdinWithArgs(t *testing.T) {
 	p := NewCLI(map[string]CLIToolDef{
 		"test.grep": {
 			Command: "grep",
-			Args:    []string{"{pattern}"},
-			Stdin:   "{input}",
+			Args:    []string{"{{pattern}}"},
+			Stdin:   "{{input}}",
 		},
 	})
 
@@ -244,7 +282,7 @@ func TestCLIExecuteNoStdin(t *testing.T) {
 	p := NewCLI(map[string]CLIToolDef{
 		"test.echo": {
 			Command: "echo",
-			Args:    []string{"{msg}"},
+			Args:    []string{"{{msg}}"},
 		},
 	})
 
@@ -305,7 +343,7 @@ func TestCLIExecuteInteractiveWithParams(t *testing.T) {
 	p := NewCLI(map[string]CLIToolDef{
 		"test.param": {
 			Command:     "test",
-			Args:        []string{"-n", "{value}"},
+			Args:        []string{"-n", "{{value}}"},
 			Interactive: true,
 		},
 	})
@@ -327,9 +365,9 @@ func TestSubstituteString(t *testing.T) {
 		params map[string]string
 		want   string
 	}{
-		{"single param", "{input}", map[string]string{"input": "hello"}, "hello"},
-		{"embedded param", "prefix {val} suffix", map[string]string{"val": "X"}, "prefix X suffix"},
-		{"multiple params", "{a} and {b}", map[string]string{"a": "1", "b": "2"}, "1 and 2"},
+		{"single param", "{{input}}", map[string]string{"input": "hello"}, "hello"},
+		{"embedded param", "prefix {{val}} suffix", map[string]string{"val": "X"}, "prefix X suffix"},
+		{"multiple params", "{{a}} and {{b}}", map[string]string{"a": "1", "b": "2"}, "1 and 2"},
 		{"no params", "static", map[string]string{}, "static"},
 	}
 	for _, tt := range tests {
@@ -351,19 +389,19 @@ func TestSubstituteArgs(t *testing.T) {
 	}{
 		{
 			"single param",
-			[]string{"-s", "{url}"},
+			[]string{"-s", "{{url}}"},
 			map[string]string{"url": "https://example.com"},
 			[]string{"-s", "https://example.com"},
 		},
 		{
 			"multiple params",
-			[]string{"-o", "{output}", "{url}"},
+			[]string{"-o", "{{output}}", "{{url}}"},
 			map[string]string{"url": "https://example.com", "output": "file.html"},
 			[]string{"-o", "file.html", "https://example.com"},
 		},
 		{
 			"param in middle of string",
-			[]string{"Authorization: Bearer {token}"},
+			[]string{"Authorization: Bearer {{token}}"},
 			map[string]string{"token": "abc123"},
 			[]string{"Authorization: Bearer abc123"},
 		},
@@ -375,7 +413,7 @@ func TestSubstituteArgs(t *testing.T) {
 		},
 		{
 			"repeated param",
-			[]string{"{val}", "{val}"},
+			[]string{"{{val}}", "{{val}}"},
 			map[string]string{"val": "x"},
 			[]string{"x", "x"},
 		},

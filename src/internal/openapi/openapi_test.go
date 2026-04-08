@@ -123,8 +123,8 @@ func TestGeneratePetstore(t *testing.T) {
 	if !ok {
 		t.Fatal("expected tool pet_store.showPetById")
 	}
-	if show.Path != "/pets/{petId}" {
-		t.Errorf("expected path /pets/{petId}, got %s", show.Path)
+	if show.Path != "/pets/{{petId}}" {
+		t.Errorf("expected path /pets/{{petId}}, got %s", show.Path)
 	}
 	if len(show.Parameters) != 1 {
 		t.Fatalf("expected 1 param for showPetById, got %d", len(show.Parameters))
@@ -161,8 +161,8 @@ func TestGenerateAuth(t *testing.T) {
 		if tool.Auth.Type != "bearer" {
 			t.Errorf("tool %s: expected bearer auth, got %s", name, tool.Auth.Type)
 		}
-		if tool.Auth.Token != "${PET_STORE_TOKEN}" {
-			t.Errorf("tool %s: expected ${PET_STORE_TOKEN}, got %s", name, tool.Auth.Token)
+		if tool.Auth.Token != "{{env:PET_STORE_TOKEN}}" {
+			t.Errorf("tool %s: expected {{env:PET_STORE_TOKEN}}, got %s", name, tool.Auth.Token)
 		}
 	}
 }
@@ -268,7 +268,7 @@ func TestSlugify(t *testing.T) {
 	}{
 		{"Pet Store", "pet_store"},
 		{"My API v2", "my_api_v2"},
-		{"/pets/{petId}", "pets_petid"},
+		{"/pets/{{petId}}", "pets_petid"},
 		{"  spaces  ", "spaces"},
 		{"Already_Valid", "already_valid"},
 	}

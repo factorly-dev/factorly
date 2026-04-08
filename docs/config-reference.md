@@ -13,15 +13,15 @@ tools:
 
     # For CLI commands:
     command: curl               # executable to run
-    args: ["-s", "{url}"]      # {param} placeholders are substituted
-    stdin: "{input}"            # optional, pipe to subprocess stdin
+    args: ["-s", "{{url}}"]      # {{param}} placeholders are substituted
+    stdin: "{{input}}"            # optional, pipe to subprocess stdin
     interactive: true            # optional, connect to terminal (TTY)
 
     # For MCP servers (stdio — spawn subprocess):
     command: npx                # executable to start the server
     args: ["@org/server-name"] # arguments
     env:                        # environment variables
-      KEY: ${vault:SECRET}
+      KEY: {{vault:SECRET}}
 
     # For MCP servers (HTTP — connect to remote):
     url: http://host:3000/mcp  # server URL
@@ -29,14 +29,14 @@ tools:
     # For REST APIs:
     base_url: https://api.example.com
     method: GET                 # GET, POST, PUT, PATCH, DELETE
-    path: /items/{id}           # {param} placeholders in path
+    path: /items/{{id}}           # {{param}} placeholders in path
     headers:                    # static headers (optional)
       Accept: application/json
     auth:                       # optional
       type: bearer              # bearer, basic, header, or oauth
-      token: ${vault:API_KEY}   # vault ref or ${ENV_VAR}
+      token: {{vault:API_KEY}}   # vault ref or {{env:ENV_VAR}}
       # header: X-Api-Key       # for header type
-      # value: ${vault:KEY}     # for header type
+      # value: {{vault:KEY}}     # for header type
     parameters:
       - name: id
         in: path                # path, query, header, or body
@@ -47,7 +47,7 @@ tools:
 
 ## Secret references
 
-Use `${ENV_VAR}` for environment variables or `${vault:KEY}` for encrypted vault secrets. Both are resolved at startup before the agent sees anything.
+Use `{{env:ENV_VAR}}` for environment variables or `{{vault:KEY}}` for encrypted vault secrets. Both are resolved at startup before the agent sees anything.
 
 ## Parameter routing
 
@@ -55,21 +55,21 @@ Parameters are routed by their `in` field. When `in` is omitted, defaults to `qu
 
 ## Stdin
 
-CLI tools can pipe a parameter to the subprocess's stdin using the `stdin` field with `{param}` placeholders:
+CLI tools can pipe a parameter to the subprocess's stdin using the `stdin` field with `{{param}}` placeholders:
 
 ```yaml
 tools:
   jq.filter:
     type: cli
     command: jq
-    args: ["{filter}"]
-    stdin: "{input}"
+    args: ["{{filter}}"]
+    stdin: "{{input}}"
 
   clipboard.copy:
     type: cli
     description: "Copy text to the system clipboard"
     command: pbcopy        # macOS (use xclip -selection clipboard on Linux)
-    stdin: "{text}"
+    stdin: "{{text}}"
 ```
 
 ```bash
@@ -86,15 +86,15 @@ tools:
   db.shell:
     type: cli
     command: psql
-    args: ["-h", "localhost", "-U", "{user}", "{database}"]
+    args: ["-h", "localhost", "-U", "{{user}}", "{{database}}"]
     interactive: true
     env:
-      PGPASSWORD: ${vault:DB_PASSWORD}
+      PGPASSWORD: {{vault:DB_PASSWORD}}
 
   ssh.connect:
     type: cli
     command: ssh
-    args: ["{host}"]
+    args: ["{{host}}"]
     interactive: true
 ```
 

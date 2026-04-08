@@ -138,4 +138,4 @@ secure-agent/
 └── README.md
 ```
 
-Secrets referenced: `${GITHUB_TOKEN}`, `${SLACK_BOT_TOKEN}`, `${STRIPE_SECRET_KEY}` — all resolved from environment, never written to config files, never exposed to the agent.
+Secrets referenced: `{{GITHUB_TOKEN}}`, `{{SLACK_BOT_TOKEN}}`, `{{STRIPE_SECRET_KEY}}` — all resolved from environment, never written to config files, never exposed to the agent.

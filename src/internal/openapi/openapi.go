@@ -73,7 +73,7 @@ func Generate(specPath string, opts GenerateOpts) (map[string]config.ToolConfig,
 				Description: description,
 				BaseURL:     baseURL,
 				Method:      method,
-				Path:        path,
+				Path:        convertPathPlaceholders(path),
 				Parameters:  params,
 			}
 			if auth != nil {
@@ -134,7 +134,7 @@ func extractAuth(spec map[string]any, prefix string) *config.AuthConfig {
 				envVar := strings.ToUpper(prefix) + "_TOKEN"
 				return &config.AuthConfig{
 					Type:  "bearer",
-					Token: "${" + envVar + "}",
+					Token: "{{env:" + envVar + "}}",
 				}
 			}
 		case "apiKey":
@@ -146,7 +146,7 @@ func extractAuth(spec map[string]any, prefix string) *config.AuthConfig {
 			return &config.AuthConfig{
 				Type:   "header",
 				Header: headerName,
-				Value:  "${" + envVar + "}",
+				Value:  "{{env:" + envVar + "}}",
 			}
 		}
 	}
@@ -229,6 +229,11 @@ func slugify(s string) string {
 	s = strings.Trim(s, "_")
 	s = strings.ToLower(s)
 	return s
+}
+
+// convertPathPlaceholders converts OpenAPI single-brace {param} to Factorly double-brace {{param}}.
+func convertPathPlaceholders(path string) string {
+	return regexp.MustCompile(`\{([^}]+)\}`).ReplaceAllString(path, "{{$1}}")
 }
 
 func isHTTPMethod(m string) bool {

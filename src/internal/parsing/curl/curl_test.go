@@ -268,9 +268,9 @@ func TestParameterizePath(t *testing.T) {
 		wantPath string
 		wantLen  int
 	}{
-		{"/users/123", "/users/{user_id}", 1},
+		{"/users/123", "/users/{{user_id}}", 1},
 		{"/v1/charges", "/v1/charges", 0},
-		{"/items/550e8400-e29b-41d4-a716-446655440000", "/items/{item_id}", 1},
+		{"/items/550e8400-e29b-41d4-a716-446655440000", "/items/{{item_id}}", 1},
 		{"/api/v1/users", "/api/v1/users", 0},
 	}
 	for _, tt := range tests {

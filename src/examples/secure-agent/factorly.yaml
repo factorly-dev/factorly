@@ -5,4 +5,4 @@ tools:
     type: cli
     description: "Fetch a webpage"
     command: curl
-    args: ["-s", "{url}"]
+    args: ["-s", "{{url}}"]

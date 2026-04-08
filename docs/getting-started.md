@@ -28,7 +28,7 @@ Use `--out factorly.yaml` to write to the project root instead.
 factorly tools add
 
 # Or non-interactive
-factorly tools add --name web.fetch --type cli --command curl --args '-s,{url}'
+factorly tools add --name web.fetch --type cli --command curl --args '-s,{{url}}'
 ```
 
 ## Use it
@@ -122,7 +122,7 @@ factorly sync --http localhost:3000 --token mytoken
 factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
 
 # Reference it in your config
-# token: "${vault:GITHUB_TOKEN}"
+# token: "{{vault:GITHUB_TOKEN}}"
 ```
 
 See [Vault](vault.md) for full documentation.

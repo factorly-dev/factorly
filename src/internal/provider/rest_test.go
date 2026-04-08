@@ -59,7 +59,7 @@ func TestRESTUnresolvedPathParam(t *testing.T) {
 		"test": {
 			Method:  "GET",
 			BaseURL: srv.URL,
-			Path:    "/items/{id}",
+			Path:    "/items/{{id}}",
 			Params:  []RESTParamDef{{Name: "id", In: "path", Required: false}},
 		},
 	}, nil)
@@ -70,7 +70,7 @@ func TestRESTUnresolvedPathParam(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unresolved path param")
 	}
-	if !strings.Contains(err.Error(), "{id}") {
+	if !strings.Contains(err.Error(), "{{id}}") {
 		t.Errorf("expected error to mention placeholder, got: %s", err.Error())
 	}
 }
@@ -90,7 +90,7 @@ func TestRESTPathParamSubstitution(t *testing.T) {
 		"pet.get": {
 			Method:  "GET",
 			BaseURL: srv.URL,
-			Path:    "/pets/{petId}",
+			Path:    "/pets/{{petId}}",
 			Params:  []RESTParamDef{{Name: "petId", In: "path", Required: true}},
 		},
 	}, nil)
@@ -124,7 +124,7 @@ func TestRESTPathParamEscaping(t *testing.T) {
 		"test": {
 			Method:  "GET",
 			BaseURL: srv.URL,
-			Path:    "/items/{name}",
+			Path:    "/items/{{name}}",
 			Params:  []RESTParamDef{{Name: "name", In: "path"}},
 		},
 	}, nil)
@@ -312,7 +312,7 @@ func TestRESTMixedParams(t *testing.T) {
 		"test": {
 			Method:  "POST",
 			BaseURL: srv.URL,
-			Path:    "/orgs/{orgId}/items",
+			Path:    "/orgs/{{orgId}}/items",
 			Params: []RESTParamDef{
 				{Name: "orgId", In: "path", Required: true},
 				{Name: "limit", In: "query"},

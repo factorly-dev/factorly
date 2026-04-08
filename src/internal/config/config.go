@@ -80,8 +80,8 @@ type ParamConfig struct {
 	In          string `yaml:"in,omitempty"` // "query", "path", "header", "body"
 }
 
-var envVarPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
-var placeholderPattern = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_-]*)\}`)
+var envVarPattern = regexp.MustCompile(`\{\{env:([A-Za-z_][A-Za-z0-9_]*)\}\}`)
+var placeholderPattern = regexp.MustCompile(`\{\{([A-Za-z_][A-Za-z0-9_-]*)\}\}`)
 
 func Load(path string) (*Config, error) {
 	if path == "" {
@@ -473,7 +473,7 @@ func (tc *ToolConfig) ParamNames() []string {
 	return names
 }
 
-// HasPlaceholder checks if any arg contains {name} style placeholders.
+// HasPlaceholder checks if any arg contains {{name}} style placeholders.
 // ResolveOAuthProvider merges inline AuthConfig OAuth fields with a
 // referenced OAuthProviderConfig into a single resolved config.
 func (cfg *Config) ResolveOAuthProvider(auth *AuthConfig) *OAuthProviderConfig {
@@ -521,7 +521,7 @@ func OAuthTokenKey(auth *AuthConfig) string {
 }
 
 func HasPlaceholder(args []string, name string) bool {
-	target := "{" + name + "}"
+	target := "{{" + name + "}}"
 	for _, arg := range args {
 		if strings.Contains(arg, target) {
 			return true

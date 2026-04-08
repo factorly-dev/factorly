@@ -6,7 +6,7 @@
 factorly serve                      # start MCP server (stdio)
 factorly serve --http :3000         # start MCP server (HTTP at /mcp)
 factorly serve --http-token <tok>   # HTTP with Bearer token auth
-factorly serve --http-token '${vault:HTTP_TOKEN}'  # token from vault
+factorly serve --http-token '{{vault:HTTP_TOKEN}}'  # token from vault
 factorly init                       # create .factorly/factorly.yaml (interactive)
 factorly init --out factorly.yaml   # create at custom path
 factorly tools                      # list all configured tools
@@ -64,7 +64,7 @@ When running `factorly serve --http`, you can secure the endpoint with a Bearer 
 1. `--http-token` flag
 2. `FACTORLY_HTTP_TOKEN` environment variable
 
-Both support `${vault:KEY}` references — the vault is opened automatically if a vault ref is detected:
+Both support `{{vault:KEY}}` references — the vault is opened automatically if a vault ref is detected:
 
 ```bash
 # Plain token (visible in ps output — use for dev only)
@@ -75,10 +75,10 @@ FACTORLY_HTTP_TOKEN=mytoken factorly serve --http :3000
 
 # Vault reference (best — token encrypted at rest)
 factorly vault set HTTP_TOKEN "my-secret-token"
-factorly serve --http :3000 --http-token '${vault:HTTP_TOKEN}'
+factorly serve --http :3000 --http-token '{{vault:HTTP_TOKEN}}'
 
 # Vault ref via env var
-FACTORLY_HTTP_TOKEN='${vault:HTTP_TOKEN}' factorly serve --http :3000
+FACTORLY_HTTP_TOKEN='{{vault:HTTP_TOKEN}}' factorly serve --http :3000
 ```
 
 When a token is set, all HTTP requests must include `Authorization: Bearer <token>`. Requests without a valid token receive a 401 response. A warning is printed to stderr when HTTP mode starts without any token configured.
@@ -86,8 +86,8 @@ When a token is set, all HTTP requests must include `Authorization: Bearer <toke
 **Note:** If Factorly is running inside a container (Docker, devcontainer, Codespace), use the host-accessible address — not `localhost`. For Docker, this is typically `host.docker.internal`:
 
 ```bash
-factorly serve --http 0.0.0.0:3000 --http-token '${vault:HTTP_TOKEN}'
-factorly sync --http host.docker.internal:3000 --token '${vault:HTTP_TOKEN}'
+factorly serve --http 0.0.0.0:3000 --http-token '{{vault:HTTP_TOKEN}}'
+factorly sync --http host.docker.internal:3000 --token '{{vault:HTTP_TOKEN}}'
 ```
 
 ---

@@ -34,7 +34,7 @@ slack.post:
   path: /chat.postMessage
   auth:
     type: bearer
-    token: "${vault:SLACK_TOKEN}"
+    token: "{{vault:SLACK_TOKEN}}"
   parameters:
     - name: channel
       required: true
@@ -53,7 +53,7 @@ tools:
   web.fetch:
     type: cli
     command: curl
-    args: ["-s", "{url}"]
+    args: ["-s", "{{url}}"]
 ```
 
 Tools from `tools_dir` merge with inline tools. Duplicate names across files produce an error.
