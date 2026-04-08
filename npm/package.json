@@ -1,5 +1,5 @@
 {
-  "name": "@factorly/factorly",
+  "name": "@factorly/cli",
   "version": "0.1.0",
   "description": "Your agent calls tools. Factorly holds the keys.",
   "homepage": "https://github.com/factorly-hq/factorly-cli",
