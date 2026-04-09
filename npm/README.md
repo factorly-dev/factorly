@@ -15,7 +15,9 @@
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](docs/)
 
-Factorly wraps your existing agent tools — REST APIs, CLIs, MCP servers — into a single endpoint where credentials never reach the agent. Your agent sees tool names and parameters. Factorly injects the auth, makes the call, and returns the data.
+One endpoint. All your tools. Credentials stay out of your agent's hands.  
+  
+Factorly wraps REST APIs, CLIs, and MCP servers into a single, governed interface. Configure your tools once, connect your agent once, and every call is authenticated, proxied, and logged. Your agent never touches a secret.  
 
 </center>
 
