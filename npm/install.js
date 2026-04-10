@@ -8,7 +8,7 @@ const { execSync } = require("child_process");
 
 const VERSION = require("./package.json").version;
 const REPO = "factorly-dev/factorly-cli";
-const BIN_DIR = path.join(__dirname, "binary");
+const BIN_DIR = path.join(__dirname, "bin");
 const BIN_PATH = path.join(BIN_DIR, process.platform === "win32" ? "factorly.exe" : "factorly");
 
 const PLATFORM_MAP = {
