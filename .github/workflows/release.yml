@@ -46,6 +46,13 @@ jobs:
 
       - name: Publish to npm
         working-directory: npm
-        run: npm publish --access=public
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view @factorly/cli version 2>/dev/null || echo "none")
+          if [ "$CURRENT" = "$PUBLISHED" ]; then
+            echo "npm @factorly/cli@$CURRENT already published, skipping"
+          else
+            npm publish --access=public
+          fi
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
