@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 
 	"encoding/json"
+	"time"
 
 	"github.com/factorly-dev/factorly-cli/internal"
 	"github.com/factorly-dev/factorly-cli/internal/config"
@@ -82,12 +83,11 @@ func runToolsList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Build shadow policy to filter denied tools from listing
+	rules := buildShadowRules(cfg)
+	mergeDisabledToolsFromEnv(rules)
 	var shadowPolicy *shadow.Policy
-	if hasShadowRules(cfg) {
-		rules := buildShadowRules(cfg)
-		if len(rules) > 0 {
-			shadowPolicy = shadow.New(rules, nil, "")
-		}
+	if len(rules) > 0 {
+		shadowPolicy = shadow.New(rules, nil, "")
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -401,6 +401,8 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 			Description: toolCfg.Description,
 			Parameters:  params,
 			ProviderKey: toolCfg.Type,
+			MaxOutput:   toolCfg.MaxOutput,
+			Compress:    toolCfg.Compress,
 		})
 	}
 
@@ -426,13 +428,21 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	for name, toolCfg := range cfg.Tools {
 		switch toolCfg.Type {
 		case "cli":
-			cliTools[name] = provider.CLIToolDef{
+			def := provider.CLIToolDef{
 				Command:     toolCfg.Command,
 				Args:        toolCfg.Args,
 				Stdin:       toolCfg.Stdin,
 				Interactive: toolCfg.Interactive,
 				Env:         resolveVaultMap(resolver, toolCfg.Env),
 			}
+			if toolCfg.Timeout != "" {
+				if d, err := time.ParseDuration(toolCfg.Timeout); err == nil {
+					def.Timeout = d
+				} else {
+					vlog("warning: invalid timeout %q for tool %s: %v", toolCfg.Timeout, name, err)
+				}
+			}
+			cliTools[name] = def
 			vlog("  registered cli tool: %s", name)
 		case "rest":
 			restDef := provider.RESTToolDef{
@@ -556,6 +566,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	// Build shadow policy from config
 	var proxyOpts []proxy.Option
 	shadowRules := buildShadowRules(cfg)
+	mergeDisabledToolsFromEnv(shadowRules)
 	if len(shadowRules) > 0 {
 		// Use provided confirm function, or default to CLI stdin prompt
 		var cf shadow.ConfirmFunc
@@ -745,15 +756,6 @@ func redactSensitiveParams(params map[string]string) map[string]string {
 	return redacted
 }
 
-func hasShadowRules(cfg *config.Config) bool {
-	for _, tool := range cfg.Tools {
-		if tool.Shadow != nil {
-			return true
-		}
-	}
-	return false
-}
-
 func buildShadowRules(cfg *config.Config) map[string]*shadow.Rule {
 	rules := make(map[string]*shadow.Rule)
 	for name, toolCfg := range cfg.Tools {
@@ -775,6 +777,29 @@ func buildShadowRules(cfg *config.Config) map[string]*shadow.Rule {
 		rules[name] = rule
 	}
 	return rules
+}
+
+// mergeDisabledToolsFromEnv injects FACTORLY_DISABLED_TOOLS env var entries
+// as deny rules into the shadow rules map.
+func mergeDisabledToolsFromEnv(rules map[string]*shadow.Rule) {
+	disabled := os.Getenv("FACTORLY_DISABLED_TOOLS")
+	if disabled == "" {
+		return
+	}
+	for _, toolName := range strings.Split(disabled, ",") {
+		toolName = strings.TrimSpace(toolName)
+		if toolName == "" {
+			continue
+		}
+		if existing, ok := rules[toolName]; ok {
+			existing.Deny = append(existing.Deny, toolName)
+		} else {
+			rules[toolName] = &shadow.Rule{
+				Deny: []string{toolName},
+			}
+		}
+	}
+	vlog("disabled tools from env: %s", disabled)
 }
 
 func hasMCPTools(cfg *config.Config) bool {

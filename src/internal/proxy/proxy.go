@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
+	"github.com/factorly-dev/factorly-cli/internal/agent"
 	"github.com/factorly-dev/factorly-cli/internal/logger"
+	"github.com/factorly-dev/factorly-cli/internal/output"
 	"github.com/factorly-dev/factorly-cli/internal/provider"
 	"github.com/factorly-dev/factorly-cli/internal/registry"
 	"github.com/factorly-dev/factorly-cli/internal/shadow"
@@ -54,6 +57,8 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		return nil, err
 	}
 
+	agentID := agent.AgentID(ctx)
+
 	// Shadow policy check
 	var shadowAction shadow.Action = shadow.ActionAllowed
 	if p.shadow != nil {
@@ -73,6 +78,7 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 			if logParams := p.shadow.LogParamsFor(toolName); len(logParams) > 0 {
 				entry.HighlightParams = filterParams(params, logParams)
 			}
+			entry.AgentID = agentID
 			_ = p.logger.Log(entry)
 			return nil, err
 		}
@@ -88,6 +94,30 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		return nil, fmt.Errorf("executing %q: %w", toolName, err)
 	}
 
+	// Apply output processing (compression + truncation)
+	if result != nil && result.Output != "" {
+		// Determine max output: per-tool config > env var > 0 (unlimited)
+		maxOutput := tool.MaxOutput
+		if maxOutput == 0 {
+			if v := os.Getenv("FACTORLY_MAX_OUTPUT"); v != "" {
+				if n, parseErr := strconv.Atoi(v); parseErr == nil && n > 0 {
+					maxOutput = n
+				}
+			}
+		}
+
+		// Build compression hints from tool config
+		var hints []output.Hint
+		for _, h := range tool.Compress {
+			hints = append(hints, output.Hint(h))
+		}
+
+		// Apply compression + truncation
+		if len(hints) > 0 || maxOutput > 0 {
+			result.Output = output.Process(result.Output, maxOutput, hints...)
+		}
+	}
+
 	// Log the call
 	entry := &logger.Entry{
 		Timestamp:    time.Now(),
@@ -96,6 +126,7 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		Params:       params,
 		DurationMs:   result.Duration.Milliseconds(),
 		ShadowAction: string(shadowAction),
+		AgentID:      agentID,
 	}
 	if p.shadow != nil {
 		if logParams := p.shadow.LogParamsFor(toolName); len(logParams) > 0 {

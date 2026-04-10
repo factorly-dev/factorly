@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/factorly-dev/factorly-cli/internal/agent"
 )
 
 // Action describes what the shadow layer decided.
@@ -16,6 +18,8 @@ const (
 	ActionDenied      Action = "denied"
 	ActionConfirmed   Action = "confirmed"
 	ActionRateLimited Action = "rate_limited"
+	ActionLoopWarning Action = "loop_warning"
+	ActionLoopBlocked Action = "loop_blocked"
 )
 
 // ConfirmFunc prompts the user for confirmation. Returns true if approved.
@@ -39,17 +43,19 @@ type RateLimit struct {
 
 // Policy is the central shadow enforcement engine.
 type Policy struct {
-	rules     map[string]*Rule
-	rateStore *RateStore
-	confirmFn ConfirmFunc
+	rules        map[string]*Rule
+	rateStore    *RateStore
+	confirmFn    ConfirmFunc
+	loopDetector *LoopDetector
 }
 
 // New creates a shadow policy.
 func New(rules map[string]*Rule, confirmFn ConfirmFunc, rateStorePath string) *Policy {
 	return &Policy{
-		rules:     rules,
-		rateStore: NewRateStore(rateStorePath),
-		confirmFn: confirmFn,
+		rules:        rules,
+		rateStore:    NewRateStore(rateStorePath),
+		confirmFn:    confirmFn,
+		loopDetector: NewLoopDetector(0),
 	}
 }
 
@@ -60,7 +66,8 @@ func (p *Policy) Check(ctx context.Context, toolName string, params map[string]s
 
 	rule, ok := p.rules[configName]
 	if !ok {
-		return ActionAllowed, nil
+		// No rules — still check loop detection
+		return p.checkLoop(toolName, params, ActionAllowed)
 	}
 
 	// 1. Deny check
@@ -69,6 +76,7 @@ func (p *Policy) Check(ctx context.Context, toolName string, params map[string]s
 	}
 
 	// 2. Confirm check
+	action := ActionAllowed
 	if needsConfirm(rule, toolName, subTool) {
 		if p.confirmFn == nil {
 			return ActionDenied, fmt.Errorf("tool %q requires confirmation but no confirm handler available", toolName)
@@ -76,19 +84,32 @@ func (p *Policy) Check(ctx context.Context, toolName string, params map[string]s
 		if !p.confirmFn(ctx, toolName, params) {
 			return ActionDenied, fmt.Errorf("tool %q: confirmation declined", toolName)
 		}
-		// Fall through to rate limit even after confirmation
-		if err := p.checkRateLimit(toolName, rule); err != nil {
-			return ActionRateLimited, err
-		}
-		return ActionConfirmed, nil
+		action = ActionConfirmed
 	}
 
 	// 3. Rate limit check
-	if err := p.checkRateLimit(toolName, rule); err != nil {
+	agentID := agent.AgentID(ctx)
+	if err := p.checkRateLimit(toolName, rule, agentID); err != nil {
 		return ActionRateLimited, err
 	}
 
-	return ActionAllowed, nil
+	// 4. Loop detection (always active)
+	return p.checkLoop(toolName, params, action)
+}
+
+// checkLoop applies loop detection and returns the appropriate action.
+func (p *Policy) checkLoop(toolName string, params map[string]string, currentAction Action) (Action, error) {
+	if p.loopDetector == nil {
+		return currentAction, nil
+	}
+	switch p.loopDetector.Check(toolName, params) {
+	case LoopBlocked:
+		return ActionLoopBlocked, fmt.Errorf("tool %q blocked: identical call repeated too many times (possible agent loop)", toolName)
+	case LoopWarning:
+		return ActionLoopWarning, nil
+	default:
+		return currentAction, nil
+	}
 }
 
 // IsDenied returns true if the tool is blocked by a deny rule.
@@ -110,11 +131,15 @@ func (p *Policy) LogParamsFor(toolName string) []string {
 	return nil
 }
 
-func (p *Policy) checkRateLimit(toolName string, rule *Rule) error {
+func (p *Policy) checkRateLimit(toolName string, rule *Rule, agentID string) error {
 	if rule.RateLimit == nil {
 		return nil
 	}
-	allowed, remaining, err := p.rateStore.Check(toolName, rule.RateLimit.Count, rule.RateLimit.Window)
+	key := toolName
+	if agentID != "" {
+		key = agentID + ":" + toolName
+	}
+	allowed, remaining, err := p.rateStore.Check(key, rule.RateLimit.Count, rule.RateLimit.Window)
 	if err != nil {
 		// Rate store error — allow the call but warn
 		return nil

@@ -1,12 +1,17 @@
 package proxy
 
 import (
+	"context"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/factorly-dev/factorly-cli/internal/agent"
 	"github.com/factorly-dev/factorly-cli/internal/logger"
 	"github.com/factorly-dev/factorly-cli/internal/provider"
 	"github.com/factorly-dev/factorly-cli/internal/registry"
+	"github.com/factorly-dev/factorly-cli/internal/shadow"
 )
 
 type mockProvider struct {
@@ -164,5 +169,164 @@ func TestProxyPassesParams(t *testing.T) {
 	}
 	if mock.params["other"] != "data" {
 		t.Errorf("expected param other=data, got %v", mock.params)
+	}
+}
+
+func TestProxyLoopDetectionBlocks(t *testing.T) {
+	reg := registry.New()
+	reg.Register(&registry.Tool{
+		Name:        "test.echo",
+		ProviderKey: "mock",
+	})
+
+	mock := &mockProvider{
+		result: &provider.Result{Output: "ok", Duration: time.Millisecond},
+	}
+
+	rules := map[string]*shadow.Rule{
+		"test": {},
+	}
+	path := filepath.Join(t.TempDir(), "rate.json")
+	policy := shadow.New(rules, nil, path)
+
+	log := &capturingLogger{}
+	p := New(reg, map[string]provider.Provider{"mock": mock}, log, WithShadow(policy))
+
+	params := map[string]string{"msg": "hello"}
+
+	// First 3 calls should succeed (normal phase, LoopNormal <= 3)
+	for i := 0; i < 3; i++ {
+		_, err := p.Execute("test.echo", params, "cli")
+		if err != nil {
+			t.Fatalf("call %d: unexpected error: %v", i+1, err)
+		}
+	}
+
+	// Calls 4-11 should still succeed (warning phase, LoopWarning 4-11)
+	for i := 3; i < 11; i++ {
+		_, err := p.Execute("test.echo", params, "cli")
+		if err != nil {
+			t.Fatalf("call %d: unexpected error: %v", i+1, err)
+		}
+	}
+
+	// Call 12+ should be blocked (LoopBlocked >= 12)
+	_, err := p.Execute("test.echo", params, "cli")
+	if err == nil {
+		t.Fatal("expected loop detection to block call 12")
+	}
+	if !strings.Contains(err.Error(), "repeated") && !strings.Contains(err.Error(), "loop") {
+		t.Errorf("expected loop-related error, got: %v", err)
+	}
+}
+
+func TestProxyOutputTruncation(t *testing.T) {
+	reg := registry.New()
+	reg.Register(&registry.Tool{
+		Name:        "test.big",
+		ProviderKey: "mock",
+		MaxOutput:   100,
+	})
+
+	bigOutput := strings.Repeat("x", 500)
+	mock := &mockProvider{
+		result: &provider.Result{Output: bigOutput, Duration: time.Millisecond},
+	}
+
+	p := New(reg, map[string]provider.Provider{"mock": mock}, logger.NopLogger{})
+
+	result, err := p.Execute("test.big", nil, "cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(result.Output) > 150 { // some slack for the truncation marker
+		t.Errorf("expected truncated output, got %d bytes", len(result.Output))
+	}
+	if !strings.Contains(result.Output, "truncated") {
+		t.Error("expected truncation marker in output")
+	}
+}
+
+func TestProxyOutputCompression(t *testing.T) {
+	reg := registry.New()
+	reg.Register(&registry.Tool{
+		Name:        "test.api",
+		ProviderKey: "mock",
+		Compress:    []string{"json"},
+	})
+
+	prettyJSON := "{\n  \"name\": \"test\",\n  \"value\": 42\n}"
+	mock := &mockProvider{
+		result: &provider.Result{Output: prettyJSON, Duration: time.Millisecond},
+	}
+
+	p := New(reg, map[string]provider.Provider{"mock": mock}, logger.NopLogger{})
+
+	result, err := p.Execute("test.api", nil, "cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(result.Output, "\n  ") {
+		t.Error("expected JSON to be compacted, still has indentation")
+	}
+	if !strings.Contains(result.Output, `"name":"test"`) {
+		t.Error("expected compacted JSON content")
+	}
+}
+
+func TestProxyAgentIDInLog(t *testing.T) {
+	reg := registry.New()
+	reg.Register(&registry.Tool{
+		Name:        "test.echo",
+		ProviderKey: "mock",
+	})
+
+	mock := &mockProvider{
+		result: &provider.Result{Output: "ok", Duration: time.Millisecond},
+	}
+
+	log := &capturingLogger{}
+	p := New(reg, map[string]provider.Provider{"mock": mock}, log)
+
+	ctx := agent.WithAgentID(context.Background(), "session-abc-123")
+	_, err := p.ExecuteWithContext(ctx, "test.echo", map[string]string{"msg": "hi"}, "mcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(log.entries) != 1 {
+		t.Fatalf("expected 1 log entry, got %d", len(log.entries))
+	}
+	if log.entries[0].AgentID != "session-abc-123" {
+		t.Errorf("expected agent ID 'session-abc-123', got %q", log.entries[0].AgentID)
+	}
+}
+
+func TestProxyNoAgentIDWhenNotSet(t *testing.T) {
+	reg := registry.New()
+	reg.Register(&registry.Tool{
+		Name:        "test.echo",
+		ProviderKey: "mock",
+	})
+
+	mock := &mockProvider{
+		result: &provider.Result{Output: "ok", Duration: time.Millisecond},
+	}
+
+	log := &capturingLogger{}
+	p := New(reg, map[string]provider.Provider{"mock": mock}, log)
+
+	_, err := p.Execute("test.echo", map[string]string{"msg": "hi"}, "cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(log.entries) != 1 {
+		t.Fatalf("expected 1 log entry, got %d", len(log.entries))
+	}
+	if log.entries[0].AgentID != "" {
+		t.Errorf("expected empty agent ID, got %q", log.entries[0].AgentID)
 	}
 }

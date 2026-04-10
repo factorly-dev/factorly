@@ -17,6 +17,8 @@ type Tool struct {
 	Description string
 	Parameters  []Parameter
 	ProviderKey string
+	MaxOutput   int
+	Compress    []string
 }
 
 type Registry struct {

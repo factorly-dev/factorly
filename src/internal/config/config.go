@@ -42,6 +42,9 @@ type ToolConfig struct {
 	Args        []string          `yaml:"args,omitempty"`
 	Stdin       string            `yaml:"stdin,omitempty"`
 	Interactive bool              `yaml:"interactive,omitempty"`
+	Timeout     string            `yaml:"timeout,omitempty"`    // e.g. "10s", "2m" — parsed as time.Duration
+	MaxOutput   int               `yaml:"max_output,omitempty"` // max output bytes (0 = unlimited)
+	Compress    []string          `yaml:"compress,omitempty"`   // output compression hints: "json", "logs", "all"
 	Env         map[string]string `yaml:"env,omitempty"`
 	Parameters  []ParamConfig     `yaml:"parameters,omitempty"`
 

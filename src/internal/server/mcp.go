@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/factorly-dev/factorly-cli/internal"
+	"github.com/factorly-dev/factorly-cli/internal/agent"
 	"github.com/factorly-dev/factorly-cli/internal/proxy"
 	"github.com/factorly-dev/factorly-cli/internal/registry"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -60,7 +61,13 @@ func slog(ctx context.Context, format string, args ...any) {
 }
 
 // New creates an MCP server with all registry tools exposed.
-func New(reg *registry.Registry, p *proxy.Proxy) *server.MCPServer {
+// An optional agent.Registry can be passed to track connected agents.
+func New(reg *registry.Registry, p *proxy.Proxy, agentReg ...*agent.Registry) *server.MCPServer {
+	var ar *agent.Registry
+	if len(agentReg) > 0 {
+		ar = agentReg[0]
+	}
+
 	hooks := &server.Hooks{}
 	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
 		vlog("[%s] client connected", session.SessionID())
@@ -70,6 +77,17 @@ func New(reg *registry.Registry, p *proxy.Proxy) *server.MCPServer {
 			message.Params.ClientInfo.Name,
 			message.Params.ClientInfo.Version,
 			message.Params.ProtocolVersion)
+
+		// Register agent identity
+		if ar != nil {
+			if session := server.ClientSessionFromContext(ctx); session != nil {
+				ar.Register(&agent.Info{
+					ID:      session.SessionID(),
+					Name:    message.Params.ClientInfo.Name,
+					Version: message.Params.ClientInfo.Version,
+				})
+			}
+		}
 	})
 	hooks.AddAfterListTools(func(ctx context.Context, id any, message *mcp.ListToolsRequest, result *mcp.ListToolsResult) {
 		slog(ctx, "client listed tools (%d tools)", len(result.Tools))
@@ -89,7 +107,7 @@ func New(reg *registry.Registry, p *proxy.Proxy) *server.MCPServer {
 			continue
 		}
 		mcpTool := convertTool(tool)
-		handler := makeHandler(p, tool.Name)
+		handler := makeHandler(p, tool.Name, ar)
 		s.AddTool(mcpTool, handler)
 	}
 
@@ -115,8 +133,16 @@ func convertTool(t *registry.Tool) mcp.Tool {
 }
 
 // makeHandler returns an MCP handler that delegates to Proxy.Execute.
-func makeHandler(p *proxy.Proxy, toolName string) server.ToolHandlerFunc {
+func makeHandler(p *proxy.Proxy, toolName string, ar *agent.Registry) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		// Inject agent ID from MCP session
+		if session := server.ClientSessionFromContext(ctx); session != nil {
+			ctx = agent.WithAgentID(ctx, session.SessionID())
+			if ar != nil {
+				ar.Touch(session.SessionID())
+			}
+		}
+
 		params := make(map[string]string)
 		if request.GetArguments() != nil {
 			for key, val := range request.GetArguments() {

@@ -85,7 +85,7 @@ func TestMakeHandlerSuccess(t *testing.T) {
 		"echo.test": {Command: "echo", Args: []string{"{{msg}}"}},
 	})
 
-	handler := makeHandler(p, "echo.test")
+	handler := makeHandler(p, "echo.test", nil)
 	req := mcp.CallToolRequest{}
 	req.Params.Name = "echo.test"
 	req.Params.Arguments = map[string]any{"msg": "hello"}
@@ -111,7 +111,7 @@ func TestMakeHandlerToolError(t *testing.T) {
 		"fail": {Command: "false", Args: []string{}},
 	})
 
-	handler := makeHandler(p, "fail")
+	handler := makeHandler(p, "fail", nil)
 	req := mcp.CallToolRequest{}
 	req.Params.Name = "fail"
 
@@ -130,7 +130,7 @@ func TestMakeHandlerProxyError(t *testing.T) {
 	})
 
 	// Call a tool that doesn't exist
-	handler := makeHandler(p, "nonexistent")
+	handler := makeHandler(p, "nonexistent", nil)
 	req := mcp.CallToolRequest{}
 	req.Params.Name = "nonexistent"
 
@@ -148,7 +148,7 @@ func TestMakeHandlerParamExtraction(t *testing.T) {
 		"echo.test": {Command: "echo", Args: []string{"{{msg}}"}},
 	})
 
-	handler := makeHandler(p, "echo.test")
+	handler := makeHandler(p, "echo.test", nil)
 	req := mcp.CallToolRequest{}
 	req.Params.Name = "echo.test"
 	// Test with a numeric value — should be converted to string

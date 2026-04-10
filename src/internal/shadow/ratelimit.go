@@ -7,10 +7,12 @@ import (
 	"time"
 )
 
-// rateEntry is a single rate limit counter persisted to disk.
+// rateEntry is the token bucket state persisted to disk.
 type rateEntry struct {
-	Count       int       `json:"count"`
-	WindowStart time.Time `json:"window_start"`
+	Tokens     float64   `json:"tokens"`
+	LastRefill time.Time `json:"last_refill"`
+	Capacity   int       `json:"capacity"`
+	RefillRate float64   `json:"refill_rate"` // tokens per second
 }
 
 // RateStore persists rate limit state to a JSON file.
@@ -33,8 +35,9 @@ func NewRateStore(path string) *RateStore {
 }
 
 // Check tests whether a tool call is within the rate limit.
-// Returns (allowed, remainingWindow, error).
-// If allowed, the counter is incremented and persisted.
+// Returns (allowed, remainingWait, error).
+// Uses a token bucket algorithm: tokens refill at limit/window rate,
+// capped at limit. Each call consumes one token.
 func (s *RateStore) Check(toolName string, limit int, window time.Duration) (bool, time.Duration, error) {
 	entries, err := s.load()
 	if err != nil {
@@ -44,21 +47,45 @@ func (s *RateStore) Check(toolName string, limit int, window time.Duration) (boo
 	now := time.Now()
 	entry, ok := entries[toolName]
 
-	if !ok || now.Sub(entry.WindowStart) >= window {
-		// New window
-		entries[toolName] = &rateEntry{Count: 1, WindowStart: now}
+	// Calculate refill rate: limit tokens per window
+	refillRate := float64(limit) / window.Seconds()
+
+	if !ok || entry.Capacity == 0 {
+		// First call or old-format entry — start with (limit-1) tokens (consumed one)
+		entries[toolName] = &rateEntry{
+			Tokens:     float64(limit - 1),
+			LastRefill: now,
+			Capacity:   limit,
+			RefillRate: refillRate,
+		}
 		if err := s.save(entries); err != nil {
 			return true, 0, err
 		}
 		return true, 0, nil
 	}
 
-	if entry.Count >= limit {
-		remaining := window - now.Sub(entry.WindowStart)
+	// Refill based on elapsed time
+	elapsed := now.Sub(entry.LastRefill).Seconds()
+	entry.Tokens += elapsed * refillRate
+	if entry.Tokens > float64(limit) {
+		entry.Tokens = float64(limit)
+	}
+	entry.LastRefill = now
+	entry.Capacity = limit
+	entry.RefillRate = refillRate
+
+	// Try to consume one token
+	if entry.Tokens < 1.0 {
+		// Calculate how long until one token is available
+		deficit := 1.0 - entry.Tokens
+		waitSeconds := deficit / refillRate
+		remaining := time.Duration(waitSeconds * float64(time.Second))
+		// Save updated state (refill applied even though denied)
+		_ = s.save(entries)
 		return false, remaining, nil
 	}
 
-	entry.Count++
+	entry.Tokens -= 1.0
 	if err := s.save(entries); err != nil {
 		return true, 0, err
 	}

@@ -19,6 +19,7 @@ type Entry struct {
 	Error           string            `json:"error,omitempty"`
 	ShadowAction    string            `json:"shadow_action,omitempty"`
 	HighlightParams map[string]string `json:"highlight_params,omitempty"`
+	AgentID         string            `json:"agent_id,omitempty"`
 }
 
 type Logger interface {

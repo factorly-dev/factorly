@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/factorly-dev/factorly-cli/internal/agent"
 )
 
 func testPolicy(rules map[string]*Rule, confirmFn ConfirmFunc, t *testing.T) *Policy {
@@ -167,6 +169,79 @@ func TestRateLimitBlocksAtThreshold(t *testing.T) {
 	}
 }
 
+func TestRateLimitTokenBucketSmoothing(t *testing.T) {
+	// With a 2/minute limit, token bucket should allow:
+	// - First 2 calls immediately (initial tokens)
+	// - Then ~30 seconds between each subsequent call
+	p := testPolicy(map[string]*Rule{
+		"api": {RateLimit: &RateLimit{Count: 2, Window: time.Minute}},
+	}, nil, t)
+
+	// First 2 calls should succeed
+	action1, err1 := p.Check(context.Background(), "api.call", nil, "cli")
+	if err1 != nil {
+		t.Fatalf("call 1: %v", err1)
+	}
+	if action1 != ActionAllowed {
+		t.Errorf("call 1: expected allowed, got %s", action1)
+	}
+
+	action2, err2 := p.Check(context.Background(), "api.call", nil, "cli")
+	if err2 != nil {
+		t.Fatalf("call 2: %v", err2)
+	}
+	if action2 != ActionAllowed {
+		t.Errorf("call 2: expected allowed, got %s", action2)
+	}
+
+	// Third call should be rate limited (no time elapsed)
+	action3, err3 := p.Check(context.Background(), "api.call", nil, "cli")
+	if err3 == nil {
+		t.Fatal("call 3: expected rate limit error")
+	}
+	if action3 != ActionRateLimited {
+		t.Errorf("call 3: expected rate limited, got %s", action3)
+	}
+}
+
+func TestRateLimitTokenBucketRefill(t *testing.T) {
+	// Use a very short window so we can test refill without long sleeps.
+	// Keep total calls under 4 to avoid triggering loop detection (warns at 4).
+	// With Count=2 and Window=200ms, refill rate is 10 tokens/sec.
+	p := testPolicy(map[string]*Rule{
+		"api": {RateLimit: &RateLimit{Count: 2, Window: 200 * time.Millisecond}},
+	}, nil, t)
+
+	// Consume both tokens
+	for i := 0; i < 2; i++ {
+		_, err := p.Check(context.Background(), "api.refill_call", nil, "cli")
+		if err != nil {
+			t.Fatalf("call %d: %v", i+1, err)
+		}
+	}
+
+	// Should be rate limited now
+	action3, err := p.Check(context.Background(), "api.refill_call", nil, "cli")
+	if err == nil {
+		t.Fatal("expected rate limit after 2 calls")
+	}
+	if action3 != ActionRateLimited {
+		t.Errorf("expected rate limited, got %s", action3)
+	}
+
+	// Wait for partial refill (100ms = 1 token at 10/sec rate)
+	time.Sleep(150 * time.Millisecond)
+
+	// Should be allowed again (1 token refilled)
+	action, err := p.Check(context.Background(), "api.refill_call", nil, "cli")
+	if err != nil {
+		t.Fatalf("after refill: %v", err)
+	}
+	if action != ActionAllowed {
+		t.Errorf("after refill: expected allowed, got %s", action)
+	}
+}
+
 // --- No Rules ---
 
 func TestNoRulesAllows(t *testing.T) {
@@ -271,5 +346,91 @@ func TestSplitToolNameNoMatch(t *testing.T) {
 	cfg, sub := splitToolName("slack.post_message", rules)
 	if cfg != "slack.post_message" || sub != "" {
 		t.Errorf("expected no match passthrough, got cfg=%q sub=%q", cfg, sub)
+	}
+}
+
+// --- Agent-Scoped Rate Limits ---
+
+func TestRateLimitAgentScoped(t *testing.T) {
+	p := testPolicy(map[string]*Rule{
+		"api": {RateLimit: &RateLimit{Count: 2, Window: time.Minute}},
+	}, nil, t)
+
+	// Agent A makes 2 calls — should succeed
+	ctxA := agent.WithAgentID(context.Background(), "agent-a")
+	for i := 0; i < 2; i++ {
+		action, err := p.Check(ctxA, "api.call", nil, "mcp")
+		if err != nil {
+			t.Fatalf("agent-a call %d: %v", i+1, err)
+		}
+		if action != ActionAllowed {
+			t.Errorf("agent-a call %d: expected allowed, got %s", i+1, action)
+		}
+	}
+
+	// Agent A's 3rd call — should be rate limited
+	_, err := p.Check(ctxA, "api.call", nil, "mcp")
+	if err == nil {
+		t.Fatal("expected agent-a to be rate limited")
+	}
+
+	// Agent B should still be able to call (independent limit)
+	ctxB := agent.WithAgentID(context.Background(), "agent-b")
+	action, err := p.Check(ctxB, "api.call", nil, "mcp")
+	if err != nil {
+		t.Fatalf("agent-b: %v", err)
+	}
+	if action != ActionAllowed {
+		t.Errorf("agent-b: expected allowed, got %s", action)
+	}
+}
+
+// --- Loop Detection Integration ---
+
+func TestLoopDetectionIntegrationWithPolicy(t *testing.T) {
+	// Even with no rules, loop detection should still work for tools that match
+	p := testPolicy(map[string]*Rule{
+		"test": {}, // empty rule, no deny/confirm/rate
+	}, nil, t)
+
+	params := map[string]string{"x": "1"}
+
+	// First 3 calls: normal
+	for i := 0; i < 3; i++ {
+		action, err := p.Check(context.Background(), "test.echo", params, "cli")
+		if err != nil {
+			t.Fatalf("call %d: %v", i+1, err)
+		}
+		if action != ActionAllowed {
+			t.Errorf("call %d: expected allowed, got %s", i+1, action)
+		}
+	}
+
+	// Calls 4-8: warning (still no error)
+	for i := 3; i < 8; i++ {
+		action, err := p.Check(context.Background(), "test.echo", params, "cli")
+		if err != nil {
+			t.Fatalf("call %d: unexpected error: %v", i+1, err)
+		}
+		if action != ActionLoopWarning {
+			t.Errorf("call %d: expected loop_warning, got %s", i+1, action)
+		}
+	}
+
+	// Calls 9-11: still warning
+	for i := 8; i < 11; i++ {
+		_, err := p.Check(context.Background(), "test.echo", params, "cli")
+		if err != nil {
+			t.Fatalf("call %d: unexpected error (should still be warning): %v", i+1, err)
+		}
+	}
+
+	// Call 12+: blocked
+	action, err := p.Check(context.Background(), "test.echo", params, "cli")
+	if err == nil {
+		t.Fatal("expected loop blocked error at call 12")
+	}
+	if action != ActionLoopBlocked {
+		t.Errorf("expected loop_blocked, got %s", action)
 	}
 }

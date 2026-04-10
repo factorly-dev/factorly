@@ -789,3 +789,41 @@ func TestOAuthTokenKeyExplicit(t *testing.T) {
 		t.Errorf("expected my_custom_key, got %s", key)
 	}
 }
+
+// --- New Tool Fields ---
+
+func TestParseNewToolFields(t *testing.T) {
+	yaml := `
+tools:
+  api.fetch:
+    type: rest
+    base_url: "https://api.example.com"
+    method: GET
+    timeout: "30s"
+    max_output: 50000
+    compress:
+      - json
+      - logs
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "factorly.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tool := cfg.Tools["api.fetch"]
+	if tool.Timeout != "30s" {
+		t.Errorf("expected timeout '30s', got %q", tool.Timeout)
+	}
+	if tool.MaxOutput != 50000 {
+		t.Errorf("expected max_output 50000, got %d", tool.MaxOutput)
+	}
+	if len(tool.Compress) != 2 || tool.Compress[0] != "json" || tool.Compress[1] != "logs" {
+		t.Errorf("expected compress [json, logs], got %v", tool.Compress)
+	}
+}
