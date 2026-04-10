@@ -91,6 +91,16 @@ func (p *Policy) Check(ctx context.Context, toolName string, params map[string]s
 	return ActionAllowed, nil
 }
 
+// IsDenied returns true if the tool is blocked by a deny rule.
+func (p *Policy) IsDenied(toolName string) bool {
+	configName, subTool := splitToolName(toolName, p.rules)
+	rule, ok := p.rules[configName]
+	if !ok {
+		return false
+	}
+	return isDenied(rule, toolName, subTool)
+}
+
 // LogParamsFor returns the log_params list for a tool name.
 func (p *Policy) LogParamsFor(toolName string) []string {
 	configName, _ := splitToolName(toolName, p.rules)

@@ -39,6 +39,11 @@ func New(reg *registry.Registry, providers map[string]provider.Provider, log log
 	return p
 }
 
+// Shadow returns the shadow policy, or nil if none is configured.
+func (p *Proxy) Shadow() *shadow.Policy {
+	return p.shadow
+}
+
 func (p *Proxy) Execute(toolName string, params map[string]string, iface string) (*provider.Result, error) {
 	return p.ExecuteWithContext(context.Background(), toolName, params, iface)
 }

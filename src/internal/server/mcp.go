@@ -84,6 +84,10 @@ func New(reg *registry.Registry, p *proxy.Proxy) *server.MCPServer {
 	)
 
 	for _, tool := range reg.List() {
+		// Hide denied tools from MCP clients
+		if p.Shadow() != nil && p.Shadow().IsDenied(tool.Name) {
+			continue
+		}
 		mcpTool := convertTool(tool)
 		handler := makeHandler(p, tool.Name)
 		s.AddTool(mcpTool, handler)

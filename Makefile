@@ -81,7 +81,7 @@ version:
 		*) echo "Unknown BUMP=$(BUMP). Use major, minor, or patch." >&2; exit 1;; \
 	esac; \
 	NEW="$$major.$$minor.$$patch"; \
-	sed -i "s/Version    = \"$(VERSION)\"/Version    = \"$$NEW\"/" $(SRCDIR)/internal/version.go; \
+	sed -i "s/\"$(VERSION)\"/\"$$NEW\"/" $(SRCDIR)/internal/version.go; \
 	sed -i "s/\"version\": \"$(VERSION)\"/\"version\": \"$$NEW\"/" npm/package.json; \
 	sed -i "s/Release-v$(VERSION)-/Release-v$$NEW-/" README.md; \
 	sed -i "s/Release-v$(VERSION)-/Release-v$$NEW-/" npm/README.md; \

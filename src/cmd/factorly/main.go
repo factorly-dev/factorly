@@ -81,9 +81,21 @@ func runToolsList(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Build shadow policy to filter denied tools from listing
+	var shadowPolicy *shadow.Policy
+	if hasShadowRules(cfg) {
+		rules := buildShadowRules(cfg)
+		if len(rules) > 0 {
+			shadowPolicy = shadow.New(rules, nil, "")
+		}
+	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tTYPE\tDESCRIPTION\tPARAMETERS")
 	for _, t := range reg.List() {
+		if shadowPolicy != nil && shadowPolicy.IsDenied(t.Name) {
+			continue
+		}
 		params := make([]string, len(t.Parameters))
 		for i, p := range t.Parameters {
 			params[i] = p.Name
@@ -543,28 +555,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 
 	// Build shadow policy from config
 	var proxyOpts []proxy.Option
-	shadowRules := make(map[string]*shadow.Rule)
-	for name, toolCfg := range cfg.Tools {
-		if toolCfg.Shadow == nil {
-			continue
-		}
-		sc := toolCfg.Shadow
-		confirmList, confirmAll := sc.ConfirmList()
-		rule := &shadow.Rule{
-			Deny:       sc.Deny,
-			Confirm:    confirmList,
-			ConfirmAll: confirmAll,
-			LogParams:  sc.LogParams,
-		}
-		if sc.RateLimit != "" {
-			rl, err := shadow.ParseRateLimit(sc.RateLimit)
-			if err != nil {
-				return nil, fmt.Errorf("shadow config for %q: %w", name, err)
-			}
-			rule.RateLimit = rl
-		}
-		shadowRules[name] = rule
-	}
+	shadowRules := buildShadowRules(cfg)
 	if len(shadowRules) > 0 {
 		// Use provided confirm function, or default to CLI stdin prompt
 		var cf shadow.ConfirmFunc
@@ -752,6 +743,38 @@ func redactSensitiveParams(params map[string]string) map[string]string {
 		}
 	}
 	return redacted
+}
+
+func hasShadowRules(cfg *config.Config) bool {
+	for _, tool := range cfg.Tools {
+		if tool.Shadow != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func buildShadowRules(cfg *config.Config) map[string]*shadow.Rule {
+	rules := make(map[string]*shadow.Rule)
+	for name, toolCfg := range cfg.Tools {
+		if toolCfg.Shadow == nil {
+			continue
+		}
+		sc := toolCfg.Shadow
+		confirmList, confirmAll := sc.ConfirmList()
+		rule := &shadow.Rule{
+			Deny:       sc.Deny,
+			Confirm:    confirmList,
+			ConfirmAll: confirmAll,
+			LogParams:  sc.LogParams,
+		}
+		if sc.RateLimit != "" {
+			rl, _ := shadow.ParseRateLimit(sc.RateLimit)
+			rule.RateLimit = rl
+		}
+		rules[name] = rule
+	}
+	return rules
 }
 
 func hasMCPTools(cfg *config.Config) bool {
