@@ -110,7 +110,97 @@ Interactive tools connect stdin/stdout/stderr directly to your terminal. Output 
 
 ## Parameter inference
 
-For CLI tools, parameters are automatically inferred from `{placeholder}` patterns in `args` and `stdin`.
+For CLI tools, parameters are automatically inferred from `{{placeholder}}` patterns in `args` and `stdin`.
+
+## Shadow (Governance)
+
+Add a `shadow` block to any tool to control what agents can do:
+
+```yaml
+tools:
+  github:
+    type: mcp
+    command: npx
+    args: ["@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_TOKEN: "{{vault:GITHUB_TOKEN}}"
+    shadow:
+      deny: [delete_repository, delete_branch]
+      confirm: [merge_pull_request, create_release]
+      rate_limit: 100/hour
+      log_params: [repo, branch, title]
+```
+
+### deny
+
+Block specific tools or sub-tools. The call is rejected immediately with a clear error.
+
+```yaml
+shadow:
+  deny: [delete_repository, delete_branch]
+```
+
+For MCP servers, deny lists reference sub-tool names without the server prefix. `deny: [delete_repository]` on a `github` MCP server blocks `github.delete_repository`.
+
+### confirm
+
+Require human approval before execution.
+
+- **CLI** (`factorly call`): prompts on stderr: `⚠ Tool "x" requires confirmation. Proceed? (y/n)`
+- **MCP** (`factorly serve`): uses MCP elicitation — the client (Claude Code) shows the confirmation prompt in the chat UI
+
+```yaml
+# Confirm specific tools
+shadow:
+  confirm: [merge_pull_request, create_release]
+
+# Confirm every call
+shadow:
+  confirm: true
+```
+
+### rate_limit
+
+Limit how many times a tool can be called within a time window. Prevents runaway agents.
+
+```yaml
+shadow:
+  rate_limit: 100/hour    # 100 calls per hour
+  rate_limit: 10/min      # 10 calls per minute
+  rate_limit: 5/sec       # 5 calls per second
+```
+
+Rate limit state persists across `factorly call` invocations (stored at `~/.config/factorly/ratelimit.json`). Reset by deleting that file.
+
+### log_params
+
+Highlight specific parameters in the call log for audit visibility.
+
+```yaml
+shadow:
+  log_params: [repo, branch, title]
+```
+
+These params appear in the `highlight_params` field of the JSONL log entry, making it easy to search and filter audit trails.
+
+### Per-tool shadow
+
+Shadow works on any tool type — CLI, REST, or MCP:
+
+```yaml
+tools:
+  stripe.charge:
+    type: rest
+    base_url: https://api.stripe.com
+    method: POST
+    path: /v1/charges
+    auth:
+      type: bearer
+      token: "{{vault:STRIPE_KEY}}"
+    shadow:
+      confirm: true
+      rate_limit: 10/min
+```
 
 ---
 

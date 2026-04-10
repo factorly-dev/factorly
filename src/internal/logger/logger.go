@@ -9,14 +9,16 @@ import (
 )
 
 type Entry struct {
-	Timestamp  time.Time         `json:"timestamp"`
-	Interface  string            `json:"interface"`
-	Tool       string            `json:"tool"`
-	Params     map[string]string `json:"params"`
-	Status     string            `json:"status"`
-	DurationMs int64             `json:"duration_ms"`
-	Output     string            `json:"output,omitempty"`
-	Error      string            `json:"error,omitempty"`
+	Timestamp       time.Time         `json:"timestamp"`
+	Interface       string            `json:"interface"`
+	Tool            string            `json:"tool"`
+	Params          map[string]string `json:"params"`
+	Status          string            `json:"status"`
+	DurationMs      int64             `json:"duration_ms"`
+	Output          string            `json:"output,omitempty"`
+	Error           string            `json:"error,omitempty"`
+	ShadowAction    string            `json:"shadow_action,omitempty"`
+	HighlightParams map[string]string `json:"highlight_params,omitempty"`
 }
 
 type Logger interface {

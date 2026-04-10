@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -8,26 +9,68 @@ import (
 	"github.com/factorly-hq/factorly-cli/internal/logger"
 	"github.com/factorly-hq/factorly-cli/internal/provider"
 	"github.com/factorly-hq/factorly-cli/internal/registry"
+	"github.com/factorly-hq/factorly-cli/internal/shadow"
 )
+
+// Option configures a Proxy.
+type Option func(*Proxy)
+
+// WithShadow adds a shadow governance policy to the proxy.
+func WithShadow(s *shadow.Policy) Option {
+	return func(p *Proxy) { p.shadow = s }
+}
 
 type Proxy struct {
 	registry  *registry.Registry
 	providers map[string]provider.Provider
 	logger    logger.Logger
+	shadow    *shadow.Policy
 }
 
-func New(reg *registry.Registry, providers map[string]provider.Provider, log logger.Logger) *Proxy {
-	return &Proxy{
+func New(reg *registry.Registry, providers map[string]provider.Provider, log logger.Logger, opts ...Option) *Proxy {
+	p := &Proxy{
 		registry:  reg,
 		providers: providers,
 		logger:    log,
 	}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
 }
 
 func (p *Proxy) Execute(toolName string, params map[string]string, iface string) (*provider.Result, error) {
+	return p.ExecuteWithContext(context.Background(), toolName, params, iface)
+}
+
+func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params map[string]string, iface string) (*provider.Result, error) {
 	tool, err := p.registry.Get(toolName)
 	if err != nil {
 		return nil, err
+	}
+
+	// Shadow policy check
+	var shadowAction shadow.Action = shadow.ActionAllowed
+	if p.shadow != nil {
+		action, err := p.shadow.Check(ctx, toolName, params, iface)
+		shadowAction = action
+		if err != nil {
+			// Log the denial
+			entry := &logger.Entry{
+				Timestamp:    time.Now(),
+				Interface:    iface,
+				Tool:         toolName,
+				Params:       params,
+				Status:       "blocked",
+				ShadowAction: string(action),
+				Error:        err.Error(),
+			}
+			if logParams := p.shadow.LogParamsFor(toolName); len(logParams) > 0 {
+				entry.HighlightParams = filterParams(params, logParams)
+			}
+			_ = p.logger.Log(entry)
+			return nil, err
+		}
 	}
 
 	prov, ok := p.providers[tool.ProviderKey]
@@ -40,13 +83,19 @@ func (p *Proxy) Execute(toolName string, params map[string]string, iface string)
 		return nil, fmt.Errorf("executing %q: %w", toolName, err)
 	}
 
-	// Log the call (non-fatal on error)
+	// Log the call
 	entry := &logger.Entry{
-		Timestamp:  time.Now(),
-		Interface:  iface,
-		Tool:       toolName,
-		Params:     params,
-		DurationMs: result.Duration.Milliseconds(),
+		Timestamp:    time.Now(),
+		Interface:    iface,
+		Tool:         toolName,
+		Params:       params,
+		DurationMs:   result.Duration.Milliseconds(),
+		ShadowAction: string(shadowAction),
+	}
+	if p.shadow != nil {
+		if logParams := p.shadow.LogParamsFor(toolName); len(logParams) > 0 {
+			entry.HighlightParams = filterParams(params, logParams)
+		}
 	}
 	if result.IsError() {
 		entry.Status = "error"
@@ -60,4 +109,14 @@ func (p *Proxy) Execute(toolName string, params map[string]string, iface string)
 	}
 
 	return result, nil
+}
+
+func filterParams(params map[string]string, keys []string) map[string]string {
+	result := make(map[string]string, len(keys))
+	for _, k := range keys {
+		if v, ok := params[k]; ok {
+			result[k] = v
+		}
+	}
+	return result
 }

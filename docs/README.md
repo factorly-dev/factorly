@@ -24,7 +24,7 @@
 
 | Topic | Description |
 |-------|-------------|
-| [Config Reference](config-reference.md) | Full YAML schema, auth types, parameters, stdin, interactive mode |
+| [Config Reference](config-reference.md) | Full YAML schema, auth types, parameters, stdin, interactive, shadow |
 | [CLI Reference](cli-reference.md) | All commands, subcommands, flags, and environment variables |
 
 ## Features

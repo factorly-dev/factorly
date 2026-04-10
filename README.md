@@ -143,6 +143,7 @@ Full documentation is in the **[docs/](docs/)** directory — [getting started](
 - [x] Interactive CLI tools — `interactive: true` for TTY passthrough
 - [x] Call logging (JSONL) + `--verbose` flag
 - [x] Security hardening — param redaction, HTTP token auth, vault ref validation
+- [x] Tool Shadowing — deny, confirm (CLI + MCP elicitation), rate limit, audit logging
 - [ ] OAuth 2.1 server — [MCP-spec auth](docs/oauth-server-spec.md) with PKCE, dynamic registration, token endpoints
 - [ ] `factorly logs` — view/query the call log
 - [ ] External vault backends (1Password, GCP Secret Manager, AWS)

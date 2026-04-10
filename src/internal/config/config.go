@@ -54,6 +54,9 @@ type ToolConfig struct {
 	Path    string            `yaml:"path,omitempty"`
 	Headers map[string]string `yaml:"headers,omitempty"`
 	Auth    *AuthConfig       `yaml:"auth,omitempty"`
+
+	// Shadow (governance)
+	Shadow *ShadowConfig `yaml:"shadow,omitempty"`
 }
 
 type AuthConfig struct {
@@ -79,6 +82,32 @@ type ParamConfig struct {
 	Description string `yaml:"description,omitempty"`
 	Required    bool   `yaml:"required,omitempty"`
 	In          string `yaml:"in,omitempty"` // "query", "path", "header", "body"
+}
+
+type ShadowConfig struct {
+	Deny      []string    `yaml:"deny,omitempty"`
+	Confirm   interface{} `yaml:"confirm,omitempty"` // []string or bool
+	RateLimit string      `yaml:"rate_limit,omitempty"`
+	LogParams []string    `yaml:"log_params,omitempty"`
+}
+
+// ConfirmList parses the Confirm field which can be bool (true=all) or []string.
+func (sc *ShadowConfig) ConfirmList() (list []string, all bool) {
+	if sc == nil {
+		return nil, false
+	}
+	switch v := sc.Confirm.(type) {
+	case bool:
+		return nil, v
+	case []interface{}:
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				list = append(list, s)
+			}
+		}
+		return list, false
+	}
+	return nil, false
 }
 
 var placeholderPattern = regexp.MustCompile(`\{\{([A-Za-z_][A-Za-z0-9_-]*)\}\}`)

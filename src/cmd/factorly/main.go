@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/factorly-hq/factorly-cli/internal/provider"
 	"github.com/factorly-hq/factorly-cli/internal/proxy"
 	"github.com/factorly-hq/factorly-cli/internal/registry"
+	"github.com/factorly-hq/factorly-cli/internal/shadow"
 	"github.com/factorly-hq/factorly-cli/internal/vault"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -395,7 +397,8 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 
 // bootstrapProviders opens the vault if needed, creates providers, and
 // wires everything into a proxy. Takes config and registry from loadConfig().
-func bootstrapProviders(cfg *config.Config, reg *registry.Registry) (*proxy.Proxy, error) {
+// confirmFn is used for shadow confirm prompts — nil uses the default CLI prompt.
+func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ...shadow.ConfirmFunc) (*proxy.Proxy, error) {
 	// Open vault resolver only when executing tools
 	resolver, err := initResolver(cfg)
 	if err != nil {
@@ -538,7 +541,51 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry) (*proxy.Prox
 		}
 	}
 
-	p := proxy.New(reg, providers, logIface)
+	// Build shadow policy from config
+	var proxyOpts []proxy.Option
+	shadowRules := make(map[string]*shadow.Rule)
+	for name, toolCfg := range cfg.Tools {
+		if toolCfg.Shadow == nil {
+			continue
+		}
+		sc := toolCfg.Shadow
+		confirmList, confirmAll := sc.ConfirmList()
+		rule := &shadow.Rule{
+			Deny:       sc.Deny,
+			Confirm:    confirmList,
+			ConfirmAll: confirmAll,
+			LogParams:  sc.LogParams,
+		}
+		if sc.RateLimit != "" {
+			rl, err := shadow.ParseRateLimit(sc.RateLimit)
+			if err != nil {
+				return nil, fmt.Errorf("shadow config for %q: %w", name, err)
+			}
+			rule.RateLimit = rl
+		}
+		shadowRules[name] = rule
+	}
+	if len(shadowRules) > 0 {
+		// Use provided confirm function, or default to CLI stdin prompt
+		var cf shadow.ConfirmFunc
+		if len(confirmFn) > 0 && confirmFn[0] != nil {
+			cf = confirmFn[0]
+		} else {
+			cf = func(ctx context.Context, toolName string, params map[string]string) bool {
+				fmt.Fprintf(os.Stderr, "⚠ Tool %q requires confirmation. Proceed? (y/n): ", toolName)
+				scanner := bufio.NewScanner(os.Stdin)
+				if scanner.Scan() {
+					return strings.HasPrefix(strings.ToLower(scanner.Text()), "y")
+				}
+				return false
+			}
+		}
+		policy := shadow.New(shadowRules, cf, "")
+		proxyOpts = append(proxyOpts, proxy.WithShadow(policy))
+		vlog("shadow policy active (%d rules)", len(shadowRules))
+	}
+
+	p := proxy.New(reg, providers, logIface, proxyOpts...)
 	return p, nil
 }
 

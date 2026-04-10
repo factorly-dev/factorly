@@ -11,6 +11,7 @@ import (
 
 	factorlyServer "github.com/factorly-hq/factorly-cli/internal/server"
 	"github.com/factorly-hq/factorly-cli/internal/vault"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 )
@@ -31,7 +32,7 @@ By default, uses stdio transport. Use --http to start an HTTP server instead.`,
 			return err
 		}
 
-		p, err := bootstrapProviders(cfg, reg)
+		p, err := bootstrapProviders(cfg, reg, mcpElicitConfirm)
 		if err != nil {
 			return err
 		}
@@ -129,6 +130,43 @@ func tokenAuthMiddleware(next http.Handler, token string) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// mcpElicitConfirm uses MCP elicitation to prompt the user for confirmation
+// via the MCP client (e.g., Claude Code shows the prompt in the chat UI).
+func mcpElicitConfirm(ctx context.Context, toolName string, params map[string]string) bool {
+	session := server.ClientSessionFromContext(ctx)
+	if session == nil {
+		vlog("shadow confirm: no MCP session available, denying")
+		return false
+	}
+
+	elicitSession, ok := session.(server.SessionWithElicitation)
+	if !ok {
+		vlog("shadow confirm: session does not support elicitation, denying")
+		return false
+	}
+
+	req := mcp.ElicitationRequest{}
+	req.Params.Message = fmt.Sprintf("Tool %q requires confirmation. Allow this call?", toolName)
+	req.Params.RequestedSchema = map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"approve": map[string]any{
+				"type":        "boolean",
+				"description": "Approve this tool call?",
+				"default":     true,
+			},
+		},
+	}
+
+	result, err := elicitSession.RequestElicitation(ctx, req)
+	if err != nil {
+		vlog("shadow confirm: elicitation failed: %v", err)
+		return false
+	}
+
+	return result.Action == mcp.ElicitationResponseActionAccept
 }
 
 func init() {

@@ -79,6 +79,7 @@ func New(reg *registry.Registry, p *proxy.Proxy) *server.MCPServer {
 		internal.AppName,
 		internal.Version,
 		server.WithToolCapabilities(false),
+		server.WithElicitation(),
 		server.WithHooks(hooks),
 	)
 
@@ -121,7 +122,7 @@ func makeHandler(p *proxy.Proxy, toolName string) server.ToolHandlerFunc {
 
 		slog(ctx, "mcp call: %s params=%v", toolName, redactSensitiveParams(params))
 
-		result, err := p.Execute(toolName, params, "mcp")
+		result, err := p.ExecuteWithContext(ctx, toolName, params, "mcp")
 		if err != nil {
 			slog(ctx, "mcp call %s: error: %v", toolName, err)
 			return mcp.NewToolResultError(err.Error()), nil

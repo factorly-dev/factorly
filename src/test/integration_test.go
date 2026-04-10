@@ -1402,6 +1402,161 @@ tools:
 	}
 }
 
+// --- Shadow Policy ---
+
+func TestShadowDenyBlocksTool(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  test.blocked:
+    type: cli
+    command: echo
+    args: ["{{msg}}"]
+    shadow:
+      deny: [test.blocked]
+  test.allowed:
+    type: cli
+    command: echo
+    args: ["{{msg}}"]
+`,
+	})
+
+	// Blocked tool should fail
+	_, stderr, code := run(t, dir, "call", "test.blocked", "--msg", "should fail")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for denied tool")
+	}
+	if !strings.Contains(stderr, "denied by shadow policy") {
+		t.Errorf("expected 'denied by shadow policy' in error, got: %s", stderr)
+	}
+
+	// Allowed tool should work
+	stdout, _, code := run(t, dir, "call", "test.allowed", "--msg", "should work")
+	if code != 0 {
+		t.Fatal("expected exit 0 for allowed tool")
+	}
+	if strings.TrimSpace(stdout) != "should work" {
+		t.Errorf("expected 'should work', got %q", stdout)
+	}
+}
+
+func TestShadowDenyMCPSubTool(t *testing.T) {
+	// Shadow deny on MCP server blocks specific sub-tools
+	dir := setupDir(t, map[string]string{
+		"child.yaml": `
+tools:
+  safe:
+    type: cli
+    command: echo
+    args: ["{{msg}}"]
+  dangerous:
+    type: cli
+    command: echo
+    args: ["{{msg}}"]
+`,
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  child:
+    type: mcp
+    command: %s
+    args: ["serve", "-c", "child.yaml"]
+    shadow:
+      deny: [dangerous]
+`, binary),
+	})
+
+	// Safe sub-tool should work
+	stdout, _, code := run(t, dir, "call", "child.safe", "--msg", "ok")
+	if code != 0 {
+		t.Fatal("safe tool should work")
+	}
+	if !strings.Contains(stdout, "ok") {
+		t.Errorf("expected 'ok', got %q", stdout)
+	}
+
+	// Dangerous sub-tool should be blocked
+	_, stderr, code := run(t, dir, "call", "child.dangerous", "--msg", "nope")
+	if code == 0 {
+		t.Fatal("dangerous tool should be blocked")
+	}
+	if !strings.Contains(stderr, "denied") {
+		t.Errorf("expected 'denied' in error, got: %s", stderr)
+	}
+}
+
+func TestShadowRateLimit(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  test.limited:
+    type: cli
+    command: echo
+    args: ["{{msg}}"]
+    shadow:
+      rate_limit: 2/min
+`,
+	})
+
+	// First two calls succeed
+	_, _, code := run(t, dir, "call", "test.limited", "--msg", "1")
+	if code != 0 {
+		t.Fatal("first call should succeed")
+	}
+	_, _, code = run(t, dir, "call", "test.limited", "--msg", "2")
+	if code != 0 {
+		t.Fatal("second call should succeed")
+	}
+
+	// Third call should be rate limited
+	_, stderr, code := run(t, dir, "call", "test.limited", "--msg", "3")
+	if code == 0 {
+		t.Fatal("third call should be rate limited")
+	}
+	if !strings.Contains(stderr, "rate limited") {
+		t.Errorf("expected 'rate limited' in error, got: %s", stderr)
+	}
+}
+
+func TestShadowConfirmAutoApproveWithYesFlag(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  test.confirm:
+    type: cli
+    command: echo
+    args: ["{{msg}}"]
+    shadow:
+      confirm: true
+`,
+	})
+
+	// Without --yes, would prompt (but piped stdin = no input = decline)
+	_, _, code := run(t, dir, "call", "test.confirm", "--msg", "hi")
+	if code == 0 {
+		t.Fatal("expected failure without confirmation input")
+	}
+}
+
+func TestShadowNoRulesAllows(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  test.free:
+    type: cli
+    command: echo
+    args: ["{{msg}}"]
+`,
+	})
+
+	stdout, _, code := run(t, dir, "call", "test.free", "--msg", "no shadow")
+	if code != 0 {
+		t.Fatal("tool without shadow should work")
+	}
+	if strings.TrimSpace(stdout) != "no shadow" {
+		t.Errorf("expected 'no shadow', got %q", stdout)
+	}
+}
+
 // --- Missing config ---
 
 func TestMissingConfig(t *testing.T) {
