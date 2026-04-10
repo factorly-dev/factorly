@@ -7,7 +7,7 @@ const path = require("path");
 const { execSync } = require("child_process");
 
 const VERSION = require("./package.json").version;
-const REPO = "factorly-hq/factorly-cli";
+const REPO = "factorly-dev/factorly-cli";
 const BIN_DIR = path.join(__dirname, "binary");
 const BIN_PATH = path.join(BIN_DIR, process.platform === "win32" ? "factorly.exe" : "factorly");
 
@@ -96,7 +96,7 @@ install().catch((err) => {
   console.error(`  https://github.com/${REPO}/releases/tag/v${VERSION}`);
   console.error("");
   console.error("Or build from source:");
-  console.error("  git clone https://github.com/factorly-hq/factorly-cli.git");
+  console.error("  git clone https://github.com/factorly-dev/factorly-cli.git");
   console.error("  cd factorly-cli && make build");
   process.exit(1);
 });

@@ -2,10 +2,10 @@
   "name": "@factorly/cli",
   "version": "0.1.2",
   "description": "Your agent calls tools. Factorly holds the keys.",
-  "homepage": "https://github.com/factorly-hq/factorly-cli",
+  "homepage": "https://github.com/factorly-dev/factorly-cli",
   "repository": {
     "type": "git",
-    "url": "https://github.com/factorly-hq/factorly-cli.git"
+    "url": "https://github.com/factorly-dev/factorly-cli.git"
   },
   "license": "MIT",
   "bin": {

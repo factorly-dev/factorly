@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/factorly-hq/factorly-cli/internal/config"
-	"github.com/factorly-hq/factorly-cli/internal/parsing/curl"
+	"github.com/factorly-dev/factorly-cli/internal/config"
+	"github.com/factorly-dev/factorly-cli/internal/parsing/curl"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 	"gopkg.in/yaml.v3"

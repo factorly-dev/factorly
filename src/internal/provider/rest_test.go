@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/factorly-hq/factorly-cli/internal/oauth"
+	"github.com/factorly-dev/factorly-cli/internal/oauth"
 )
 
 // --- Errors ---

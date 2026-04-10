@@ -6,10 +6,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/factorly-hq/factorly-cli/internal/logger"
-	"github.com/factorly-hq/factorly-cli/internal/provider"
-	"github.com/factorly-hq/factorly-cli/internal/registry"
-	"github.com/factorly-hq/factorly-cli/internal/shadow"
+	"github.com/factorly-dev/factorly-cli/internal/logger"
+	"github.com/factorly-dev/factorly-cli/internal/provider"
+	"github.com/factorly-dev/factorly-cli/internal/registry"
+	"github.com/factorly-dev/factorly-cli/internal/shadow"
 )
 
 // Option configures a Proxy.

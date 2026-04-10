@@ -5,7 +5,7 @@ Requires Go 1.24+.
 ## Setup
 
 ```bash
-git clone https://github.com/factorly-hq/factorly-cli.git
+git clone https://github.com/factorly-dev/factorly-cli.git
 cd factorly
 make init       # download deps + install tooling (golangci-lint, gotestsum)
 make build      # build for host platform → build/factorly

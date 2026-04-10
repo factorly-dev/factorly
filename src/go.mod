@@ -1,4 +1,4 @@
-module github.com/factorly-hq/factorly-cli
+module github.com/factorly-dev/factorly-cli
 
 go 1.24.1
 

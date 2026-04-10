@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/factorly-hq/factorly-cli/internal/vault"
+	"github.com/factorly-dev/factorly-cli/internal/vault"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )

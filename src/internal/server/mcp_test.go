@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/factorly-hq/factorly-cli/internal/logger"
-	"github.com/factorly-hq/factorly-cli/internal/provider"
-	"github.com/factorly-hq/factorly-cli/internal/proxy"
-	"github.com/factorly-hq/factorly-cli/internal/registry"
+	"github.com/factorly-dev/factorly-cli/internal/logger"
+	"github.com/factorly-dev/factorly-cli/internal/provider"
+	"github.com/factorly-dev/factorly-cli/internal/proxy"
+	"github.com/factorly-dev/factorly-cli/internal/registry"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 

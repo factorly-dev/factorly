@@ -3,7 +3,7 @@
 ## Install
 
 ```bash
-git clone https://github.com/factorly-hq/factorly-cli.git
+git clone https://github.com/factorly-dev/factorly-cli.git
 cd factorly
 make init
 make build
