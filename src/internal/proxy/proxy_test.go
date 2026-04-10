@@ -330,3 +330,70 @@ func TestProxyNoAgentIDWhenNotSet(t *testing.T) {
 		t.Errorf("expected empty agent ID, got %q", log.entries[0].AgentID)
 	}
 }
+
+func TestProxySavingsTracking(t *testing.T) {
+	reg := registry.New()
+	reg.Register(&registry.Tool{
+		Name:        "test.big",
+		ProviderKey: "mock",
+		MaxOutput:   100,
+	})
+
+	bigOutput := strings.Repeat("x", 500)
+	mock := &mockProvider{
+		result: &provider.Result{Output: bigOutput, Duration: time.Millisecond},
+	}
+
+	log := &capturingLogger{}
+	p := New(reg, map[string]provider.Provider{"mock": mock}, log)
+
+	_, err := p.Execute("test.big", nil, "cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(log.entries) != 1 {
+		t.Fatalf("expected 1 log entry, got %d", len(log.entries))
+	}
+	entry := log.entries[0]
+	if entry.OriginalBytes != 500 {
+		t.Errorf("expected original_bytes=500, got %d", entry.OriginalBytes)
+	}
+	if entry.ProcessedBytes >= entry.OriginalBytes {
+		t.Errorf("expected processed_bytes < original_bytes, got %d >= %d", entry.ProcessedBytes, entry.OriginalBytes)
+	}
+	if entry.ProcessedBytes == 0 {
+		t.Error("expected non-zero processed_bytes")
+	}
+}
+
+func TestProxyNoSavingsWhenNoProcessing(t *testing.T) {
+	reg := registry.New()
+	reg.Register(&registry.Tool{
+		Name:        "test.plain",
+		ProviderKey: "mock",
+	})
+
+	mock := &mockProvider{
+		result: &provider.Result{Output: "hello", Duration: time.Millisecond},
+	}
+
+	log := &capturingLogger{}
+	p := New(reg, map[string]provider.Provider{"mock": mock}, log)
+
+	_, err := p.Execute("test.plain", nil, "cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(log.entries) != 1 {
+		t.Fatalf("expected 1 log entry, got %d", len(log.entries))
+	}
+	entry := log.entries[0]
+	if entry.OriginalBytes != 0 {
+		t.Errorf("expected original_bytes=0 (omitted), got %d", entry.OriginalBytes)
+	}
+	if entry.ProcessedBytes != 0 {
+		t.Errorf("expected processed_bytes=0 (omitted), got %d", entry.ProcessedBytes)
+	}
+}

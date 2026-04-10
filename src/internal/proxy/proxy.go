@@ -95,6 +95,7 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 	}
 
 	// Apply output processing (compression + truncation)
+	var originalBytes, processedBytes int
 	if result != nil && result.Output != "" {
 		// Determine max output: per-tool config > env var > 0 (unlimited)
 		maxOutput := tool.MaxOutput
@@ -114,7 +115,9 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 
 		// Apply compression + truncation
 		if len(hints) > 0 || maxOutput > 0 {
+			originalBytes = len(result.Output)
 			result.Output = output.Process(result.Output, maxOutput, hints...)
+			processedBytes = len(result.Output)
 		}
 	}
 
@@ -126,7 +129,9 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		Params:       params,
 		DurationMs:   result.Duration.Milliseconds(),
 		ShadowAction: string(shadowAction),
-		AgentID:      agentID,
+		AgentID:        agentID,
+		OriginalBytes:  originalBytes,
+		ProcessedBytes: processedBytes,
 	}
 	if p.shadow != nil {
 		if logParams := p.shadow.LogParamsFor(toolName); len(logParams) > 0 {

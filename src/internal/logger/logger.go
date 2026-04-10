@@ -20,6 +20,8 @@ type Entry struct {
 	ShadowAction    string            `json:"shadow_action,omitempty"`
 	HighlightParams map[string]string `json:"highlight_params,omitempty"`
 	AgentID         string            `json:"agent_id,omitempty"`
+	OriginalBytes   int               `json:"original_bytes,omitempty"`
+	ProcessedBytes  int               `json:"processed_bytes,omitempty"`
 }
 
 type Logger interface {
