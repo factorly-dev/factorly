@@ -1,6 +1,6 @@
 {
   "name": "@factorly/cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Your agent calls tools. Factorly holds the keys.",
   "homepage": "https://github.com/factorly-dev/factorly-cli",
   "repository": {
@@ -9,7 +9,7 @@
   },
   "license": "MIT",
   "bin": {
-    "factorly": "./bin/factorly"
+    "factorly": "./bin/factorly.js"
   },
   "scripts": {
     "postinstall": "node install.js"
@@ -30,7 +30,6 @@
   "files": [
     "install.js",
     "bin/",
-    "binary/",
     "README.md"
   ]
 }
