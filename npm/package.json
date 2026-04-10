@@ -1,6 +1,6 @@
 {
   "name": "@factorly/cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Your agent calls tools. Factorly holds the keys.",
   "homepage": "https://github.com/factorly-hq/factorly-cli",
   "repository": {
