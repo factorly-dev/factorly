@@ -47,6 +47,13 @@ func (p *Proxy) Shadow() *shadow.Policy {
 	return p.shadow
 }
 
+// Teardown shuts down all providers (closes child processes, connections).
+func (p *Proxy) Teardown() {
+	for _, prov := range p.providers {
+		_ = prov.Teardown()
+	}
+}
+
 func (p *Proxy) Execute(toolName string, params map[string]string, iface string) (*provider.Result, error) {
 	return p.ExecuteWithContext(context.Background(), toolName, params, iface)
 }
@@ -123,12 +130,12 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 
 	// Log the call
 	entry := &logger.Entry{
-		Timestamp:    time.Now(),
-		Interface:    iface,
-		Tool:         toolName,
-		Params:       params,
-		DurationMs:   result.Duration.Milliseconds(),
-		ShadowAction: string(shadowAction),
+		Timestamp:      time.Now(),
+		Interface:      iface,
+		Tool:           toolName,
+		Params:         params,
+		DurationMs:     result.Duration.Milliseconds(),
+		ShadowAction:   string(shadowAction),
 		AgentID:        agentID,
 		OriginalBytes:  originalBytes,
 		ProcessedBytes: processedBytes,

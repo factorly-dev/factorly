@@ -29,6 +29,7 @@ import (
 var configPath string
 var configDir string
 var verbose bool
+var wrapMode bool
 
 func vlog(format string, args ...any) {
 	if verbose {
@@ -350,7 +351,7 @@ func init() {
 	importCmd.AddCommand(importOpenAPICmd)
 
 	toolsCmd.AddCommand(toolsListCmd, addCmd, removeCmd, importCmd, recordCmd)
-	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, authCmd, statusCmd, serveCmd)
+	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, authCmd, statusCmd, serveCmd, wrapCmd)
 }
 
 // loadConfig loads config and builds a registry. Does not open the vault
@@ -429,11 +430,12 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 		switch toolCfg.Type {
 		case "cli":
 			def := provider.CLIToolDef{
-				Command:     toolCfg.Command,
-				Args:        toolCfg.Args,
-				Stdin:       toolCfg.Stdin,
-				Interactive: toolCfg.Interactive,
-				Env:         resolveVaultMap(resolver, toolCfg.Env),
+				Command:        toolCfg.Command,
+				Args:           toolCfg.Args,
+				Stdin:          toolCfg.Stdin,
+				Interactive:    toolCfg.Interactive,
+				Env:            resolveVaultMap(resolver, toolCfg.Env),
+				EnvPassthrough: toolCfg.EnvPassthrough,
 			}
 			if toolCfg.Timeout != "" {
 				if d, err := time.ParseDuration(toolCfg.Timeout); err == nil {
@@ -483,10 +485,11 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			vlog("  registered rest tool: %s", name)
 		case "mcp":
 			mcpServers[name] = provider.MCPServerDef{
-				Command: toolCfg.Command,
-				Args:    toolCfg.Args,
-				Env:     resolveVaultMap(resolver, toolCfg.Env),
-				URL:     resolveVaultRef(resolver, toolCfg.URL),
+				Command:        toolCfg.Command,
+				Args:           toolCfg.Args,
+				Env:            resolveVaultMap(resolver, toolCfg.Env),
+				EnvPassthrough: toolCfg.EnvPassthrough,
+				URL:            resolveVaultRef(resolver, toolCfg.URL),
 			}
 			vlog("  registered mcp server: %s", name)
 		}
@@ -516,7 +519,12 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 		providers["rest"] = restProvider
 	}
 	if len(mcpServers) > 0 {
-		mcpProvider := provider.NewMCP(mcpServers)
+		var mcpProvider *provider.MCPProvider
+		if wrapMode {
+			mcpProvider = provider.NewMCPNoNamespace(mcpServers)
+		} else {
+			mcpProvider = provider.NewMCP(mcpServers)
+		}
 		if err := mcpProvider.Setup(); err != nil {
 			return nil, fmt.Errorf("mcp provider setup: %w", err)
 		}
@@ -538,12 +546,16 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 					Required:    dp.Required,
 				}
 			}
+			// Inherit output settings from the parent MCP server config
+			parentCfg := cfg.Tools[dt.ServerKey]
 			reg.Register(&registry.Tool{
 				Name:        dt.Name,
 				Type:        "mcp",
 				Description: dt.Description,
 				Parameters:  params,
 				ProviderKey: "mcp",
+				MaxOutput:   parentCfg.MaxOutput,
+				Compress:    parentCfg.Compress,
 			})
 			vlog("    discovered: %s (%d params)", dt.Name, len(dt.Parameters))
 		}

@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	factorlyServer "github.com/factorly-dev/factorly-cli/internal/server"
 	"github.com/factorly-dev/factorly-cli/internal/vault"
@@ -117,7 +118,9 @@ func serveHTTP(ctx context.Context, s *server.MCPServer, addr string) error {
 		return err
 	case <-ctx.Done():
 		vlog("shutting down HTTP server")
-		return srv.Shutdown(context.Background())
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		return srv.Shutdown(shutdownCtx)
 	}
 }
 

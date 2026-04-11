@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/factorly-dev/factorly-cli/internal"
@@ -12,14 +13,20 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// envMu serializes process environment manipulation in ConnectMCP.
+// The mcp-go library reads os.Environ() when spawning child processes,
+// so we temporarily scrub the env to enforce isolation.
+var envMu sync.Mutex
+
 const mcpTimeout = 30 * time.Second
 
 // MCPServerDef defines a child MCP server to connect to.
 type MCPServerDef struct {
-	Command string            // stdio transport: executable to spawn
-	Args    []string          // stdio transport: arguments
-	Env     map[string]string // stdio transport: environment variables
-	URL     string            // http transport: server URL
+	Command        string            // stdio transport: executable to spawn
+	Args           []string          // stdio transport: arguments
+	Env            map[string]string // stdio transport: environment variables
+	EnvPassthrough []string          // env var names to forward from parent process
+	URL            string            // http transport: server URL
 }
 
 // DiscoveredTool is a tool discovered from a child MCP server.
@@ -46,9 +53,10 @@ type mcpConn struct {
 
 // MCPProvider wraps child MCP servers and forwards tool calls.
 type MCPProvider struct {
-	servers map[string]*mcpConn // keyed by config name
-	toolMap map[string]string   // factorly tool name → config name
-	defs    map[string]MCPServerDef
+	servers     map[string]*mcpConn // keyed by config name
+	toolMap     map[string]string   // factorly tool name → config name
+	defs        map[string]MCPServerDef
+	noNamespace bool // when true, use original tool names without server prefix
 }
 
 // NewMCP creates an MCP provider with the given server definitions.
@@ -58,6 +66,14 @@ func NewMCP(servers map[string]MCPServerDef) *MCPProvider {
 		toolMap: make(map[string]string),
 		defs:    servers,
 	}
+}
+
+// NewMCPNoNamespace creates an MCP provider that preserves original tool names
+// without prefixing them with the server name. Used by `factorly wrap`.
+func NewMCPNoNamespace(servers map[string]MCPServerDef) *MCPProvider {
+	p := NewMCP(servers)
+	p.noNamespace = true
+	return p
 }
 
 // Setup connects to all configured MCP servers and initializes them.
@@ -88,12 +104,10 @@ func ConnectMCP(def MCPServerDef) (*client.Client, error) {
 		// HTTP transport
 		c, err = client.NewStreamableHttpClient(def.URL)
 	} else {
-		// Stdio transport — only pass PATH + explicitly configured env vars
-		env := []string{"PATH=" + os.Getenv("PATH")}
-		for k, v := range def.Env {
-			env = append(env, k+"="+v)
-		}
-		c, err = client.NewStdioMCPClient(def.Command, env, def.Args...)
+		// Stdio transport — restricted environment.
+		// mcp-go appends our env to os.Environ(), so we temporarily
+		// scrub the process env to enforce isolation.
+		c, err = connectStdioRestricted(def)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("creating client: %w", err)
@@ -117,6 +131,36 @@ func ConnectMCP(def MCPServerDef) (*client.Client, error) {
 	return c, nil
 }
 
+// connectStdioRestricted spawns a child MCP server with a restricted environment.
+// The mcp-go library always appends provided env to os.Environ(), so we temporarily
+// replace the process environment with only our allowed vars during the spawn.
+func connectStdioRestricted(def MCPServerDef) (*client.Client, error) {
+	restricted := buildEnv(def.Env, def.EnvPassthrough)
+
+	envMu.Lock()
+	saved := os.Environ()
+	os.Clearenv()
+	for _, e := range restricted {
+		if k, v, ok := strings.Cut(e, "="); ok {
+			os.Setenv(k, v)
+		}
+	}
+
+	// Spawn with nil env — mcp-go will read our scrubbed os.Environ()
+	c, err := client.NewStdioMCPClient(def.Command, nil, def.Args...)
+
+	// Restore original env immediately
+	os.Clearenv()
+	for _, e := range saved {
+		if k, v, ok := strings.Cut(e, "="); ok {
+			os.Setenv(k, v)
+		}
+	}
+	envMu.Unlock()
+
+	return c, err
+}
+
 // DiscoverTools queries all connected MCP servers for their tools.
 // Call after Setup(). Returns tools namespaced as serverName.toolName.
 func (p *MCPProvider) DiscoverTools() ([]DiscoveredTool, error) {
@@ -131,7 +175,12 @@ func (p *MCPProvider) DiscoverTools() ([]DiscoveredTool, error) {
 		}
 
 		for _, tool := range result.Tools {
-			factorlyName := name + "." + tool.Name
+			var factorlyName string
+			if p.noNamespace {
+				factorlyName = tool.Name
+			} else {
+				factorlyName = name + "." + tool.Name
+			}
 			conn.remoteName[factorlyName] = tool.Name
 			p.toolMap[factorlyName] = name
 

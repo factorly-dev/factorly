@@ -74,6 +74,26 @@ func TestMCPToolNameMapping(t *testing.T) {
 	}
 }
 
+func TestNewMCPNoNamespace(t *testing.T) {
+	servers := map[string]MCPServerDef{
+		"test": {Command: "echo"},
+	}
+	p := NewMCPNoNamespace(servers)
+	if !p.noNamespace {
+		t.Error("expected noNamespace to be true")
+	}
+}
+
+func TestNewMCPHasNamespace(t *testing.T) {
+	servers := map[string]MCPServerDef{
+		"test": {Command: "echo"},
+	}
+	p := NewMCP(servers)
+	if p.noNamespace {
+		t.Error("expected noNamespace to be false")
+	}
+}
+
 func TestMCPNewAndTeardown(t *testing.T) {
 	p := NewMCP(map[string]MCPServerDef{})
 	if p.servers == nil {
