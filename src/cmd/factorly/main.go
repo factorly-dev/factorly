@@ -115,6 +115,13 @@ var callCmd = &cobra.Command{
 		// Manually extract global flags that cobra can't parse due to DisableFlagParsing
 		args = extractGlobalFlags(args)
 
+		// Handle --help / -h manually since DisableFlagParsing hides it from cobra
+		for _, a := range args {
+			if a == "--help" || a == "-h" {
+				return cmd.Help()
+			}
+		}
+
 		if len(args) == 0 {
 			return fmt.Errorf("usage: factorly call <tool> [--param value ...]")
 		}
