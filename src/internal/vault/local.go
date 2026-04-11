@@ -185,6 +185,14 @@ func (b *LocalBackend) Get(key string) (string, error) {
 	return decryptValue(b.key, entry)
 }
 
+// Has returns true if a key exists in the vault.
+func (b *LocalBackend) Has(key string) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	_, ok := b.index.Entries[key]
+	return ok
+}
+
 func (b *LocalBackend) Set(key, value string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()

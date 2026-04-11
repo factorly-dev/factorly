@@ -355,7 +355,7 @@ func init() {
 
 	importOpenAPICmd.Flags().StringVarP(&importOpenAPIOut, "out", "o", "", "output file path (default: stdout)")
 	importOpenAPICmd.Flags().StringVarP(&importOpenAPIPrefix, "prefix", "p", "", "tool name prefix (default: from spec title)")
-	importCmd.AddCommand(importOpenAPICmd)
+	importCmd.AddCommand(importOpenAPICmd, templatesCmd)
 
 	toolsCmd.AddCommand(toolsListCmd, addCmd, removeCmd, importCmd, recordCmd)
 	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, authCmd, statusCmd, serveCmd, wrapCmd)

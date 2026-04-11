@@ -41,6 +41,16 @@ var vaultSetCmd = &cobra.Command{
 			value = v
 		}
 
+		if backend.Has(key) {
+			fmt.Fprintf(os.Stderr, "Key %s already exists. Overwrite? (y/n): ", key)
+			scanner := bufio.NewScanner(os.Stdin)
+			if scanner.Scan() {
+				if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(scanner.Text())), "y") {
+					fmt.Fprintln(os.Stderr, "Aborted.")
+					return nil
+				}
+			}
+		}
 		if err := backend.Set(key, value); err != nil {
 			return err
 		}
