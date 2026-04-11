@@ -15,7 +15,7 @@
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](docs/)
 
-One endpoint. All your tools. Credentials stay out of your agent's hands.  
+One command. All your tools. Credentials stay out of your agent's hands.  
   
 Factorly wraps REST APIs, CLIs, and MCP servers into a single, governed interface. Configure your tools once, connect your agent once, and every call is authenticated, proxied, and logged. Your agent never touches a secret.  
 
