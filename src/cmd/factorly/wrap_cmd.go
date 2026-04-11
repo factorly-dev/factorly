@@ -3,26 +3,26 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"os/signal"
-	"path"
 	"strings"
 	"syscall"
 
 	"github.com/factorly-dev/factorly-cli/internal/config"
+	"github.com/factorly-dev/factorly-cli/internal/naming"
 	"github.com/factorly-dev/factorly-cli/internal/registry"
 	factorlyServer "github.com/factorly-dev/factorly-cli/internal/server"
 	"github.com/spf13/cobra"
 )
 
 var (
-	wrapURL       string
-	wrapRateLimit string
-	wrapMaxOutput int
-	wrapCompress  string
-	wrapServeHTTP string
-	wrapHTTPToken string
+	wrapURL          string
+	wrapRateLimit    string
+	wrapMaxOutput    int
+	wrapCompress     string
+	wrapServeHTTP    string
+	wrapHTTPToken    string
+	wrapEnvIsolation string
 )
 
 var wrapCmd = &cobra.Command{
@@ -48,13 +48,13 @@ func runWrap(cmd *cobra.Command, args []string) error {
 	var toolCfg config.ToolConfig
 
 	if wrapURL != "" {
-		serverName = deriveNameFromURL(wrapURL)
+		serverName = naming.DeriveNameFromURL(wrapURL)
 		toolCfg = config.ToolConfig{
 			Type: "mcp",
 			URL:  wrapURL,
 		}
 	} else if len(args) > 0 {
-		serverName = deriveNameFromCommand(args)
+		serverName = naming.DeriveNameFromCommand(args)
 		toolCfg = config.ToolConfig{
 			Type:    "mcp",
 			Command: args[0],
@@ -76,6 +76,11 @@ func runWrap(cmd *cobra.Command, args []string) error {
 		toolCfg.Compress = []string{"all"}
 	}
 	toolCfg.MaxOutput = wrapMaxOutput
+
+	// Apply environment isolation
+	if wrapEnvIsolation == "strict" {
+		toolCfg.EnvIsolation = "strict"
+	}
 
 	// Apply shadow governance
 	if wrapRateLimit != "" {
@@ -144,61 +149,6 @@ func runWrap(cmd *cobra.Command, args []string) error {
 	return serveStdio(ctx, s)
 }
 
-// deriveNameFromCommand extracts a human-friendly name from a command and its args.
-// e.g., "npx @modelcontextprotocol/server-github" → "server-github"
-// e.g., "uvx mcp-server-fetch" → "mcp-server-fetch"
-// e.g., "python -m my_server" → "my_server"
-func deriveNameFromCommand(args []string) string {
-	// Look at the last meaningful argument
-	for i := len(args) - 1; i >= 0; i-- {
-		arg := args[i]
-		// Skip flags
-		if strings.HasPrefix(arg, "-") {
-			continue
-		}
-		// Handle scoped npm packages: @org/name → name
-		if strings.Contains(arg, "/") {
-			parts := strings.Split(arg, "/")
-			arg = parts[len(parts)-1]
-		}
-		// Clean up common prefixes/suffixes
-		name := strings.TrimPrefix(arg, "mcp-server-")
-		name = strings.TrimPrefix(name, "server-")
-		name = strings.TrimSuffix(name, ".py")
-		name = strings.TrimSuffix(name, ".js")
-		if name != "" && name != "npx" && name != "uvx" && name != "node" && name != "python" && name != "python3" {
-			return sanitizeName(name)
-		}
-	}
-	return "wrapped"
-}
-
-// deriveNameFromURL extracts a name from an HTTP URL.
-// e.g., "http://localhost:3001/mcp" → "localhost"
-func deriveNameFromURL(rawURL string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return "wrapped"
-	}
-	host := u.Hostname()
-	if host == "" {
-		return "wrapped"
-	}
-	// Use path if it's meaningful
-	if p := path.Base(u.Path); p != "" && p != "/" && p != "." {
-		return sanitizeName(p)
-	}
-	return sanitizeName(host)
-}
-
-// sanitizeName cleans a string for use as a tool config key.
-func sanitizeName(s string) string {
-	s = strings.ReplaceAll(s, " ", "-")
-	s = strings.ReplaceAll(s, ".", "-")
-	s = strings.ToLower(s)
-	return s
-}
-
 func init() {
 	wrapCmd.Flags().StringVar(&wrapURL, "url", "", "HTTP MCP server URL to wrap")
 	wrapCmd.Flags().StringVar(&wrapRateLimit, "rate-limit", "", "rate limit (e.g. 100/hour)")
@@ -206,4 +156,5 @@ func init() {
 	wrapCmd.Flags().StringVar(&wrapCompress, "compress", "all", "compression mode: all, json, logs, none")
 	wrapCmd.Flags().StringVar(&wrapServeHTTP, "http", "", "start HTTP transport on this address (e.g. :3000) instead of stdio")
 	wrapCmd.Flags().StringVar(&wrapHTTPToken, "http-token", "", "require Bearer token authentication for HTTP transport")
+	wrapCmd.Flags().StringVar(&wrapEnvIsolation, "env-isolation", "", "environment isolation: strict (minimal env) or standard (default, inherit parent)")
 }

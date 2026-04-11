@@ -22,6 +22,10 @@ tools:
     args: ["@org/server-name"] # arguments
     env:                        # environment variables
       KEY: {{vault:SECRET}}
+      AWS_PROFILE: "{{env:AWS_PROFILE}}"  # forward from host env
+    timeout: 30s                # execution timeout (e.g. "10s", "2m"; default 30s for CLI)
+    max_output: 50000           # max output bytes (default 50000)
+    compress: ["all"]           # compression hints: "json", "logs", or "all"
 
     # For MCP servers (HTTP — connect to remote):
     url: http://host:3000/mcp  # server URL
@@ -108,6 +112,61 @@ factorly call ssh.connect --host prod-server
 
 Interactive tools connect stdin/stdout/stderr directly to your terminal. Output is not captured (Result is empty), but the call is still logged with tool name, params, duration, and exit code. Interactive mode only works via `factorly call`, not through `factorly serve` (MCP has no terminal).
 
+## Output Processing
+
+Control how tool output is compressed and truncated before it reaches the agent.
+
+### Per-tool config
+
+```yaml
+tools:
+  big-query:
+    type: cli
+    command: bq
+    args: ["query", "{{sql}}"]
+    max_output: 100000         # bytes — overrides FACTORLY_MAX_OUTPUT
+    compress: ["json", "logs"] # or "all" for everything
+```
+
+### Compression pipeline
+
+When any `compress` hint is set, ANSI escape stripping and whitespace normalization run automatically. Additional stages:
+
+- **json** — compact JSON (strip pretty-print whitespace)
+- **logs** — deduplicate repeated log lines
+- **all** — enable both json and logs
+
+### Truncation
+
+Output exceeding `max_output` is truncated to **60% head + 40% tail** with a `[truncated]` marker in between.
+
+### Global fallback
+
+Set `FACTORLY_MAX_OUTPUT` to apply a default max across all tools. Per-tool `max_output` takes precedence.
+
+### Savings tracking
+
+Compression and truncation savings are recorded in the audit log (`original_bytes`, `processed_bytes`). Run `factorly status` to see an output savings summary.
+
+## Environment Isolation
+
+By default, child processes inherit the full parent environment (standard behavior). Set `env_isolation: strict` to restrict to a minimal set: `PATH`, `HOME`, `USER`, `LANG`, `TERM` + explicit `env:` entries only.
+
+```yaml
+tools:
+  deploy:
+    type: cli
+    command: ./deploy.sh
+    env_isolation: strict                    # minimal env (opt-in)
+    env:
+      AWS_PROFILE: "{{env:AWS_PROFILE}}"   # forwarded from host
+      AWS_REGION: "{{env:AWS_REGION}}"      # forwarded from host
+      DEPLOY_ENV: staging                    # explicit value
+      API_KEY: "{{vault:DEPLOY_KEY}}"        # from encrypted vault
+```
+
+Without `env_isolation: strict`, the `env:` field adds or overrides vars on top of the full parent environment.
+
 ## Parameter inference
 
 For CLI tools, parameters are automatically inferred from `{{placeholder}}` patterns in `args` and `stdin`.
@@ -161,7 +220,7 @@ shadow:
 
 ### rate_limit
 
-Limit how many times a tool can be called within a time window. Prevents runaway agents.
+Limit how many times a tool can be called within a time window. Prevents runaway agents. Uses a **token bucket** algorithm for smooth throttling — no window-boundary bursts.
 
 ```yaml
 shadow:
@@ -171,6 +230,16 @@ shadow:
 ```
 
 Rate limit state persists across `factorly call` invocations (stored at `~/.config/factorly/ratelimit.json`). Reset by deleting that file.
+
+### Loop detection
+
+Always-on — no configuration needed. Factorly fingerprints identical calls (same tool + same parameters) within a **300-second sliding window** and applies three tiers:
+
+| Repeat count | Behavior |
+|---|---|
+| 1–3 | Normal execution |
+| 4–8 | Warning logged, execution continues |
+| 12+ | Call blocked |
 
 ### log_params
 

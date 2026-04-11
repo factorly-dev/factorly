@@ -14,16 +14,39 @@ Every tool call — whether through `factorly call` or `factorly serve` — is l
 | `interface` | `cli` or `mcp` |
 | `tool` | Tool name |
 | `params` | Parameters passed to the tool |
-| `status` | `success` or `error` |
+| `status` | `success`, `error`, or `blocked` |
 | `duration_ms` | Execution time in milliseconds |
 | `output` | Truncated response (max 500 chars) |
 | `error` | Error message if failed (max 500 chars) |
+| `shadow_action` | Governance outcome: `allowed`, `denied`, `confirmed`, `rate_limited`, `loop_warning`, `loop_blocked` |
+| `highlight_params` | Selected params from `log_params` config (for audit filtering) |
+| `agent_id` | MCP session identifier (tracks per-agent activity) |
+| `original_bytes` | Output size before compression/truncation |
+| `processed_bytes` | Output size after compression/truncation |
 
 ## Location
 
 Default: `~/.config/factorly/calls.jsonl`
 
 Set `FACTORLY_NO_LOG=1` to disable logging.
+
+## Output savings
+
+When output processing is enabled (compression or truncation), the log records `original_bytes` and `processed_bytes` for each call. Query savings with `jq`:
+
+```bash
+cat ~/.config/factorly/calls.jsonl | jq 'select(.original_bytes) | {tool, saved: (.original_bytes - .processed_bytes)}'
+```
+
+Run `factorly status` for an aggregate output savings summary across all tools.
+
+## Agent identity
+
+MCP sessions are tracked by `agent_id` (session ID). Each agent gets independent rate-limit quotas. Use the field to filter logs per agent:
+
+```bash
+cat ~/.config/factorly/calls.jsonl | jq 'select(.agent_id == "session-abc")'
+```
 
 ## Security
 

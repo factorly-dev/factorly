@@ -31,6 +31,8 @@ factorly vault set <key> [value]    # store a secret (prompts if no value)
 factorly vault get <key>            # retrieve a secret (raw value to stdout)
 factorly vault list                 # list secret names
 factorly vault delete <key>         # remove a secret
+factorly wrap -- <command> [args]   # zero-config MCP proxy for any server
+factorly wrap --url <url>          # proxy a remote MCP server
 factorly version                    # print version
 ```
 
@@ -55,7 +57,39 @@ FACTORLY_VAULT_PASSWORD   # vault master password (for CI/automation)
 FACTORLY_VAULT_PATH       # vault file path override
 FACTORLY_HTTP_TOKEN       # HTTP server auth token (fallback for --http-token)
 FACTORLY_NO_LOG           # disable call logging when set
+FACTORLY_MAX_OUTPUT       # global max output bytes (fallback for per-tool max_output)
+FACTORLY_DISABLED_TOOLS   # comma-separated tool names to disable (applies to call + tools listing)
 ```
+
+## `factorly wrap` — zero-config MCP proxy
+
+Wraps any MCP server with Factorly's safety layer (compression, truncation, loop detection, rate limiting) — no config file needed. Tools keep their original names (no server prefix).
+
+```bash
+# Wrap a stdio MCP server
+factorly wrap -- npx @modelcontextprotocol/server-github
+
+# Wrap a remote HTTP MCP server
+factorly wrap --url http://localhost:3001/mcp
+```
+
+### Flags
+
+```bash
+--url <url>          # connect to a remote MCP server instead of spawning a subprocess
+--rate-limit <spec>  # rate limit (e.g. "100/hour")
+--max-output <bytes> # max output bytes per call (default: 50000)
+--compress <hints>   # compression hints: "json", "logs", or "all" (default: "all")
+--http <addr>        # serve wrapped server over HTTP (e.g. ":3000")
+--http-token <tok>   # Bearer token for HTTP mode
+--env-isolation <mode>  # "strict" for minimal env, default inherits parent
+```
+
+### Defaults
+
+- Compression: `all`
+- Max output: `50000` bytes
+- Loop detection: always-on
 
 ## HTTP server authentication
 

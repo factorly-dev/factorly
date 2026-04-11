@@ -1,4 +1,4 @@
-package main
+package naming
 
 import (
 	"strings"
@@ -19,9 +19,9 @@ func TestDeriveNameFromCommand(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
-			got := deriveNameFromCommand(tt.args)
+			got := DeriveNameFromCommand(tt.args)
 			if got != tt.expected {
-				t.Errorf("deriveNameFromCommand(%v) = %q, want %q", tt.args, got, tt.expected)
+				t.Errorf("DeriveNameFromCommand(%v) = %q, want %q", tt.args, got, tt.expected)
 			}
 		})
 	}
@@ -39,15 +39,15 @@ func TestDeriveNameFromURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.url, func(t *testing.T) {
-			got := deriveNameFromURL(tt.url)
+			got := DeriveNameFromURL(tt.url)
 			if got != tt.expected {
-				t.Errorf("deriveNameFromURL(%q) = %q, want %q", tt.url, got, tt.expected)
+				t.Errorf("DeriveNameFromURL(%q) = %q, want %q", tt.url, got, tt.expected)
 			}
 		})
 	}
 }
 
-func TestSanitizeName(t *testing.T) {
+func TestSanitize(t *testing.T) {
 	tests := []struct {
 		input    string
 		expected string
@@ -59,9 +59,9 @@ func TestSanitizeName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := sanitizeName(tt.input)
+			got := Sanitize(tt.input)
 			if got != tt.expected {
-				t.Errorf("sanitizeName(%q) = %q, want %q", tt.input, got, tt.expected)
+				t.Errorf("Sanitize(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
 	}

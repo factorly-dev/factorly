@@ -22,11 +22,11 @@ const mcpTimeout = 30 * time.Second
 
 // MCPServerDef defines a child MCP server to connect to.
 type MCPServerDef struct {
-	Command        string            // stdio transport: executable to spawn
-	Args           []string          // stdio transport: arguments
-	Env            map[string]string // stdio transport: environment variables
-	EnvPassthrough []string          // env var names to forward from parent process
-	URL            string            // http transport: server URL
+	Command   string            // stdio transport: executable to spawn
+	Args      []string          // stdio transport: arguments
+	Env       map[string]string // stdio transport: environment variables
+	EnvStrict bool              // when true, child gets minimal env instead of inheriting parent
+	URL       string            // http transport: server URL
 }
 
 // DiscoveredTool is a tool discovered from a child MCP server.
@@ -103,11 +103,15 @@ func ConnectMCP(def MCPServerDef) (*client.Client, error) {
 	if def.URL != "" {
 		// HTTP transport
 		c, err = client.NewStreamableHttpClient(def.URL)
-	} else {
-		// Stdio transport — restricted environment.
+	} else if def.EnvStrict {
+		// Strict mode: scrub process env to enforce isolation.
 		// mcp-go appends our env to os.Environ(), so we temporarily
-		// scrub the process env to enforce isolation.
+		// replace the process env with only our allowed vars.
 		c, err = connectStdioRestricted(def)
+	} else {
+		// Standard mode: pass explicit env vars (mcp-go merges with parent env)
+		env := buildEnv(def.Env, false)
+		c, err = client.NewStdioMCPClient(def.Command, env, def.Args...)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("creating client: %w", err)
@@ -135,7 +139,7 @@ func ConnectMCP(def MCPServerDef) (*client.Client, error) {
 // The mcp-go library always appends provided env to os.Environ(), so we temporarily
 // replace the process environment with only our allowed vars during the spawn.
 func connectStdioRestricted(def MCPServerDef) (*client.Client, error) {
-	restricted := buildEnv(def.Env, def.EnvPassthrough)
+	restricted := buildEnv(def.Env, true)
 
 	envMu.Lock()
 	saved := os.Environ()

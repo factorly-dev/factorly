@@ -18,17 +18,18 @@ func baseEnv() []string {
 	return env
 }
 
-// buildEnv constructs the environment for a child process:
-// base env + explicit key=value pairs + passthrough from parent.
-func buildEnv(explicit map[string]string, passthrough []string) []string {
-	env := baseEnv()
+// buildEnv constructs the environment for a child process.
+// In strict mode: base env (PATH, HOME, USER, LANG, TERM) + explicit vars only.
+// In standard mode: full parent env + explicit vars (Go default behavior).
+func buildEnv(explicit map[string]string, strict bool) []string {
+	var env []string
+	if strict {
+		env = baseEnv()
+	} else {
+		env = os.Environ()
+	}
 	for k, v := range explicit {
 		env = append(env, k+"="+v)
-	}
-	for _, k := range passthrough {
-		if v, ok := os.LookupEnv(k); ok {
-			env = append(env, k+"="+v)
-		}
 	}
 	return env
 }

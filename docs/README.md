@@ -7,12 +7,15 @@
 - **Every call logged** — every tool call is logged with timestamp, parameters, and response summary
 - **Zero lock-in** — your tools don't change. Remove Factorly and everything still works independently
 - **Any protocol** — MCP servers, REST APIs, CLI tools. One config format for all of them
+- **Zero-config proxy** — `factorly wrap` adds safety to any MCP server with no config file needed
 
 | Type | How It Works | Status |
 |---|---|---|
 | **CLI commands** | Define command + args in YAML. `{{param}}` placeholders substituted. | Working |
 | **REST APIs** | Define base URL, method, path, auth, parameters. HTTP calls with routing. | Working |
 | **MCP servers** | Spawn child servers (stdio) or connect to remote (HTTP). Tools discovered automatically. | Working |
+| **Output processing** | Compression (JSON compact, log dedup, ANSI strip) + truncation with head/tail split. | Working |
+| **Environment isolation** | Opt-in strict mode restricts child env to essentials. `env_isolation: strict` | Working |
 
 ## Getting Started
 
@@ -35,7 +38,7 @@
 | [OAuth](oauth.md) | OAuth 2.0 authentication with PKCE and auto-refresh |
 | [OpenAPI Import](openapi-import.md) | Generate tools from OpenAPI/Swagger specs |
 | [Project Directory](project-directory.md) | Modular configs with `.factorly/` and `tools_dir` |
-| [Logging](logging.md) | Call log format, location, and security |
+| [Logging](logging.md) | Call log format, fields, output savings, and security |
 
 ## Contributing
 

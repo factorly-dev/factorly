@@ -11,13 +11,13 @@ import (
 )
 
 type CLIToolDef struct {
-	Command        string
-	Args           []string
-	Stdin          string // template with {{param}} placeholders, piped to subprocess stdin
-	Interactive    bool   // connect subprocess to terminal (stdin/stdout/stderr)
-	Env            map[string]string
-	EnvPassthrough []string // env var names to forward from parent process
-	Timeout        time.Duration
+	Command     string
+	Args        []string
+	Stdin       string // template with {{param}} placeholders, piped to subprocess stdin
+	Interactive bool   // connect subprocess to terminal (stdin/stdout/stderr)
+	Env         map[string]string
+	EnvStrict   bool // when true, child gets minimal env instead of inheriting parent
+	Timeout     time.Duration
 }
 
 type CLIProvider struct {
@@ -69,8 +69,8 @@ func (p *CLIProvider) Execute(toolName string, params map[string]string) (*Resul
 
 	cmd := exec.CommandContext(ctx, def.Command, args...)
 
-	// Restricted environment: base env + explicit vars + passthrough
-	cmd.Env = buildEnv(def.Env, def.EnvPassthrough)
+	// Build environment: strict = minimal base, standard = full parent
+	cmd.Env = buildEnv(def.Env, def.EnvStrict)
 
 	// Interactive mode: connect directly to terminal
 	if def.Interactive {
