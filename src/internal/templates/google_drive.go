@@ -9,9 +9,14 @@ func GoogleDrive() *Template {
 		DisplayName: "Google Drive",
 		Description: "Manage files and folders in Google Drive",
 		Category:    "business",
-		AuthType:    "bearer",
-		AuthGuide:   "Create credentials at https://console.cloud.google.com/apis/credentials",
-		VaultKey:    "GOOGLE_API_TOKEN",
+		AuthType:    "oauth",
+		AuthGuide:   "Create OAuth credentials at https://console.cloud.google.com/apis/credentials",
+		VaultKey:    "", // OAuth uses provider-based auth, not a single vault key
+		OAuthConfig: &OAuthConfig{
+			AuthURL:  "https://accounts.google.com/o/oauth2/v2/auth",
+			TokenURL: "https://oauth2.googleapis.com/token",
+			Scopes:   []string{"https://www.googleapis.com/auth/drive"},
+		},
 		BaseURL:     "https://www.googleapis.com/drive/v3",
 		Headers: map[string]string{
 			"Content-Type": "application/json",

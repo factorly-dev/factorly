@@ -87,13 +87,18 @@ func LoginFlow(ctx context.Context, cfg ProviderConfig) (*TokenBundle, error) {
 	}
 	state := base64.RawURLEncoding.EncodeToString(stateBytes)
 
-	// Start local callback server
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	// Start local callback server on a fixed port so the redirect URI
+	// can be registered exactly in OAuth provider settings.
+	// Falls back to a random port if 18019 is in use.
+	listener, err := net.Listen("tcp", "127.0.0.1:18019")
 	if err != nil {
-		return nil, fmt.Errorf("starting callback server: %w", err)
+		listener, err = net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, fmt.Errorf("starting callback server: %w", err)
+		}
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
-	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", port)
+	redirectURI := fmt.Sprintf("http://localhost:%d/callback", port)
 
 	// Channel to receive the authorization code
 	codeCh := make(chan string, 1)

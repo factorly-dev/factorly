@@ -9,9 +9,14 @@ func DocuSign() *Template {
 		DisplayName: "DocuSign",
 		Description: "Electronic signatures, envelopes, and document management",
 		Category:    "business",
-		AuthType:    "bearer",
-		AuthGuide:   "Get credentials at https://developers.docusign.com",
-		VaultKey:    "DOCUSIGN_ACCESS_TOKEN",
+		AuthType:    "oauth",
+		AuthGuide:   "Create an app at https://developers.docusign.com",
+		VaultKey:    "", // OAuth uses provider-based auth, not a single vault key
+		OAuthConfig: &OAuthConfig{
+			AuthURL:  "https://account-d.docusign.com/oauth/auth",
+			TokenURL: "https://account-d.docusign.com/oauth/token",
+			Scopes:   []string{"signature"},
+		},
 		BaseURL:     "https://demo.docusign.net/restapi/v2.1",
 		Headers:     nil,
 		Tools: []ToolDef{

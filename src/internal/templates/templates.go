@@ -1,19 +1,31 @@
 package templates
 
-import "github.com/factorly-dev/factorly-cli/internal/config"
+import (
+	"strings"
+
+	"github.com/factorly-dev/factorly-cli/internal/config"
+)
 
 // Template defines a pre-built tool configuration for a service.
 type Template struct {
 	Name        string
 	DisplayName string
 	Description string
-	Category    string // "engineering" or "business"
-	AuthType    string // "api_key", "oauth", "bearer"
-	AuthGuide   string // Help text for getting credentials
-	VaultKey    string // Key name in vault (e.g. "LINEAR_API_KEY")
+	Category    string       // "engineering" or "business"
+	AuthType    string       // "api_key", "oauth", "bearer"
+	AuthGuide   string       // Help text for getting credentials
+	VaultKey    string       // Key name in vault (e.g. "LINEAR_API_KEY")
 	BaseURL     string
 	Headers     map[string]string
 	Tools       []ToolDef
+	OAuthConfig *OAuthConfig // Required when AuthType is "oauth"
+}
+
+// OAuthConfig holds OAuth provider details for templates that require OAuth.
+type OAuthConfig struct {
+	AuthURL  string
+	TokenURL string
+	Scopes   []string
 }
 
 // ToolDef defines a single tool within a template.
@@ -134,6 +146,34 @@ func (t *Template) ToToolConfigs(selectedTools []string) map[string]config.ToolC
 		tools[fullName] = tc
 	}
 	return tools
+}
+
+// ToOAuthProvider generates the oauth_providers config entry for OAuth templates.
+// Returns nil if the template does not use OAuth.
+func (t *Template) ToOAuthProvider() map[string]config.OAuthProviderConfig {
+	if t.AuthType != "oauth" || t.OAuthConfig == nil {
+		return nil
+	}
+	return map[string]config.OAuthProviderConfig{
+		t.Name: {
+			ClientID:     "{{vault:" + strings.ToUpper(t.Name) + "_CLIENT_ID}}",
+			ClientSecret: "{{vault:" + strings.ToUpper(t.Name) + "_CLIENT_SECRET}}",
+			AuthURL:      t.OAuthConfig.AuthURL,
+			TokenURL:     t.OAuthConfig.TokenURL,
+			Scopes:       t.OAuthConfig.Scopes,
+		},
+	}
+}
+
+// FullConfig generates a complete config.Config with tools and oauth_providers.
+func (t *Template) FullConfig(selectedTools []string) *config.Config {
+	cfg := &config.Config{
+		Tools: t.ToToolConfigs(selectedTools),
+	}
+	if oauthProviders := t.ToOAuthProvider(); oauthProviders != nil {
+		cfg.OAuthProviders = oauthProviders
+	}
+	return cfg
 }
 
 // EssentialTools returns the names of tools marked as essential.

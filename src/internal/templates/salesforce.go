@@ -9,9 +9,14 @@ func Salesforce() *Template {
 		DisplayName: "Salesforce",
 		Description: "Enterprise CRM, SOQL queries, and record management",
 		Category:    "business",
-		AuthType:    "bearer",
-		AuthGuide:   "Get your access token from Setup > Apps > Connected Apps",
-		VaultKey:    "SALESFORCE_ACCESS_TOKEN",
+		AuthType:    "oauth",
+		AuthGuide:   "Create a Connected App at Setup > App Manager",
+		VaultKey:    "", // OAuth uses provider-based auth, not a single vault key
+		OAuthConfig: &OAuthConfig{
+			AuthURL:  "https://login.salesforce.com/services/oauth2/authorize",
+			TokenURL: "https://login.salesforce.com/services/oauth2/token",
+			Scopes:   []string{"api", "refresh_token"},
+		},
 		BaseURL:     "https://YOUR_INSTANCE.salesforce.com/services/data/v59.0",
 		Headers:     nil,
 		Tools: []ToolDef{

@@ -9,9 +9,14 @@ func MicrosoftOutlook() *Template {
 		DisplayName: "Microsoft Outlook",
 		Description: "Email, calendar events, and contacts",
 		Category:    "business",
-		AuthType:    "bearer",
+		AuthType:    "oauth",
 		AuthGuide:   "Register an app at https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps",
-		VaultKey:    "MICROSOFT_ACCESS_TOKEN",
+		VaultKey:    "", // OAuth uses provider-based auth, not a single vault key
+		OAuthConfig: &OAuthConfig{
+			AuthURL:  "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+			TokenURL: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+			Scopes:   []string{"https://graph.microsoft.com/Mail.ReadWrite", "https://graph.microsoft.com/Mail.Send", "https://graph.microsoft.com/Calendars.ReadWrite"},
+		},
 		BaseURL:     "https://graph.microsoft.com/v1.0",
 		Headers:     nil,
 		Tools: []ToolDef{

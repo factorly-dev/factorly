@@ -9,9 +9,14 @@ func BigQuery() *Template {
 		DisplayName: "Google BigQuery",
 		Description: "Query and manage datasets and tables in BigQuery",
 		Category:    "engineering",
-		AuthType:    "bearer",
-		AuthGuide:   "Create credentials at https://console.cloud.google.com/apis/credentials",
-		VaultKey:    "GOOGLE_API_TOKEN",
+		AuthType:    "oauth",
+		AuthGuide:   "Create OAuth credentials at https://console.cloud.google.com/apis/credentials",
+		VaultKey:    "", // OAuth uses provider-based auth, not a single vault key
+		OAuthConfig: &OAuthConfig{
+			AuthURL:  "https://accounts.google.com/o/oauth2/v2/auth",
+			TokenURL: "https://oauth2.googleapis.com/token",
+			Scopes:   []string{"https://www.googleapis.com/auth/bigquery"},
+		},
 		BaseURL:     "https://bigquery.googleapis.com/bigquery/v2",
 		Headers: map[string]string{
 			"Content-Type": "application/json",

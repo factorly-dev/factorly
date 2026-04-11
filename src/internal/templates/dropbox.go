@@ -9,9 +9,14 @@ func Dropbox() *Template {
 		DisplayName: "Dropbox",
 		Description: "Cloud file storage, sharing, and collaboration",
 		Category:    "business",
-		AuthType:    "bearer",
+		AuthType:    "oauth",
 		AuthGuide:   "Create an app at https://www.dropbox.com/developers/apps",
-		VaultKey:    "DROPBOX_ACCESS_TOKEN",
+		VaultKey:    "", // OAuth uses provider-based auth, not a single vault key
+		OAuthConfig: &OAuthConfig{
+			AuthURL:  "https://www.dropbox.com/oauth2/authorize",
+			TokenURL: "https://api.dropboxapi.com/oauth2/token",
+			Scopes:   []string{"files.content.read", "files.content.write"},
+		},
 		BaseURL:     "https://api.dropboxapi.com/2",
 		Headers:     nil,
 		Tools: []ToolDef{

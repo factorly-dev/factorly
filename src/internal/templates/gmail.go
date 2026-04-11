@@ -9,9 +9,14 @@ func Gmail() *Template {
 		DisplayName: "Gmail",
 		Description: "Read, send, and manage email messages",
 		Category:    "business",
-		AuthType:    "bearer",
-		AuthGuide:   "Create credentials at https://console.cloud.google.com/apis/credentials",
-		VaultKey:    "GOOGLE_API_TOKEN",
+		AuthType:    "oauth",
+		AuthGuide:   "Create OAuth credentials at https://console.cloud.google.com/apis/credentials",
+		VaultKey:    "", // OAuth uses provider-based auth, not a single vault key
+		OAuthConfig: &OAuthConfig{
+			AuthURL:  "https://accounts.google.com/o/oauth2/v2/auth",
+			TokenURL: "https://oauth2.googleapis.com/token",
+			Scopes:   []string{"https://www.googleapis.com/auth/gmail.modify"},
+		},
 		BaseURL:     "https://gmail.googleapis.com/gmail/v1",
 		Headers: map[string]string{
 			"Content-Type": "application/json",

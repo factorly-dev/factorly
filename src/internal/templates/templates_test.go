@@ -20,8 +20,11 @@ func TestAllTemplatesHaveRequiredFields(t *testing.T) {
 		if tmpl.AuthType == "" {
 			t.Errorf("template %q has empty auth type", tmpl.Name)
 		}
-		if tmpl.VaultKey == "" {
+		if tmpl.AuthType != "oauth" && tmpl.VaultKey == "" {
 			t.Errorf("template %q has empty vault key", tmpl.Name)
+		}
+		if tmpl.AuthType == "oauth" && tmpl.OAuthConfig == nil {
+			t.Errorf("template %q uses oauth but has no OAuthConfig", tmpl.Name)
 		}
 		if tmpl.BaseURL == "" {
 			t.Errorf("template %q has empty base URL", tmpl.Name)
@@ -227,6 +230,9 @@ func TestAllTemplatesStructuralIntegrity(t *testing.T) {
 					if !strings.Contains(tc.Auth.Token, "vault:") {
 						t.Errorf("tool %q: auth token should reference vault", name)
 					}
+				}
+				if tc.Auth != nil && tc.Auth.Type == "oauth" && tc.Auth.Provider == "" {
+					t.Errorf("tool %q: oauth auth missing provider", name)
 				}
 			}
 		})
