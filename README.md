@@ -144,8 +144,9 @@ Full documentation is in the **[docs/](docs/)** directory — [getting started](
 - [x] Call logging (JSONL) + `--verbose` flag
 - [x] Security hardening — param redaction, HTTP token auth, vault ref validation
 - [x] Tool Shadowing — deny, confirm (CLI + MCP elicitation), rate limit, audit logging
-- [ ] OAuth 2.1 server — [MCP-spec auth](docs/oauth-server-spec.md) with PKCE, dynamic registration, token endpoints
+- [x] Tool templates, preconfigured yaml for easy to get started
 - [ ] `factorly logs` — view/query the call log
+- [ ] OAuth 2.1 server — [MCP-spec auth](docs/oauth-server-spec.md) with PKCE, dynamic registration, token endpoints
 - [ ] External vault backends (1Password, GCP Secret Manager, AWS)
 - [ ] Hosted version (Factorly Cloud)
 - [ ] Team configs and shared credential vault
