@@ -11,7 +11,7 @@
 [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen?logo=github)](https://github.com/factorly-dev/factorly-cli/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/Release-v0.1.6-blue?logo=github)](https://github.com/factorly-dev/factorly-cli/releases)
+[![Release](https://img.shields.io/badge/Release-v0.1.7-blue?logo=github)](https://github.com/factorly-dev/factorly-cli/releases)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](docs/)
 
