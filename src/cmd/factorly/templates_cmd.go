@@ -51,7 +51,7 @@ func listTemplates() error {
 	fmt.Fprintln(w, "NAME\tCATEGORY\tAUTH\tTOOLS\tDESCRIPTION")
 	for _, t := range all {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n",
-			t.Name, t.Category, t.AuthType, len(t.Tools), t.Description)
+			t.Name, t.Category, t.AuthType, t.ToolCount(), t.Description)
 	}
 	return w.Flush()
 }
@@ -85,18 +85,12 @@ func installTemplate(name string) error {
 		selectedTools = selectTools(scanner, tmpl)
 	}
 
-	// Generate configs
-	toolConfigs := tmpl.ToToolConfigs(selectedTools)
-
-	// Marshal bare tool definitions (no "tools:" wrapper — loadDir expects this)
-	toolData, err := yaml.Marshal(toolConfigs)
-	if err != nil {
-		return fmt.Errorf("marshaling tools: %w", err)
-	}
+	// Get filtered YAML
+	yamlContent := tmpl.FilterYAML(selectedTools)
 
 	if templatesDryRun {
 		fmt.Println()
-		fmt.Print(string(toolData))
+		fmt.Print(yamlContent)
 		if oauthProviders := tmpl.ToOAuthProvider(); oauthProviders != nil {
 			oauthData, _ := yaml.Marshal(map[string]any{"oauth_providers": oauthProviders})
 			fmt.Printf("\n# Add to .factorly/factorly.yaml:\n%s", string(oauthData))
@@ -111,8 +105,15 @@ func installTemplate(name string) error {
 	}
 	outPath := filepath.Join(outDir, name+".yaml")
 
-	if err := os.WriteFile(outPath, toolData, 0o644); err != nil {
+	if err := os.WriteFile(outPath, []byte(yamlContent), 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", outPath, err)
+	}
+
+	// Parse written YAML to summarize what was created
+	var toolConfigs map[string]config.ToolConfig
+	if err := yaml.Unmarshal([]byte(yamlContent), &toolConfigs); err != nil {
+		fmt.Printf("\n  Written to %s\n", outPath)
+		return nil
 	}
 
 	fmt.Printf("\n  Created %d tools:\n", len(toolConfigs))
@@ -146,20 +147,17 @@ func installTemplate(name string) error {
 }
 
 func selectTools(scanner *bufio.Scanner, tmpl *templates.Template) []string {
-	essentials := tmpl.EssentialTools()
+	toolCount := tmpl.ToolCount()
 
-	fmt.Printf("\n  Which tools to install? (%d available)\n", len(tmpl.Tools))
-	fmt.Printf("  1) All (%d tools)\n", len(tmpl.Tools))
-	fmt.Printf("  2) Essentials (%d tools: %s)\n", len(essentials), strings.Join(essentials, ", "))
-	fmt.Printf("  3) Choose individually\n")
+	fmt.Printf("\n  Which tools to install? (%d available)\n", toolCount)
+	fmt.Printf("  1) All (%d tools)\n", toolCount)
+	fmt.Printf("  2) Choose individually\n")
 	fmt.Print("  > ")
 	scanner.Scan()
 	choice := strings.TrimSpace(scanner.Text())
 
 	switch choice {
 	case "2":
-		return essentials
-	case "3":
 		return chooseIndividually(scanner, tmpl)
 	default:
 		return nil // nil = all tools
@@ -169,46 +167,34 @@ func selectTools(scanner *bufio.Scanner, tmpl *templates.Template) []string {
 func chooseIndividually(scanner *bufio.Scanner, tmpl *templates.Template) []string {
 	fmt.Println()
 
-	// Build default selection string from essentials
-	var defaultNums []string
-	for i, td := range tmpl.Tools {
-		if td.Essential {
-			defaultNums = append(defaultNums, strconv.Itoa(i+1))
-		}
-	}
-	defaultStr := strings.Join(defaultNums, ",")
+	toolNames := tmpl.ToolNames()
 
-	for i, td := range tmpl.Tools {
-		marker := " "
-		if td.Essential {
-			marker = "*"
-		}
-		fmt.Printf("  [%s] %d) %-30s %s\n", marker, i+1, td.Name, td.Description)
+	for i, name := range toolNames {
+		fmt.Printf("  %d) %s\n", i+1, name)
 	}
 
-	fmt.Printf("\n  Enter numbers (comma-separated), or press Enter for essentials [%s]: ", defaultStr)
+	fmt.Printf("\n  Enter numbers (comma-separated): ")
 	scanner.Scan()
 	input := strings.TrimSpace(scanner.Text())
 
-	// Use defaults if empty
 	if input == "" {
-		input = defaultStr
+		return nil // all tools
 	}
 
 	// Parse selection
 	selected := make(map[int]bool)
 	for _, s := range strings.Split(input, ",") {
 		s = strings.TrimSpace(s)
-		if n, err := strconv.Atoi(s); err == nil && n >= 1 && n <= len(tmpl.Tools) {
+		if n, err := strconv.Atoi(s); err == nil && n >= 1 && n <= len(toolNames) {
 			selected[n-1] = true
 		}
 	}
 
-	// Show what was selected
+	// Collect selected names
 	var names []string
-	for i, td := range tmpl.Tools {
+	for i, name := range toolNames {
 		if selected[i] {
-			names = append(names, td.Name)
+			names = append(names, name)
 		}
 	}
 

@@ -1,0 +1,83 @@
+microsoft-teams.send_message:
+  type: rest
+  description: Send a message to a channel
+  base_url: "https://graph.microsoft.com/v1.0"
+  method: POST
+  path: "/teams/{team_id}/channels/{channel_id}/messages"
+  auth:
+    type: oauth
+    provider: microsoft-teams
+  parameters:
+    - name: team_id
+      description: Team ID
+      required: true
+      in: path
+    - name: channel_id
+      description: Channel ID
+      required: true
+      in: path
+    - name: body
+      description: "Message body object (content, contentType)"
+      required: true
+      in: body
+  shadow:
+    confirm: true
+
+microsoft-teams.list_channels:
+  type: rest
+  description: List channels in a team
+  base_url: "https://graph.microsoft.com/v1.0"
+  method: GET
+  path: "/teams/{team_id}/channels"
+  auth:
+    type: oauth
+    provider: microsoft-teams
+  parameters:
+    - name: team_id
+      description: Team ID
+      required: true
+      in: path
+
+microsoft-teams.list_teams:
+  type: rest
+  description: List joined teams
+  base_url: "https://graph.microsoft.com/v1.0"
+  method: GET
+  path: /me/joinedTeams
+  auth:
+    type: oauth
+    provider: microsoft-teams
+
+microsoft-teams.list_members:
+  type: rest
+  description: List members of a team
+  base_url: "https://graph.microsoft.com/v1.0"
+  method: GET
+  path: "/teams/{team_id}/members"
+  auth:
+    type: oauth
+    provider: microsoft-teams
+  parameters:
+    - name: team_id
+      description: Team ID
+      required: true
+      in: path
+
+microsoft-teams.get_channel:
+  type: rest
+  description: Get a channel by ID
+  base_url: "https://graph.microsoft.com/v1.0"
+  method: GET
+  path: "/teams/{team_id}/channels/{channel_id}"
+  auth:
+    type: oauth
+    provider: microsoft-teams
+  parameters:
+    - name: team_id
+      description: Team ID
+      required: true
+      in: path
+    - name: channel_id
+      description: Channel ID
+      required: true
+      in: path

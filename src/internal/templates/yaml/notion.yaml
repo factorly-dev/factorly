@@ -1,0 +1,127 @@
+notion.search:
+  type: rest
+  description: Search pages and databases
+  base_url: "https://api.notion.com"
+  method: POST
+  path: /v1/search
+  headers:
+    Content-Type: application/json
+    Notion-Version: "2022-06-28"
+  auth:
+    type: bearer
+    token: "{{vault:NOTION_API_KEY}}"
+  parameters:
+    - name: query
+      description: Search query string
+      required: true
+      in: body
+    - name: filter
+      description: Filter by object type (page or database)
+      in: body
+
+notion.get_page:
+  type: rest
+  description: Get a page by ID
+  base_url: "https://api.notion.com"
+  method: GET
+  path: "/v1/pages/{{page_id}}"
+  headers:
+    Content-Type: application/json
+    Notion-Version: "2022-06-28"
+  auth:
+    type: bearer
+    token: "{{vault:NOTION_API_KEY}}"
+  parameters:
+    - name: page_id
+      description: Notion page ID
+      required: true
+      in: path
+
+notion.create_page:
+  type: rest
+  description: Create a new page
+  base_url: "https://api.notion.com"
+  method: POST
+  path: /v1/pages
+  headers:
+    Content-Type: application/json
+    Notion-Version: "2022-06-28"
+  auth:
+    type: bearer
+    token: "{{vault:NOTION_API_KEY}}"
+  parameters:
+    - name: parent
+      description: Parent page or database ID
+      required: true
+      in: body
+    - name: title
+      description: Page title
+      required: true
+      in: body
+  shadow:
+    confirm: true
+
+notion.query_database:
+  type: rest
+  description: Query a database
+  base_url: "https://api.notion.com"
+  method: POST
+  path: "/v1/databases/{{database_id}}/query"
+  headers:
+    Content-Type: application/json
+    Notion-Version: "2022-06-28"
+  auth:
+    type: bearer
+    token: "{{vault:NOTION_API_KEY}}"
+  parameters:
+    - name: database_id
+      description: Database ID
+      required: true
+      in: path
+    - name: filter
+      description: Filter conditions
+      in: body
+    - name: sorts
+      description: Sort conditions
+      in: body
+
+notion.list_databases:
+  type: rest
+  description: List all databases
+  base_url: "https://api.notion.com"
+  method: POST
+  path: /v1/search
+  headers:
+    Content-Type: application/json
+    Notion-Version: "2022-06-28"
+  auth:
+    type: bearer
+    token: "{{vault:NOTION_API_KEY}}"
+  parameters:
+    - name: filter
+      description: "Set to {\\"
+      in: body
+
+notion.update_page:
+  type: rest
+  description: Update page properties
+  base_url: "https://api.notion.com"
+  method: PATCH
+  path: "/v1/pages/{{page_id}}"
+  headers:
+    Content-Type: application/json
+    Notion-Version: "2022-06-28"
+  auth:
+    type: bearer
+    token: "{{vault:NOTION_API_KEY}}"
+  parameters:
+    - name: page_id
+      description: Notion page ID
+      required: true
+      in: path
+    - name: properties
+      description: Properties to update
+      required: true
+      in: body
+  shadow:
+    confirm: true

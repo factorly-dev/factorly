@@ -1,0 +1,124 @@
+slack.post_message:
+  type: rest
+  description: Post a message to a channel
+  base_url: "https://slack.com/api"
+  method: POST
+  path: /chat.postMessage
+  headers:
+    Content-Type: application/json
+  auth:
+    type: bearer
+    token: "{{vault:SLACK_BOT_TOKEN}}"
+  parameters:
+    - name: channel
+      description: Channel ID or name
+      required: true
+      in: body
+    - name: text
+      description: Message text
+      required: true
+      in: body
+  shadow:
+    confirm: true
+
+slack.list_channels:
+  type: rest
+  description: List channels in the workspace
+  base_url: "https://slack.com/api"
+  method: GET
+  path: /conversations.list
+  headers:
+    Content-Type: application/json
+  auth:
+    type: bearer
+    token: "{{vault:SLACK_BOT_TOKEN}}"
+  parameters:
+    - name: types
+      description: "Channel types (public_channel,private_channel)"
+      in: query
+    - name: limit
+      description: Maximum number of channels to return
+      in: query
+
+slack.search_messages:
+  type: rest
+  description: Search messages
+  base_url: "https://slack.com/api"
+  method: GET
+  path: /search.messages
+  headers:
+    Content-Type: application/json
+  auth:
+    type: bearer
+    token: "{{vault:SLACK_BOT_TOKEN}}"
+  parameters:
+    - name: query
+      description: Search query string
+      required: true
+      in: query
+    - name: count
+      description: Number of results to return
+      in: query
+
+slack.channel_history:
+  type: rest
+  description: Get messages from a channel
+  base_url: "https://slack.com/api"
+  method: GET
+  path: /conversations.history
+  headers:
+    Content-Type: application/json
+  auth:
+    type: bearer
+    token: "{{vault:SLACK_BOT_TOKEN}}"
+  parameters:
+    - name: channel
+      description: Channel ID
+      required: true
+      in: query
+    - name: limit
+      description: Maximum number of messages to return
+      in: query
+
+slack.list_users:
+  type: rest
+  description: List workspace members
+  base_url: "https://slack.com/api"
+  method: GET
+  path: /users.list
+  headers:
+    Content-Type: application/json
+  auth:
+    type: bearer
+    token: "{{vault:SLACK_BOT_TOKEN}}"
+  parameters:
+    - name: limit
+      description: Maximum number of users to return
+      in: query
+
+slack.add_reaction:
+  type: rest
+  description: Add a reaction to a message
+  base_url: "https://slack.com/api"
+  method: POST
+  path: /reactions.add
+  headers:
+    Content-Type: application/json
+  auth:
+    type: bearer
+    token: "{{vault:SLACK_BOT_TOKEN}}"
+  parameters:
+    - name: channel
+      description: Channel ID
+      required: true
+      in: body
+    - name: timestamp
+      description: Message timestamp
+      required: true
+      in: body
+    - name: name
+      description: Emoji name (without colons)
+      required: true
+      in: body
+  shadow:
+    confirm: true

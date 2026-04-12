@@ -1,0 +1,124 @@
+clickup.list_tasks:
+  type: rest
+  description: List tasks in a list
+  base_url: "https://api.clickup.com/api/v2"
+  method: GET
+  path: "/list/{list_id}/task"
+  auth:
+    type: bearer
+    token: "{{vault:CLICKUP_API_KEY}}"
+  parameters:
+    - name: list_id
+      description: List ID
+      required: true
+      in: path
+    - name: page
+      description: Page number (starts at 0)
+      in: query
+    - name: subtasks
+      description: Include subtasks (true/false)
+      in: query
+
+clickup.create_task:
+  type: rest
+  description: Create a new task
+  base_url: "https://api.clickup.com/api/v2"
+  method: POST
+  path: "/list/{list_id}/task"
+  auth:
+    type: bearer
+    token: "{{vault:CLICKUP_API_KEY}}"
+  parameters:
+    - name: list_id
+      description: List ID
+      required: true
+      in: path
+    - name: name
+      description: Task name
+      required: true
+      in: body
+    - name: description
+      description: Task description
+      in: body
+    - name: priority
+      description: "Priority (1=Urgent, 2=High, 3=Normal, 4=Low)"
+      in: body
+    - name: assignees
+      description: Array of assignee user IDs
+      in: body
+  shadow:
+    confirm: true
+
+clickup.get_task:
+  type: rest
+  description: Get a task by ID
+  base_url: "https://api.clickup.com/api/v2"
+  method: GET
+  path: "/task/{task_id}"
+  auth:
+    type: bearer
+    token: "{{vault:CLICKUP_API_KEY}}"
+  parameters:
+    - name: task_id
+      description: Task ID
+      required: true
+      in: path
+
+clickup.update_task:
+  type: rest
+  description: Update an existing task
+  base_url: "https://api.clickup.com/api/v2"
+  method: PUT
+  path: "/task/{task_id}"
+  auth:
+    type: bearer
+    token: "{{vault:CLICKUP_API_KEY}}"
+  parameters:
+    - name: task_id
+      description: Task ID
+      required: true
+      in: path
+    - name: name
+      description: Task name
+      in: body
+    - name: description
+      description: Task description
+      in: body
+    - name: status
+      description: Task status
+      in: body
+    - name: priority
+      description: Priority
+      in: body
+  shadow:
+    confirm: true
+
+clickup.list_spaces:
+  type: rest
+  description: List spaces in a team
+  base_url: "https://api.clickup.com/api/v2"
+  method: GET
+  path: "/team/{team_id}/space"
+  auth:
+    type: bearer
+    token: "{{vault:CLICKUP_API_KEY}}"
+  parameters:
+    - name: team_id
+      description: Team (workspace) ID
+      required: true
+      in: path
+
+clickup.list_lists:
+  type: rest
+  description: List lists in a folder
+  base_url: "https://api.clickup.com/api/v2"
+  method: GET
+  path: "/folder/{folder_id}/list"
+  auth:
+    type: bearer
+    token: "{{vault:CLICKUP_API_KEY}}"
+  parameters:
+    - name: folder_id
+      description: Folder ID
+      required: true
+      in: path

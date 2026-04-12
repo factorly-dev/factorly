@@ -1,0 +1,109 @@
+salesforce.query:
+  type: rest
+  description: Execute a SOQL query
+  base_url: "https://YOUR_INSTANCE.salesforce.com/services/data/v59.0"
+  method: GET
+  path: /query
+  auth:
+    type: oauth
+    provider: salesforce
+  parameters:
+    - name: q
+      description: SOQL query string
+      required: true
+      in: query
+
+salesforce.get_record:
+  type: rest
+  description: Get a record by object type and ID
+  base_url: "https://YOUR_INSTANCE.salesforce.com/services/data/v59.0"
+  method: GET
+  path: "/sobjects/{objectType}/{recordId}"
+  auth:
+    type: oauth
+    provider: salesforce
+  parameters:
+    - name: objectType
+      description: "SObject type (e.g. Account, Contact, Lead)"
+      required: true
+      in: path
+    - name: recordId
+      description: Record ID
+      required: true
+      in: path
+
+salesforce.create_record:
+  type: rest
+  description: Create a new record
+  base_url: "https://YOUR_INSTANCE.salesforce.com/services/data/v59.0"
+  method: POST
+  path: "/sobjects/{objectType}"
+  auth:
+    type: oauth
+    provider: salesforce
+  parameters:
+    - name: objectType
+      description: "SObject type (e.g. Account, Contact, Lead)"
+      required: true
+      in: path
+    - name: body
+      description: Record fields as JSON
+      required: true
+      in: body
+  shadow:
+    confirm: true
+
+salesforce.search:
+  type: rest
+  description: Search using SOSL
+  base_url: "https://YOUR_INSTANCE.salesforce.com/services/data/v59.0"
+  method: GET
+  path: /search
+  auth:
+    type: oauth
+    provider: salesforce
+  parameters:
+    - name: q
+      description: SOSL search string
+      required: true
+      in: query
+
+salesforce.update_record:
+  type: rest
+  description: Update an existing record
+  base_url: "https://YOUR_INSTANCE.salesforce.com/services/data/v59.0"
+  method: PATCH
+  path: "/sobjects/{objectType}/{recordId}"
+  auth:
+    type: oauth
+    provider: salesforce
+  parameters:
+    - name: objectType
+      description: SObject type
+      required: true
+      in: path
+    - name: recordId
+      description: Record ID
+      required: true
+      in: path
+    - name: body
+      description: Fields to update as JSON
+      required: true
+      in: body
+  shadow:
+    confirm: true
+
+salesforce.describe_object:
+  type: rest
+  description: "Describe an SObject's metadata and fields"
+  base_url: "https://YOUR_INSTANCE.salesforce.com/services/data/v59.0"
+  method: GET
+  path: "/sobjects/{objectType}/describe"
+  auth:
+    type: oauth
+    provider: salesforce
+  parameters:
+    - name: objectType
+      description: SObject type to describe
+      required: true
+      in: path

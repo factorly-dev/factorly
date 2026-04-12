@@ -1,0 +1,138 @@
+telegram.send_message:
+  type: rest
+  description: Send a text message to a chat
+  base_url: "https://api.telegram.org"
+  method: POST
+  path: "/bot{{token}}/sendMessage"
+  auth:
+    type: bearer
+    token: "{{vault:TELEGRAM_BOT_TOKEN}}"
+  parameters:
+    - name: token
+      description: "Bot token (auto-filled from vault)"
+      required: true
+      in: path
+    - name: chat_id
+      description: "Chat ID or @channel_username"
+      required: true
+      in: body
+    - name: text
+      description: Message text (supports Markdown)
+      required: true
+      in: body
+    - name: parse_mode
+      description: "Formatting: Markdown, MarkdownV2, or HTML"
+      in: body
+  shadow:
+    confirm: true
+
+telegram.get_updates:
+  type: rest
+  description: "Get incoming updates (messages, commands, etc.)"
+  base_url: "https://api.telegram.org"
+  method: POST
+  path: "/bot{{token}}/getUpdates"
+  auth:
+    type: bearer
+    token: "{{vault:TELEGRAM_BOT_TOKEN}}"
+  parameters:
+    - name: token
+      description: Bot token
+      required: true
+      in: path
+    - name: offset
+      description: Update offset for pagination
+      in: body
+    - name: limit
+      description: "Max number of updates (1-100)"
+      in: body
+
+telegram.send_document:
+  type: rest
+  description: Send a file to a chat
+  base_url: "https://api.telegram.org"
+  method: POST
+  path: "/bot{{token}}/sendDocument"
+  auth:
+    type: bearer
+    token: "{{vault:TELEGRAM_BOT_TOKEN}}"
+  parameters:
+    - name: token
+      description: Bot token
+      required: true
+      in: path
+    - name: chat_id
+      description: "Chat ID or @channel_username"
+      required: true
+      in: body
+    - name: document
+      description: File URL or file_id
+      required: true
+      in: body
+    - name: caption
+      description: Document caption
+      in: body
+  shadow:
+    confirm: true
+
+telegram.get_chat:
+  type: rest
+  description: Get information about a chat
+  base_url: "https://api.telegram.org"
+  method: POST
+  path: "/bot{{token}}/getChat"
+  auth:
+    type: bearer
+    token: "{{vault:TELEGRAM_BOT_TOKEN}}"
+  parameters:
+    - name: token
+      description: Bot token
+      required: true
+      in: path
+    - name: chat_id
+      description: "Chat ID or @channel_username"
+      required: true
+      in: body
+
+telegram.send_photo:
+  type: rest
+  description: Send a photo to a chat
+  base_url: "https://api.telegram.org"
+  method: POST
+  path: "/bot{{token}}/sendPhoto"
+  auth:
+    type: bearer
+    token: "{{vault:TELEGRAM_BOT_TOKEN}}"
+  parameters:
+    - name: token
+      description: Bot token
+      required: true
+      in: path
+    - name: chat_id
+      description: "Chat ID or @channel_username"
+      required: true
+      in: body
+    - name: photo
+      description: Photo URL or file_id
+      required: true
+      in: body
+    - name: caption
+      description: Photo caption
+      in: body
+  shadow:
+    confirm: true
+
+telegram.get_me:
+  type: rest
+  description: Get information about the bot
+  base_url: "https://api.telegram.org"
+  method: POST
+  path: "/bot{{token}}/getMe"
+  auth:
+    type: bearer
+    token: "{{vault:TELEGRAM_BOT_TOKEN}}"
+  parameters:
+    - name: token
+      description: Bot token
+      required: true
+      in: path

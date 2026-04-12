@@ -1,0 +1,107 @@
+bigquery.query:
+  type: rest
+  description: Run a BigQuery SQL query
+  base_url: "https://bigquery.googleapis.com/bigquery/v2"
+  method: POST
+  path: "/projects/{{projectId}}/queries"
+  headers:
+    Content-Type: application/json
+  auth:
+    type: oauth
+    provider: bigquery
+  parameters:
+    - name: projectId
+      description: Google Cloud project ID
+      required: true
+      in: path
+    - name: query
+      description: SQL query string
+      required: true
+      in: body
+    - name: useLegacySql
+      description: Whether to use legacy SQL (default false)
+      in: body
+    - name: maxResults
+      description: Maximum number of rows to return
+      in: body
+    - name: timeoutMs
+      description: Query timeout in milliseconds
+      in: body
+
+bigquery.list_tables:
+  type: rest
+  description: List tables in a dataset
+  base_url: "https://bigquery.googleapis.com/bigquery/v2"
+  method: GET
+  path: "/projects/{{projectId}}/datasets/{{datasetId}}/tables"
+  headers:
+    Content-Type: application/json
+  auth:
+    type: oauth
+    provider: bigquery
+  parameters:
+    - name: projectId
+      description: Google Cloud project ID
+      required: true
+      in: path
+    - name: datasetId
+      description: Dataset ID
+      required: true
+      in: path
+    - name: maxResults
+      description: Maximum number of tables to return
+      in: query
+    - name: pageToken
+      description: Page token from a previous request
+      in: query
+
+bigquery.list_datasets:
+  type: rest
+  description: List datasets in a project
+  base_url: "https://bigquery.googleapis.com/bigquery/v2"
+  method: GET
+  path: "/projects/{{projectId}}/datasets"
+  headers:
+    Content-Type: application/json
+  auth:
+    type: oauth
+    provider: bigquery
+  parameters:
+    - name: projectId
+      description: Google Cloud project ID
+      required: true
+      in: path
+    - name: maxResults
+      description: Maximum number of datasets to return
+      in: query
+    - name: pageToken
+      description: Page token from a previous request
+      in: query
+    - name: all
+      description: Whether to list all datasets including hidden ones
+      in: query
+
+bigquery.get_table:
+  type: rest
+  description: Get metadata for a specific table
+  base_url: "https://bigquery.googleapis.com/bigquery/v2"
+  method: GET
+  path: "/projects/{{projectId}}/datasets/{{datasetId}}/tables/{{tableId}}"
+  headers:
+    Content-Type: application/json
+  auth:
+    type: oauth
+    provider: bigquery
+  parameters:
+    - name: projectId
+      description: Google Cloud project ID
+      required: true
+      in: path
+    - name: datasetId
+      description: Dataset ID
+      required: true
+      in: path
+    - name: tableId
+      description: Table ID
+      required: true
+      in: path

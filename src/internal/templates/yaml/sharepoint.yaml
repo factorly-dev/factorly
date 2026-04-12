@@ -1,0 +1,86 @@
+sharepoint.list_sites:
+  type: rest
+  description: List SharePoint sites
+  base_url: "https://graph.microsoft.com/v1.0"
+  method: GET
+  path: /sites
+  auth:
+    type: oauth
+    provider: sharepoint
+  parameters:
+    - name: search
+      description: Search query to filter sites
+      in: query
+
+sharepoint.list_files:
+  type: rest
+  description: "List files in a site's default document library"
+  base_url: "https://graph.microsoft.com/v1.0"
+  method: GET
+  path: "/sites/{site_id}/drive/root/children"
+  auth:
+    type: oauth
+    provider: sharepoint
+  parameters:
+    - name: site_id
+      description: Site ID
+      required: true
+      in: path
+    - name: $top
+      description: Number of results
+      in: query
+
+sharepoint.search:
+  type: rest
+  description: Search across SharePoint
+  base_url: "https://graph.microsoft.com/v1.0"
+  method: POST
+  path: /search/query
+  auth:
+    type: oauth
+    provider: sharepoint
+  parameters:
+    - name: requests
+      description: "Array of search request objects (queryString, entityTypes)"
+      required: true
+      in: body
+
+sharepoint.get_site:
+  type: rest
+  description: Get a site by ID
+  base_url: "https://graph.microsoft.com/v1.0"
+  method: GET
+  path: "/sites/{site_id}"
+  auth:
+    type: oauth
+    provider: sharepoint
+  parameters:
+    - name: site_id
+      description: "Site ID or hostname:path"
+      required: true
+      in: path
+
+sharepoint.create_list:
+  type: rest
+  description: Create a new list in a site
+  base_url: "https://graph.microsoft.com/v1.0"
+  method: POST
+  path: "/sites/{site_id}/lists"
+  auth:
+    type: oauth
+    provider: sharepoint
+  parameters:
+    - name: site_id
+      description: Site ID
+      required: true
+      in: path
+    - name: displayName
+      description: List display name
+      required: true
+      in: body
+    - name: list
+      description: List template object
+      required: true
+      in: body
+  shadow:
+    confirm: true

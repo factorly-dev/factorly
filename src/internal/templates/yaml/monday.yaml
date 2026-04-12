@@ -1,0 +1,76 @@
+monday.list_items:
+  type: rest
+  description: List items on a board via GraphQL
+  base_url: "https://api.monday.com/v2"
+  method: POST
+  path: ""
+  auth:
+    type: bearer
+    token: "{{vault:MONDAY_API_KEY}}"
+  parameters:
+    - name: query
+      required: true
+      in: body
+
+monday.create_item:
+  type: rest
+  description: Create a new item on a board via GraphQL
+  base_url: "https://api.monday.com/v2"
+  method: POST
+  path: ""
+  auth:
+    type: bearer
+    token: "{{vault:MONDAY_API_KEY}}"
+  parameters:
+    - name: query
+      description: "GraphQL mutation (e.g. mutation { create_item(board_id: 123, item_name: \\"
+      required: true
+      in: body
+  shadow:
+    confirm: true
+
+monday.list_boards:
+  type: rest
+  description: List boards via GraphQL
+  base_url: "https://api.monday.com/v2"
+  method: POST
+  path: ""
+  auth:
+    type: bearer
+    token: "{{vault:MONDAY_API_KEY}}"
+  parameters:
+    - name: query
+      required: true
+      in: body
+
+monday.update_item:
+  type: rest
+  description: Update an item via GraphQL
+  base_url: "https://api.monday.com/v2"
+  method: POST
+  path: ""
+  auth:
+    type: bearer
+    token: "{{vault:MONDAY_API_KEY}}"
+  parameters:
+    - name: query
+      description: GraphQL mutation to update item column values
+      required: true
+      in: body
+  shadow:
+    confirm: true
+
+monday.search:
+  type: rest
+  description: Search items via GraphQL
+  base_url: "https://api.monday.com/v2"
+  method: POST
+  path: ""
+  auth:
+    type: bearer
+    token: "{{vault:MONDAY_API_KEY}}"
+  parameters:
+    - name: query
+      description: GraphQL query with items_page_by_column_values or similar search
+      required: true
+      in: body

@@ -1,0 +1,117 @@
+hubspot.list_contacts:
+  type: rest
+  description: List contacts
+  base_url: "https://api.hubapi.com"
+  method: GET
+  path: /crm/v3/objects/contacts
+  auth:
+    type: bearer
+    token: "{{vault:HUBSPOT_API_KEY}}"
+  parameters:
+    - name: limit
+      description: "Number of results (1-100)"
+      in: query
+    - name: after
+      description: Cursor for pagination
+      in: query
+
+hubspot.create_contact:
+  type: rest
+  description: Create a new contact
+  base_url: "https://api.hubapi.com"
+  method: POST
+  path: /crm/v3/objects/contacts
+  auth:
+    type: bearer
+    token: "{{vault:HUBSPOT_API_KEY}}"
+  parameters:
+    - name: properties
+      description: "Contact properties JSON (email, firstname, lastname, etc.)"
+      required: true
+      in: body
+  shadow:
+    confirm: true
+
+hubspot.list_deals:
+  type: rest
+  description: List deals
+  base_url: "https://api.hubapi.com"
+  method: GET
+  path: /crm/v3/objects/deals
+  auth:
+    type: bearer
+    token: "{{vault:HUBSPOT_API_KEY}}"
+  parameters:
+    - name: limit
+      description: "Number of results (1-100)"
+      in: query
+    - name: after
+      description: Cursor for pagination
+      in: query
+
+hubspot.search:
+  type: rest
+  description: Search across CRM objects
+  base_url: "https://api.hubapi.com"
+  method: POST
+  path: /crm/v3/objects/contacts/search
+  auth:
+    type: bearer
+    token: "{{vault:HUBSPOT_API_KEY}}"
+  parameters:
+    - name: query
+      description: Search query string
+      required: true
+      in: body
+    - name: limit
+      description: Number of results
+      in: body
+
+hubspot.get_contact:
+  type: rest
+  description: Get a contact by ID
+  base_url: "https://api.hubapi.com"
+  method: GET
+  path: "/crm/v3/objects/contacts/{contactId}"
+  auth:
+    type: bearer
+    token: "{{vault:HUBSPOT_API_KEY}}"
+  parameters:
+    - name: contactId
+      description: Contact ID
+      required: true
+      in: path
+
+hubspot.create_deal:
+  type: rest
+  description: Create a new deal
+  base_url: "https://api.hubapi.com"
+  method: POST
+  path: /crm/v3/objects/deals
+  auth:
+    type: bearer
+    token: "{{vault:HUBSPOT_API_KEY}}"
+  parameters:
+    - name: properties
+      description: "Deal properties JSON (dealname, amount, dealstage, etc.)"
+      required: true
+      in: body
+  shadow:
+    confirm: true
+
+hubspot.list_companies:
+  type: rest
+  description: List companies
+  base_url: "https://api.hubapi.com"
+  method: GET
+  path: /crm/v3/objects/companies
+  auth:
+    type: bearer
+    token: "{{vault:HUBSPOT_API_KEY}}"
+  parameters:
+    - name: limit
+      description: "Number of results (1-100)"
+      in: query
+    - name: after
+      description: Cursor for pagination
+      in: query

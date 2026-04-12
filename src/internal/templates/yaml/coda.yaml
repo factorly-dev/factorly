@@ -1,0 +1,121 @@
+coda.list_docs:
+  type: rest
+  description: List available Coda docs
+  base_url: "https://coda.io/apis/v1"
+  method: GET
+  path: /docs
+  headers:
+    Content-Type: application/json
+  auth:
+    type: bearer
+    token: "{{vault:CODA_API_KEY}}"
+  parameters:
+    - name: query
+      description: Search term to filter docs by name
+      in: query
+    - name: limit
+      description: Maximum number of docs to return
+      in: query
+    - name: pageToken
+      description: Page token from a previous request
+      in: query
+
+coda.get_doc:
+  type: rest
+  description: Get metadata for a specific doc
+  base_url: "https://coda.io/apis/v1"
+  method: GET
+  path: "/docs/{{docId}}"
+  headers:
+    Content-Type: application/json
+  auth:
+    type: bearer
+    token: "{{vault:CODA_API_KEY}}"
+  parameters:
+    - name: docId
+      description: The doc ID
+      required: true
+      in: path
+
+coda.list_rows:
+  type: rest
+  description: List rows in a table
+  base_url: "https://coda.io/apis/v1"
+  method: GET
+  path: "/docs/{{docId}}/tables/{{tableIdOrName}}/rows"
+  headers:
+    Content-Type: application/json
+  auth:
+    type: bearer
+    token: "{{vault:CODA_API_KEY}}"
+  parameters:
+    - name: docId
+      description: The doc ID
+      required: true
+      in: path
+    - name: tableIdOrName
+      description: The table ID or name
+      required: true
+      in: path
+    - name: query
+      description: Search query to filter rows
+      in: query
+    - name: limit
+      description: Maximum number of rows to return
+      in: query
+    - name: pageToken
+      description: Page token from a previous request
+      in: query
+
+coda.upsert_row:
+  type: rest
+  description: Insert or update rows in a table
+  base_url: "https://coda.io/apis/v1"
+  method: POST
+  path: "/docs/{{docId}}/tables/{{tableIdOrName}}/rows"
+  headers:
+    Content-Type: application/json
+  auth:
+    type: bearer
+    token: "{{vault:CODA_API_KEY}}"
+  parameters:
+    - name: docId
+      description: The doc ID
+      required: true
+      in: path
+    - name: tableIdOrName
+      description: The table ID or name
+      required: true
+      in: path
+    - name: rows
+      description: Array of row objects with cells to upsert
+      required: true
+      in: body
+    - name: keyColumns
+      description: Array of column IDs to use as upsert keys
+      in: body
+  shadow:
+    confirm: true
+
+coda.list_tables:
+  type: rest
+  description: List tables in a doc
+  base_url: "https://coda.io/apis/v1"
+  method: GET
+  path: "/docs/{{docId}}/tables"
+  headers:
+    Content-Type: application/json
+  auth:
+    type: bearer
+    token: "{{vault:CODA_API_KEY}}"
+  parameters:
+    - name: docId
+      description: The doc ID
+      required: true
+      in: path
+    - name: limit
+      description: Maximum number of tables to return
+      in: query
+    - name: pageToken
+      description: Page token from a previous request
+      in: query

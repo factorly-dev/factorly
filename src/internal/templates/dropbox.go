@@ -1,8 +1,11 @@
 package templates
 
-import "github.com/factorly-dev/factorly-cli/internal/config"
+import _ "embed"
 
-// Dropbox returns the template for Dropbox file storage.
+//go:embed yaml/dropbox.yaml
+var dropboxYAML string
+
+// Dropbox returns the template for Dropbox.
 func Dropbox() *Template {
 	return &Template{
 		Name:        "dropbox",
@@ -11,84 +14,11 @@ func Dropbox() *Template {
 		Category:    "business",
 		AuthType:    "oauth",
 		AuthGuide:   "Create an app at https://www.dropbox.com/developers/apps",
-		VaultKey:    "", // OAuth uses provider-based auth, not a single vault key
 		OAuthConfig: &OAuthConfig{
 			AuthURL:  "https://www.dropbox.com/oauth2/authorize",
 			TokenURL: "https://api.dropboxapi.com/oauth2/token",
 			Scopes:   []string{"files.content.read", "files.content.write"},
 		},
-		BaseURL:     "https://api.dropboxapi.com/2",
-		Headers:     nil,
-		Tools: []ToolDef{
-			{
-				Name:        "list_folder",
-				Description: "List files and folders in a path",
-				Method:      "POST",
-				Path:        "/files/list_folder",
-				Parameters: []config.ParamConfig{
-					{Name: "path", In: "body", Required: true, Description: "Folder path (empty string for root)"},
-					{Name: "recursive", In: "body", Description: "Recursively list contents (true/false)"},
-					{Name: "limit", In: "body", Description: "Maximum number of results"},
-				},
-				ActionType: "read",
-				Essential:  true,
-			},
-			{
-				Name:        "search",
-				Description: "Search for files and folders",
-				Method:      "POST",
-				Path:        "/files/search_v2",
-				Parameters: []config.ParamConfig{
-					{Name: "query", In: "body", Required: true, Description: "Search query string"},
-					{Name: "options", In: "body", Description: "Search options (path, max_results, file_extensions, etc.)"},
-				},
-				ActionType: "search",
-				Essential:  true,
-			},
-			{
-				Name:        "get_metadata",
-				Description: "Get metadata for a file or folder",
-				Method:      "POST",
-				Path:        "/files/get_metadata",
-				Parameters: []config.ParamConfig{
-					{Name: "path", In: "body", Required: true, Description: "File or folder path"},
-				},
-				ActionType: "read",
-				Essential:  true,
-			},
-			{
-				Name:        "create_folder",
-				Description: "Create a new folder",
-				Method:      "POST",
-				Path:        "/files/create_folder_v2",
-				Parameters: []config.ParamConfig{
-					{Name: "path", In: "body", Required: true, Description: "Folder path to create"},
-					{Name: "autorename", In: "body", Description: "Auto-rename if conflict (true/false)"},
-				},
-				ActionType: "write",
-			},
-			{
-				Name:        "delete",
-				Description: "Delete a file or folder",
-				Method:      "POST",
-				Path:        "/files/delete_v2",
-				Parameters: []config.ParamConfig{
-					{Name: "path", In: "body", Required: true, Description: "Path to delete"},
-				},
-				ActionType: "delete",
-			},
-			{
-				Name:        "move",
-				Description: "Move a file or folder",
-				Method:      "POST",
-				Path:        "/files/move_v2",
-				Parameters: []config.ParamConfig{
-					{Name: "from_path", In: "body", Required: true, Description: "Source path"},
-					{Name: "to_path", In: "body", Required: true, Description: "Destination path"},
-					{Name: "autorename", In: "body", Description: "Auto-rename if conflict (true/false)"},
-				},
-				ActionType: "write",
-			},
-		},
+		YAML: dropboxYAML,
 	}
 }

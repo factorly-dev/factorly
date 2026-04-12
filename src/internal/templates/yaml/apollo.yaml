@@ -1,0 +1,118 @@
+apollo.search_people:
+  type: rest
+  description: Search for people/contacts
+  base_url: "https://api.apollo.io/api/v1"
+  method: POST
+  path: /mixed_people/search
+  auth:
+    type: bearer
+    token: "{{vault:APOLLO_API_KEY}}"
+  parameters:
+    - name: q_keywords
+      description: Keywords to search for
+      in: body
+    - name: person_titles
+      description: Array of job titles to filter by
+      in: body
+    - name: person_locations
+      description: Array of locations to filter by
+      in: body
+    - name: page
+      description: Page number
+      in: body
+    - name: per_page
+      description: Results per page
+      in: body
+
+apollo.enrich_person:
+  type: rest
+  description: "Enrich a person's data by email or domain"
+  base_url: "https://api.apollo.io/api/v1"
+  method: POST
+  path: /people/match
+  auth:
+    type: bearer
+    token: "{{vault:APOLLO_API_KEY}}"
+  parameters:
+    - name: email
+      description: Email address to enrich
+      in: body
+    - name: first_name
+      description: First name
+      in: body
+    - name: last_name
+      description: Last name
+      in: body
+    - name: domain
+      description: Company domain
+      in: body
+
+apollo.search_organizations:
+  type: rest
+  description: Search for organizations/companies
+  base_url: "https://api.apollo.io/api/v1"
+  method: POST
+  path: /mixed_companies/search
+  auth:
+    type: bearer
+    token: "{{vault:APOLLO_API_KEY}}"
+  parameters:
+    - name: q_keywords
+      description: Keywords to search for
+      in: body
+    - name: organization_locations
+      description: Array of locations
+      in: body
+    - name: page
+      description: Page number
+      in: body
+    - name: per_page
+      description: Results per page
+      in: body
+
+apollo.create_contact:
+  type: rest
+  description: Create a contact in Apollo
+  base_url: "https://api.apollo.io/api/v1"
+  method: POST
+  path: /contacts
+  auth:
+    type: bearer
+    token: "{{vault:APOLLO_API_KEY}}"
+  parameters:
+    - name: first_name
+      description: First name
+      required: true
+      in: body
+    - name: last_name
+      description: Last name
+      required: true
+      in: body
+    - name: email
+      description: Email address
+      in: body
+    - name: organization_name
+      description: Company name
+      in: body
+    - name: title
+      description: Job title
+      in: body
+  shadow:
+    confirm: true
+
+apollo.list_sequences:
+  type: rest
+  description: List email sequences
+  base_url: "https://api.apollo.io/api/v1"
+  method: GET
+  path: /emailer_campaigns
+  auth:
+    type: bearer
+    token: "{{vault:APOLLO_API_KEY}}"
+  parameters:
+    - name: page
+      description: Page number
+      in: query
+    - name: per_page
+      description: Results per page
+      in: query

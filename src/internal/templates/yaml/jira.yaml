@@ -1,0 +1,181 @@
+jira.list_issues:
+  type: rest
+  description: List issues using JQL
+  base_url: "https://YOUR_DOMAIN.atlassian.net/rest/api/3"
+  method: GET
+  path: /search
+  headers:
+    Content-Type: application/json
+    Accept: application/json
+  auth:
+    type: bearer
+    token: "{{vault:JIRA_API_TOKEN}}"
+  parameters:
+    - name: jql
+      description: JQL query string
+      in: query
+    - name: maxResults
+      description: Maximum number of issues to return
+      in: query
+    - name: startAt
+      description: Index of the first result to return
+      in: query
+    - name: fields
+      description: "Comma-separated list of fields to return"
+      in: query
+
+jira.get_issue:
+  type: rest
+  description: Get a specific issue by key or ID
+  base_url: "https://YOUR_DOMAIN.atlassian.net/rest/api/3"
+  method: GET
+  path: "/issue/{{issueIdOrKey}}"
+  headers:
+    Content-Type: application/json
+    Accept: application/json
+  auth:
+    type: bearer
+    token: "{{vault:JIRA_API_TOKEN}}"
+  parameters:
+    - name: issueIdOrKey
+      description: "Issue key (e.g. PROJ-123) or ID"
+      required: true
+      in: path
+    - name: fields
+      description: "Comma-separated list of fields to return"
+      in: query
+    - name: expand
+      description: "Fields to expand (e.g. changelog, renderedFields)"
+      in: query
+
+jira.create_issue:
+  type: rest
+  description: Create a new Jira issue
+  base_url: "https://YOUR_DOMAIN.atlassian.net/rest/api/3"
+  method: POST
+  path: /issue
+  headers:
+    Content-Type: application/json
+    Accept: application/json
+  auth:
+    type: bearer
+    token: "{{vault:JIRA_API_TOKEN}}"
+  parameters:
+    - name: project
+      description: "Project object with key (e.g. {\\"
+      required: true
+      in: body
+    - name: summary
+      description: Issue summary/title
+      required: true
+      in: body
+    - name: issuetype
+      description: "Issue type object (e.g. {\\"
+      required: true
+      in: body
+    - name: description
+      description: Issue description (Atlassian Document Format)
+      in: body
+    - name: assignee
+      description: Assignee object with accountId
+      in: body
+    - name: priority
+      description: Priority object with name
+      in: body
+  shadow:
+    confirm: true
+
+jira.search:
+  type: rest
+  description: Search for issues using JQL
+  base_url: "https://YOUR_DOMAIN.atlassian.net/rest/api/3"
+  method: POST
+  path: /search
+  headers:
+    Content-Type: application/json
+    Accept: application/json
+  auth:
+    type: bearer
+    token: "{{vault:JIRA_API_TOKEN}}"
+  parameters:
+    - name: jql
+      description: JQL query string
+      required: true
+      in: body
+    - name: maxResults
+      description: Maximum number of issues to return
+      in: body
+    - name: startAt
+      description: Index of the first result to return
+      in: body
+    - name: fields
+      description: Array of field names to return
+      in: body
+
+jira.transition_issue:
+  type: rest
+  description: Transition an issue to a new status
+  base_url: "https://YOUR_DOMAIN.atlassian.net/rest/api/3"
+  method: POST
+  path: "/issue/{{issueIdOrKey}}/transitions"
+  headers:
+    Content-Type: application/json
+    Accept: application/json
+  auth:
+    type: bearer
+    token: "{{vault:JIRA_API_TOKEN}}"
+  parameters:
+    - name: issueIdOrKey
+      description: "Issue key (e.g. PROJ-123) or ID"
+      required: true
+      in: path
+    - name: transition
+      description: "Transition object with id (e.g. {\\"
+      required: true
+      in: body
+  shadow:
+    confirm: true
+
+jira.add_comment:
+  type: rest
+  description: Add a comment to an issue
+  base_url: "https://YOUR_DOMAIN.atlassian.net/rest/api/3"
+  method: POST
+  path: "/issue/{{issueIdOrKey}}/comment"
+  headers:
+    Content-Type: application/json
+    Accept: application/json
+  auth:
+    type: bearer
+    token: "{{vault:JIRA_API_TOKEN}}"
+  parameters:
+    - name: issueIdOrKey
+      description: "Issue key (e.g. PROJ-123) or ID"
+      required: true
+      in: path
+    - name: body
+      description: Comment body (Atlassian Document Format)
+      required: true
+      in: body
+  shadow:
+    confirm: true
+
+jira.list_projects:
+  type: rest
+  description: List all accessible projects
+  base_url: "https://YOUR_DOMAIN.atlassian.net/rest/api/3"
+  method: GET
+  path: /project
+  headers:
+    Content-Type: application/json
+    Accept: application/json
+  auth:
+    type: bearer
+    token: "{{vault:JIRA_API_TOKEN}}"
+  parameters:
+    - name: maxResults
+      description: Maximum number of projects to return
+      in: query
+    - name: startAt
+      description: Index of the first result to return
+      in: query

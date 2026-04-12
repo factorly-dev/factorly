@@ -1,9 +1,11 @@
 package templates
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/factorly-dev/factorly-cli/internal/config"
+	"gopkg.in/yaml.v3"
 )
 
 // Template defines a pre-built tool configuration for a service.
@@ -14,11 +16,9 @@ type Template struct {
 	Category    string       // "engineering" or "business"
 	AuthType    string       // "api_key", "oauth", "bearer"
 	AuthGuide   string       // Help text for getting credentials
-	VaultKey    string       // Key name in vault (e.g. "LINEAR_API_KEY")
-	BaseURL     string
-	Headers     map[string]string
-	Tools       []ToolDef
-	OAuthConfig *OAuthConfig // Required when AuthType is "oauth"
+	VaultKey    string       // Key name in vault (for api_key/bearer)
+	OAuthConfig *OAuthConfig // OAuth provider details (for oauth)
+	YAML        string       // Embedded tool definitions
 }
 
 // OAuthConfig holds OAuth provider details for templates that require OAuth.
@@ -26,17 +26,6 @@ type OAuthConfig struct {
 	AuthURL  string
 	TokenURL string
 	Scopes   []string
-}
-
-// ToolDef defines a single tool within a template.
-type ToolDef struct {
-	Name        string
-	Description string
-	Method      string // GET, POST, PUT, PATCH, DELETE
-	Path        string
-	Parameters  []config.ParamConfig
-	ActionType  string // "read", "write", "search", "delete"
-	Essential   bool   // included in "essentials" selection
 }
 
 // All returns all registered templates.
@@ -91,61 +80,58 @@ func Get(name string) *Template {
 	return nil
 }
 
-// ToToolConfigs converts a template's tools into Factorly config tool entries.
-// selectedTools filters which tools to include; pass nil or empty to include all.
-func (t *Template) ToToolConfigs(selectedTools []string) map[string]config.ToolConfig {
-	tools := make(map[string]config.ToolConfig)
+// ToolCount returns the number of tools defined in the template's YAML.
+func (t *Template) ToolCount() int {
+	var tools map[string]any
+	if err := yaml.Unmarshal([]byte(t.YAML), &tools); err != nil {
+		return 0
+	}
+	return len(tools)
+}
+
+// ToolNames returns the tool names from the template's YAML.
+func (t *Template) ToolNames() []string {
+	var tools map[string]any
+	if err := yaml.Unmarshal([]byte(t.YAML), &tools); err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(tools))
+	for name := range tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// FilterYAML returns the YAML content with only the selected tools.
+// If selectedTools is nil or empty, returns the full YAML.
+func (t *Template) FilterYAML(selectedTools []string) string {
+	if len(selectedTools) == 0 {
+		return t.YAML
+	}
+
+	var allTools map[string]any
+	if err := yaml.Unmarshal([]byte(t.YAML), &allTools); err != nil {
+		return t.YAML
+	}
+
 	selected := make(map[string]bool)
 	for _, s := range selectedTools {
 		selected[s] = true
 	}
 
-	for _, td := range t.Tools {
-		fullName := t.Name + "." + td.Name
-		if len(selectedTools) > 0 && !selected[td.Name] && !selected[fullName] {
-			continue
+	filtered := make(map[string]any)
+	for name, def := range allTools {
+		if selected[name] {
+			filtered[name] = def
 		}
-
-		tc := config.ToolConfig{
-			Type:        "rest",
-			Description: td.Description,
-			BaseURL:     t.BaseURL,
-			Method:      td.Method,
-			Path:        td.Path,
-			Headers:     t.Headers,
-			Parameters:  td.Parameters,
-		}
-
-		// Auth
-		switch t.AuthType {
-		case "api_key":
-			tc.Auth = &config.AuthConfig{
-				Type:  "bearer",
-				Token: "{{vault:" + t.VaultKey + "}}",
-			}
-		case "oauth":
-			tc.Auth = &config.AuthConfig{
-				Type:     "oauth",
-				Provider: t.Name,
-			}
-		case "bearer":
-			tc.Auth = &config.AuthConfig{
-				Type:  "bearer",
-				Token: "{{vault:" + t.VaultKey + "}}",
-			}
-		}
-
-		// Shadow governance based on action type
-		switch td.ActionType {
-		case "write", "create":
-			tc.Shadow = &config.ShadowConfig{Confirm: true}
-		case "delete":
-			tc.Shadow = &config.ShadowConfig{Confirm: true}
-		}
-
-		tools[fullName] = tc
 	}
-	return tools
+
+	data, err := yaml.Marshal(filtered)
+	if err != nil {
+		return t.YAML
+	}
+	return string(data)
 }
 
 // ToOAuthProvider generates the oauth_providers config entry for OAuth templates.
@@ -163,26 +149,4 @@ func (t *Template) ToOAuthProvider() map[string]config.OAuthProviderConfig {
 			Scopes:       t.OAuthConfig.Scopes,
 		},
 	}
-}
-
-// FullConfig generates a complete config.Config with tools and oauth_providers.
-func (t *Template) FullConfig(selectedTools []string) *config.Config {
-	cfg := &config.Config{
-		Tools: t.ToToolConfigs(selectedTools),
-	}
-	if oauthProviders := t.ToOAuthProvider(); oauthProviders != nil {
-		cfg.OAuthProviders = oauthProviders
-	}
-	return cfg
-}
-
-// EssentialTools returns the names of tools marked as essential.
-func (t *Template) EssentialTools() []string {
-	var names []string
-	for _, td := range t.Tools {
-		if td.Essential {
-			names = append(names, td.Name)
-		}
-	}
-	return names
 }
