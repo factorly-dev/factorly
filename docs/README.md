@@ -39,6 +39,7 @@
 | [OpenAPI Import](openapi-import.md) | Generate tools from OpenAPI/Swagger specs |
 | [Project Directory](project-directory.md) | Modular configs with `.factorly/` and `tools_dir` |
 | [Logging](logging.md) | Call log format, fields, output savings, and security |
+| [Templates](templates.md) | Pre-built tool configs for 36 popular services |
 
 ## Contributing
 

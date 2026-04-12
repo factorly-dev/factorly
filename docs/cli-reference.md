@@ -15,6 +15,10 @@ factorly tools add                  # add a tool (interactive)
 factorly tools add --name x --type cli  # add a tool (non-interactive)
 factorly tools remove <tool>        # remove a tool from config
 factorly tools import openapi <spec>  # generate tools from OpenAPI spec
+factorly tools import templates       # list available templates
+factorly tools import templates <name>  # install a template (interactive)
+factorly tools import templates <name> --dry-run  # preview YAML
+factorly tools import templates <name> --all --api-key <key>  # non-interactive
 factorly tools record                 # create a tool from a pasted curl command
 factorly tools record --curl '...'    # create from inline curl
 factorly tools record --dry-run       # preview YAML without writing
