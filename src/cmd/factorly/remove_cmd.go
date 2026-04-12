@@ -13,7 +13,7 @@ import (
 var removeCmd = &cobra.Command{
 	Use:   "remove <tool-name>",
 	Short: "Remove a tool from the config",
-	Args:  cobra.ExactArgs(1),
+	Args:  requireArgs(1, "factorly tools remove <tool-name>"),
 	RunE:  runRemove,
 }
 

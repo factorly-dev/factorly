@@ -21,7 +21,7 @@ var authCmd = &cobra.Command{
 var authLoginCmd = &cobra.Command{
 	Use:   "login <provider>",
 	Short: "Authenticate with an OAuth provider (opens browser)",
-	Args:  cobra.ExactArgs(1),
+	Args:  requireArgs(1, "factorly auth login <provider>"),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		providerName := args[0]
 
@@ -136,7 +136,7 @@ var authStatusCmd = &cobra.Command{
 var authLogoutCmd = &cobra.Command{
 	Use:   "logout <provider>",
 	Short: "Remove stored OAuth tokens",
-	Args:  cobra.ExactArgs(1),
+	Args:  requireArgs(1, "factorly auth logout <provider>"),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		providerName := args[0]
 

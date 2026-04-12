@@ -109,7 +109,6 @@ func runToolsList(cmd *cobra.Command, args []string) error {
 var callCmd = &cobra.Command{
 	Use:                "call <tool> [--param value ...]",
 	Short:              "Call a tool",
-	Args:               cobra.MinimumNArgs(1),
 	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Manually extract global flags that cobra can't parse due to DisableFlagParsing
@@ -319,7 +318,7 @@ var importOpenAPIPrefix string
 var importOpenAPICmd = &cobra.Command{
 	Use:   "openapi <spec-path>",
 	Short: "Generate tool definitions from an OpenAPI spec",
-	Args:  cobra.ExactArgs(1),
+	Args:  requireArgs(1, "factorly tools import openapi <spec-path>"),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tools, err := openapi.Generate(args[0], openapi.GenerateOpts{
 			Prefix: importOpenAPIPrefix,
@@ -608,6 +607,16 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 
 	p := proxy.New(reg, providers, logIface, proxyOpts...)
 	return p, nil
+}
+
+// requireArgs returns a cobra args validator with a helpful error message.
+func requireArgs(n int, usage string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) < n {
+			return fmt.Errorf("usage: %s", usage)
+		}
+		return nil
+	}
 }
 
 // extractGlobalFlags pulls out global flags (-v, --verbose, -c, --config)

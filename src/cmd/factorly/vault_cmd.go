@@ -21,7 +21,7 @@ var vaultCmd = &cobra.Command{
 var vaultSetCmd = &cobra.Command{
 	Use:   "set <key> [value]",
 	Short: "Store a secret in the vault",
-	Args:  cobra.RangeArgs(1, 2),
+	Args:  requireArgs(1, "factorly vault set <key> [value]"),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		backend, err := openVault()
 		if err != nil {
@@ -62,7 +62,7 @@ var vaultSetCmd = &cobra.Command{
 var vaultGetCmd = &cobra.Command{
 	Use:   "get <key>",
 	Short: "Retrieve a secret from the vault",
-	Args:  cobra.ExactArgs(1),
+	Args:  requireArgs(1, "factorly vault get <key>"),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		backend, err := openVault()
 		if err != nil {
@@ -103,7 +103,7 @@ var vaultListCmd = &cobra.Command{
 var vaultDeleteCmd = &cobra.Command{
 	Use:   "delete <key>",
 	Short: "Remove a secret from the vault",
-	Args:  cobra.ExactArgs(1),
+	Args:  requireArgs(1, "factorly vault delete <key>"),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		backend, err := openVault()
 		if err != nil {
