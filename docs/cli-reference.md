@@ -35,6 +35,13 @@ factorly vault set <key> [value]    # store a secret (prompts if no value)
 factorly vault get <key>            # retrieve a secret (raw value to stdout)
 factorly vault list                 # list secret names
 factorly vault delete <key>         # remove a secret
+factorly logs                       # view recent audit log entries
+factorly logs -n 50                 # show last 50 entries
+factorly logs --tool github         # filter by tool name
+factorly logs --status blocked      # filter by status
+factorly logs --detail              # show full entry details
+factorly logs --stats               # show summary statistics
+factorly logs -f                    # follow mode (tail -f style)
 factorly wrap -- <command> [args]   # zero-config MCP proxy for any server
 factorly wrap --url <url>          # proxy a remote MCP server
 factorly version                    # print version

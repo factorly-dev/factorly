@@ -30,6 +30,20 @@ Default: `~/.config/factorly/calls.jsonl`
 
 Set `FACTORLY_NO_LOG=1` to disable logging.
 
+## Viewing Logs
+
+Use `factorly logs` to view and query the audit log:
+
+```bash
+factorly logs                    # last 20 entries
+factorly logs -n 50              # last 50 entries
+factorly logs --tool github      # filter by tool name
+factorly logs --status blocked   # filter by status
+factorly logs --detail           # show full entry details
+factorly logs --stats            # summary statistics
+factorly logs -f                 # follow mode (tail -f)
+```
+
 ## Output savings
 
 When output processing is enabled (compression or truncation), the log records `original_bytes` and `processed_bytes` for each call. Query savings with `jq`:
