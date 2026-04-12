@@ -180,25 +180,6 @@ The vault password can come from an environment variable (`FACTORLY_VAULT_PASSWO
 | **Any protocol** | REST APIs, CLI commands, MCP servers. One config format. |
 | **OAuth 2.0** | PKCE flow with auto-refresh for Google, GitHub, Microsoft, Slack. |
 
-## Commands
-
-```bash
-factorly init                              # interactive project setup
-factorly tools                             # list configured tools
-factorly tools import templates            # browse 36 pre-built templates
-factorly tools import templates linear     # install Linear tools (30 sec)
-factorly call <tool> [--param val]         # call a tool
-factorly serve                             # start MCP server (stdio)
-factorly wrap -- <command> [args]          # zero-config MCP proxy
-factorly sync                              # push config to AI clients
-factorly status                            # health check all tools
-factorly logs                              # view audit log
-factorly vault set <key> [value]           # store a secret
-factorly auth login <provider>             # OAuth login
-```
-
-Full reference: [CLI Reference](docs/cli-reference.md)
-
 ## Documentation
 
 | Topic | |
