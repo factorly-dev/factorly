@@ -3,50 +3,82 @@
 ## Install
 
 ```bash
+npm install -g @factorly/cli
+```
+
+Or with Go:
+
+```bash
+go install github.com/factorly-dev/factorly-cli@latest
+```
+
+Or build from source:
+
+```bash
 git clone https://github.com/factorly-dev/factorly-cli.git
-cd factorly
-make init
-make build
+cd factorly-cli && make build
+# binary at build/factorly — add to PATH or move to /usr/local/bin
 ```
 
-The binary lands in `build/factorly`. Add it to your PATH or move it to `/usr/local/bin`.
+## Try It Immediately
 
-## Initialize a project
+No config needed — wrap any existing MCP server:
 
 ```bash
+factorly wrap -- npx @modelcontextprotocol/server-everything
+```
+
+Or install a pre-built template:
+
+```bash
+factorly tools import templates github
+factorly call github.list_repos --username octocat
+```
+
+## Set Up a Project
+
+```bash
+# Interactive setup — creates .factorly/factorly.yaml
 factorly init
-```
 
-This creates `.factorly/factorly.yaml` with an interactive setup — optionally adds a tools directory, an example CLI tool, and can import tools from an OpenAPI spec.
+# Store a secret
+factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
 
-Use `--out factorly.yaml` to write to the project root instead.
-
-## Add your first tool
-
-```bash
-# Interactive
-factorly tools add
-
-# Or non-interactive
-factorly tools add --name web.fetch --type cli --command curl --args '-s,{{url}}'
-```
-
-## Use it
-
-```bash
-# List available tools
-factorly tools
-
-# Call a tool
-factorly call web.fetch --url "https://example.com"
-
-# Check everything is working
+# Check everything works
 factorly status
 ```
 
-## Connect to your agent
+## Add Tools
 
-The fastest way — auto-detect installed clients and write their config:
+**From a template** (easiest):
+
+```bash
+factorly tools import templates
+# Shows 36 available templates — pick one
+factorly tools import templates slack
+```
+
+**Interactively:**
+
+```bash
+factorly tools add
+```
+
+**From an OpenAPI spec:**
+
+```bash
+factorly tools import openapi ./api-spec.yaml --out .factorly/tools/api.yaml
+```
+
+**From a curl command:**
+
+```bash
+echo 'curl -H "Authorization: Bearer $TOKEN" https://api.example.com/data' | factorly tools record
+```
+
+## Connect to Your Agent
+
+Auto-detect installed AI clients and write their MCP config:
 
 ```bash
 factorly sync
@@ -55,8 +87,6 @@ factorly sync
 This writes the Factorly MCP server entry into `.mcp.json` (Claude Code), `.cursor/mcp.json` (Cursor), and `.codex/mcp.json` (Codex) — whichever are detected.
 
 ### Manual setup
-
-If you prefer to configure manually:
 
 **Claude Code** — add to `.mcp.json` in your project root:
 
@@ -71,31 +101,9 @@ If you prefer to configure manually:
 }
 ```
 
-**Cursor** — add to `.cursor/mcp.json`:
+**Cursor** — add to `.cursor/mcp.json` with the same format.
 
-```json
-{
-  "mcpServers": {
-    "factorly": {
-      "command": "factorly",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-**OpenAI Codex** — add to `.codex/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "factorly": {
-      "command": "factorly",
-      "args": ["serve"]
-    }
-  }
-}
-```
+**OpenAI Codex** — add to `.codex/mcp.json` with the same format.
 
 ### HTTP mode
 
@@ -107,31 +115,14 @@ factorly serve --http :3000
 
 Endpoint at `http://localhost:3000/mcp`. Secure with `--http-token` or `FACTORLY_HTTP_TOKEN`. See [CLI Reference](cli-reference.md) for details.
 
-Sync HTTP mode to clients:
-
-```bash
-factorly sync --http localhost:3000 --token mytoken
-```
-
 > **Note:** If running inside Docker, use `host.docker.internal` instead of `localhost`. See [CLI Reference](cli-reference.md#http-server-authentication) for container setup.
 
-## Store secrets
-
-```bash
-# Store a secret in the encrypted vault
-factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
-
-# Reference it in your config
-# token: "{{vault:GITHUB_TOKEN}}"
-```
-
-See [Vault](vault.md) for full documentation.
-
-## Next steps
+## Next Steps
 
 - [Config Reference](config-reference.md) — full YAML schema
+- [Templates](templates.md) — 36 pre-built service configs
+- [Vault](vault.md) — encrypted secret storage
 - [OAuth](oauth.md) — authenticate with Google, GitHub, Microsoft
-- [OpenAPI Import](openapi-import.md) — generate tools from API specs
 
 ---
 

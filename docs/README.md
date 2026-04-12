@@ -9,13 +9,13 @@
 - **Any protocol** — MCP servers, REST APIs, CLI tools. One config format for all of them
 - **Zero-config proxy** — `factorly wrap` adds safety to any MCP server with no config file needed
 
-| Type | How It Works | Status |
-|---|---|---|
-| **CLI commands** | Define command + args in YAML. `{{param}}` placeholders substituted. | Working |
-| **REST APIs** | Define base URL, method, path, auth, parameters. HTTP calls with routing. | Working |
-| **MCP servers** | Spawn child servers (stdio) or connect to remote (HTTP). Tools discovered automatically. | Working |
-| **Output processing** | Compression (JSON compact, log dedup, ANSI strip) + truncation with head/tail split. | Working |
-| **Environment isolation** | Opt-in strict mode restricts child env to essentials. `env_isolation: strict` | Working |
+| Type | How It Works |
+|---|---|
+| **CLI commands** | Define command + args in YAML. `{{param}}` placeholders substituted. |
+| **REST APIs** | Define base URL, method, path, auth, parameters. HTTP calls with routing. |
+| **MCP servers** | Spawn child servers (stdio) or connect to remote (HTTP). Tools discovered automatically. |
+| **Output processing** | Compression (JSON compact, log dedup, ANSI strip) + truncation with head/tail split. |
+| **Governance** | Deny, confirm, rate limit, loop detection. Per-tool shadow policy. |
 
 ## Getting Started
 

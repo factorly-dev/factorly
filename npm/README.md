@@ -8,18 +8,15 @@
 
 # Factorly
 
-[![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CI](https://img.shields.io/badge/CI-passing-brightgreen?logo=github)](https://github.com/factorly-dev/factorly-cli/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/badge/Release-v0.1.7-blue?logo=github)](https://github.com/factorly-dev/factorly-cli/releases)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
-[![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](docs/)
 
-One command. All your tools. Credentials stay out of your agent's hands.  
-  
-Factorly wraps REST APIs, CLIs, and MCP servers into a single, governed interface. Configure your tools once, connect your agent once, and every call is authenticated, proxied, and logged. Your agent never touches a secret.  
+Your agent calls tools. Factorly holds the keys.
 
 </center>
+
+A security and governance layer between AI agents and the tools they use. REST APIs, CLI commands, MCP servers — one config, one audit log, one set of rules.
 
 ## Install
 
@@ -27,38 +24,32 @@ Factorly wraps REST APIs, CLIs, and MCP servers into a single, governed interfac
 npm install -g @factorly/cli
 ```
 
-Or run directly:
+## Try It in 10 Seconds
 
 ```bash
-npx @factorly/cli version
+# Wrap any MCP server with zero config
+factorly wrap -- npx @modelcontextprotocol/server-everything
+
+# Or install a template for a service you use
+factorly tools import templates github
+factorly call github.list_repos --username octocat
 ```
 
 ## Quick Start
 
 ```bash
-# Initialize a project
-factorly init
-
-# Add a tool from a curl command
-echo 'curl -H "Authorization: Bearer tok" https://api.example.com/data' | factorly tools record
-
-# Connect to Claude Code / Cursor / Codex
-factorly sync
-
-# Start as an MCP server
-factorly serve
+factorly init                              # set up a project
+factorly vault set GITHUB_TOKEN ghp_xxx    # store a secret
+factorly sync                              # connect to Claude Code / Cursor
 ```
 
-## What It Does
+## What You Get
 
-- Wraps **REST APIs**, **CLI commands**, and **MCP servers** into one endpoint
-- Secrets stay in Factorly's encrypted vault — the agent never sees them
-- Every tool call is logged with timestamp, parameters, and response
-- OAuth 2.0 with auto-refresh for Google, GitHub, Microsoft, Slack
-
-## Documentation
-
-Full documentation at [github.com/factorly-dev/factorly-cli](https://github.com/factorly-dev/factorly-cli)
+- **Credential isolation** — secrets in encrypted vault, agent never sees them
+- **Governance** — deny, confirm, rate limit, loop detection per tool
+- **Audit log** — every call logged with params, response, and governance outcome
+- **36 templates** — pre-built configs for GitHub, Slack, Stripe, Gmail, Linear, and more
+- **Zero-config proxy** — `factorly wrap` adds safety to any MCP server instantly
 
 ## Supported Platforms
 
@@ -69,6 +60,10 @@ Full documentation at [github.com/factorly-dev/factorly-cli](https://github.com/
 | Windows | x64 |
 
 The npm package downloads the pre-built Go binary for your platform during install.
+
+## Documentation
+
+Full docs at [github.com/factorly-dev/factorly-cli](https://github.com/factorly-dev/factorly-cli)
 
 ## License
 

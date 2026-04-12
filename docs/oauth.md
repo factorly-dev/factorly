@@ -50,7 +50,8 @@ See [`examples/github-oauth.yaml`](../src/examples/github-oauth.yaml) for a comp
 
 ```bash
 # 1. Create a GitHub OAuth App at https://github.com/settings/developers
-#    Set callback URL to http://127.0.0.1
+#    Use "Desktop app" type (allows localhost redirects automatically)
+#    Or set redirect URI to http://localhost:18019/callback
 
 # 2. Store credentials
 factorly vault set GITHUB_CLIENT_ID "Iv1.xxx"

@@ -238,7 +238,7 @@ Always-on — no configuration needed. Factorly fingerprints identical calls (sa
 | Repeat count | Behavior |
 |---|---|
 | 1–3 | Normal execution |
-| 4–8 | Warning logged, execution continues |
+| 4–11 | Warning logged, execution continues |
 | 12+ | Call blocked |
 
 ### log_params

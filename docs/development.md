@@ -36,15 +36,31 @@ make release            # cross-platform binaries (linux, darwin, windows)
 ```
 src/
 ├── cmd/factorly/          # CLI entrypoint + commands
+│   ├── main.go            # root command, call, init, tools
+│   ├── serve_cmd.go       # factorly serve (MCP server)
+│   ├── wrap_cmd.go        # factorly wrap (zero-config proxy)
+│   ├── logs_cmd.go        # factorly logs (audit log viewer)
+│   ├── templates_cmd.go   # factorly tools import templates
+│   ├── health_cmd.go      # factorly status
+│   ├── vault_cmd.go       # factorly vault set/get/list/delete
+│   └── auth_cmd.go        # factorly auth login/status/logout
 ├── internal/
 │   ├── config/            # YAML config loading + validation
-│   ├── provider/          # CLI, REST, MCP providers
-│   ├── proxy/             # Proxy engine (route + log)
+│   ├── provider/          # CLI, REST, MCP providers + env isolation
+│   ├── proxy/             # Proxy engine (route, log, output processing)
 │   ├── registry/          # Tool registry
-│   ├── server/            # MCP server bridge
+│   ├── server/            # MCP server bridge + agent identity
 │   ├── logger/            # JSONL call logger
 │   ├── vault/             # Encrypted vault (AES-256-GCM + HKDF)
-│   └── oauth/             # OAuth 2.0 flow (PKCE + refresh)
+│   ├── oauth/             # OAuth 2.0 flow (PKCE + refresh)
+│   ├── shadow/            # Governance: deny, confirm, rate limit, loop detection
+│   ├── output/            # Output compression + truncation
+│   ├── agent/             # Agent identity registry
+│   ├── naming/            # Name derivation utilities
+│   ├── templates/         # Pre-built tool templates (36 services)
+│   │   └── yaml/          # Embedded YAML tool definitions
+│   ├── openapi/           # OpenAPI spec → tool config generator
+│   └── parsing/curl/      # Curl command → tool config parser
 ├── test/                  # Integration tests
 ├── examples/              # Example configs
 ├── go.mod
