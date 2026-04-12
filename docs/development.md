@@ -41,7 +41,7 @@ src/
 │   ├── wrap_cmd.go        # factorly wrap (zero-config proxy)
 │   ├── logs_cmd.go        # factorly logs (audit log viewer)
 │   ├── templates_cmd.go   # factorly tools import templates
-│   ├── health_cmd.go      # factorly status
+│   ├── health_cmd.go      # factorly tools status
 │   ├── vault_cmd.go       # factorly vault set/get/list/delete
 │   └── auth_cmd.go        # factorly auth login/status/logout
 ├── internal/

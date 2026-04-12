@@ -27,7 +27,7 @@ factorly sync                       # push MCP config to AI clients
 factorly sync --global              # sync to user-level config (~/.claude/, etc.)
 factorly sync --http localhost:3000 # sync HTTP mode
 factorly sync --remove              # remove factorly from client configs
-factorly status                     # check all tools are reachable
+factorly tools status               # check all tools are reachable
 factorly auth login <provider>      # OAuth login (opens browser)
 factorly auth status [provider]     # show OAuth token status
 factorly auth logout <provider>     # remove stored OAuth tokens

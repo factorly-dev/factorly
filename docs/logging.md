@@ -52,7 +52,7 @@ When output processing is enabled (compression or truncation), the log records `
 cat ~/.config/factorly/calls.jsonl | jq 'select(.original_bytes) | {tool, saved: (.original_bytes - .processed_bytes)}'
 ```
 
-Run `factorly status` for an aggregate output savings summary across all tools.
+Run `factorly tools status` for an aggregate output savings summary across all tools.
 
 ## Agent identity
 

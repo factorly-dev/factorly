@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	"github.com/factorly-dev/factorly-cli/internal/config"
-	"github.com/factorly-dev/factorly-cli/internal/logger"
 	"github.com/factorly-dev/factorly-cli/internal/oauth"
 	"github.com/factorly-dev/factorly-cli/internal/provider"
 	"github.com/factorly-dev/factorly-cli/internal/vault"
@@ -273,65 +271,6 @@ func printHealthResults(results []healthResult) {
 		fmt.Printf("  %d healthy, 0 issues\n", healthy)
 	} else {
 		fmt.Printf("  %d healthy, %d issues\n", healthy, issues)
-	}
-
-	printOutputSavings()
-}
-
-func printOutputSavings() {
-	logPath := logger.DefaultLogPath()
-	f, err := os.Open(logPath)
-	if err != nil {
-		return // no log file, skip silently
-	}
-	defer f.Close()
-
-	var totalCalls, processedCalls int
-	var totalOriginal, totalProcessed int64
-	var blockedCalls int
-
-	scanner := bufio.NewScanner(f)
-	// Increase buffer for lines with large output fields
-	scanner.Buffer(make([]byte, 0, 64*1024), 512*1024)
-	for scanner.Scan() {
-		var entry struct {
-			Status         string `json:"status"`
-			ShadowAction   string `json:"shadow_action"`
-			OriginalBytes  int64  `json:"original_bytes"`
-			ProcessedBytes int64  `json:"processed_bytes"`
-		}
-		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
-			continue
-		}
-		totalCalls++
-		if entry.Status == "blocked" {
-			blockedCalls++
-		}
-		if entry.OriginalBytes > 0 {
-			processedCalls++
-			totalOriginal += entry.OriginalBytes
-			totalProcessed += entry.ProcessedBytes
-		}
-	}
-
-	if totalCalls == 0 {
-		return
-	}
-
-	fmt.Println()
-	fmt.Println("  Output Savings")
-
-	if processedCalls > 0 {
-		saved := totalOriginal - totalProcessed
-		pct := float64(saved) / float64(totalOriginal) * 100
-		fmt.Printf("  %d calls processed, %s → %s (%.0f%% saved)\n",
-			processedCalls, formatBytes(totalOriginal), formatBytes(totalProcessed), pct)
-	} else {
-		fmt.Println("  no output processing configured")
-	}
-
-	if blockedCalls > 0 {
-		fmt.Printf("  %d calls blocked by governance\n", blockedCalls)
 	}
 }
 

@@ -146,7 +146,7 @@ Set `FACTORLY_MAX_OUTPUT` to apply a default max across all tools. Per-tool `max
 
 ### Savings tracking
 
-Compression and truncation savings are recorded in the audit log (`original_bytes`, `processed_bytes`). Run `factorly status` to see an output savings summary.
+Compression and truncation savings are recorded in the audit log (`original_bytes`, `processed_bytes`). Run `factorly tools status` to see an output savings summary.
 
 ## Environment Isolation
 

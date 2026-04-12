@@ -928,7 +928,7 @@ tools:
 `,
 	})
 
-	stdout, _, code := run(t, dir, "status")
+	stdout, _, code := run(t, dir, "tools", "status")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -955,7 +955,7 @@ tools:
 `,
 	})
 
-	stdout, _, code := run(t, dir, "status")
+	stdout, _, code := run(t, dir, "tools", "status")
 	if code == 0 {
 		t.Fatal("expected non-zero exit for broken tool")
 	}
@@ -987,7 +987,7 @@ tools:
 `, srv.URL),
 	})
 
-	stdout, _, code := run(t, dir, "status")
+	stdout, _, code := run(t, dir, "tools", "status")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -1015,7 +1015,7 @@ tools:
 `, binary),
 	})
 
-	stdout, _, code := run(t, dir, "status")
+	stdout, _, code := run(t, dir, "tools", "status")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}

@@ -45,7 +45,7 @@ factorly init
 factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
 
 # Check everything works
-factorly status
+factorly tools status
 ```
 
 ## Add Tools
