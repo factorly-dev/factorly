@@ -45,7 +45,9 @@ Your agent sees tool names and data. Never secrets.
 npm install -g @factorly/cli
 ```
 
-Or with Go:
+```bash
+pip install factorly
+```
 
 ```bash
 go install github.com/factorly-dev/factorly-cli@latest
@@ -56,7 +58,6 @@ Or build from source:
 ```bash
 git clone https://github.com/factorly-dev/factorly-cli.git
 cd factorly-cli && make build
-# binary at build/factorly
 ```
 
 ## Try It in 10 Seconds

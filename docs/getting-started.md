@@ -6,7 +6,9 @@
 npm install -g @factorly/cli
 ```
 
-Or with Go:
+```bash
+pip install factorly
+```
 
 ```bash
 go install github.com/factorly-dev/factorly-cli@latest

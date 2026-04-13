@@ -23,12 +23,14 @@
 - [x] **Environment isolation** — opt-in strict mode for child processes
 - [x] **36 tool templates** — pre-built YAML configs for popular services
 - [x] **Call logging** — JSONL audit trail with savings, governance, and agent fields
+- [x] **`factorly exec`** — run any command through Factorly's safety layer (vault/env resolution, compression, logging)
+- [x] **Disabled commands** — `disabled_commands` config to restrict CLI access per project
 - [x] **npm distribution** — `npm install -g @factorly/cli`
 
 ## Future?
 
 ### Agent integration
-- [ ] **PreToolUse hooks** — `factorly exec` and `factorly hooks install` to intercept agent Bash calls, applying compression and logging without MCP ([spec](hooks-spec.md))
+- [ ] **PreToolUse hooks** — `factorly hooks install` to intercept agent Bash calls, rewriting them to `factorly exec` for compression and logging without MCP ([spec](hooks-spec.md))
 - [ ] **Command-specific compression** — pattern-based output reduction for git, npm, cargo, test runners (70-90% savings vs generic compression)
 - [ ] **Response caching** — return cached results for identical tool calls within a configurable window, reducing API quota usage and latency
 

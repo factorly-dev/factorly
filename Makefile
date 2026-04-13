@@ -54,8 +54,13 @@ fmt: fix
 check-version:
 	@GO_VERSION=$(VERSION); \
 	NPM_VERSION=$$(node -p "require('./npm/package.json').version" 2>/dev/null || echo "missing"); \
+	PIP_VERSION=$$(grep 'version = ' pip/pyproject.toml 2>/dev/null | head -1 | sed 's/.*"\(.*\)".*/\1/' || echo "missing"); \
 	if [ "$$GO_VERSION" != "$$NPM_VERSION" ]; then \
 		echo "Version mismatch: Go=$$GO_VERSION npm=$$NPM_VERSION" >&2; \
+		exit 1; \
+	fi; \
+	if [ "$$GO_VERSION" != "$$PIP_VERSION" ]; then \
+		echo "Version mismatch: Go=$$GO_VERSION pip=$$PIP_VERSION" >&2; \
 		exit 1; \
 	fi; \
 	echo "Versions aligned: $$GO_VERSION"
@@ -83,10 +88,13 @@ version:
 	NEW="$$major.$$minor.$$patch"; \
 	sed -i "s/\"$(VERSION)\"/\"$$NEW\"/" $(SRCDIR)/internal/version.go; \
 	sed -i "s/\"version\": \"$(VERSION)\"/\"version\": \"$$NEW\"/" npm/package.json; \
+	sed -i "s/version = \"$(VERSION)\"/version = \"$$NEW\"/" pip/pyproject.toml; \
+	sed -i "s/__version__ = \"$(VERSION)\"/__version__ = \"$$NEW\"/" pip/factorly/__init__.py; \
 	sed -i "s/Release-v$(VERSION)-/Release-v$$NEW-/" README.md; \
 	sed -i "s/Release-v$(VERSION)-/Release-v$$NEW-/" npm/README.md; \
+	sed -i "s/Release-v$(VERSION)-/Release-v$$NEW-/" pip/README.md; \
 	echo "$(VERSION) → $$NEW"; \
-	git add $(SRCDIR)/internal/version.go npm/package.json README.md npm/README.md; \
+	git add $(SRCDIR)/internal/version.go npm/package.json pip/pyproject.toml pip/factorly/__init__.py README.md npm/README.md pip/README.md; \
 	git commit -m "Bump version to $$NEW"; \
 	git tag "v$$NEW"; \
 	echo "Tagged v$$NEW"

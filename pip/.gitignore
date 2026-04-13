@@ -1,0 +1,6 @@
+factorly/bin/factorly
+factorly/bin/factorly.exe
+dist/
+build/
+*.egg-info/
+__pycache__/

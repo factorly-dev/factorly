@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "factorly"
+version = "0.1.9"
+description = "Security and governance layer for AI agent tool access"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+]
+
+[project.scripts]
+factorly = "factorly.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/factorly-dev/factorly-cli"
+Documentation = "https://github.com/factorly-dev/factorly-cli/tree/main/docs"
+Repository = "https://github.com/factorly-dev/factorly-cli"
+
+[tool.setuptools.packages.find]
+include = ["factorly*"]
+
+[tool.setuptools.package-data]
+factorly = ["bin/*"]
