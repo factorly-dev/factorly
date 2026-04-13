@@ -2487,6 +2487,57 @@ func TestExecInteractiveFlag(t *testing.T) {
 	}
 }
 
+func TestExecEnvVarResolution(t *testing.T) {
+	// {{env:HOME}} should be resolved to the actual HOME value
+	stdout, _, code := run(t, "", "exec", "--", "echo", "{{env:HOME}}")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	stdout = strings.TrimSpace(stdout)
+	if stdout == "{{env:HOME}}" {
+		t.Error("env ref was not resolved")
+	}
+	if stdout == "" {
+		t.Error("expected non-empty HOME value")
+	}
+}
+
+func TestExecVaultResolution(t *testing.T) {
+	dir := t.TempDir()
+	vaultPath := filepath.Join(dir, "vault.enc")
+
+	// Store a secret
+	cmd := exec.Command(binary, "vault", "set", "EXEC_TEST_SECRET", "secret_value_123")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PASSWORD=testpassword",
+		"FACTORLY_VAULT_PATH="+vaultPath,
+	)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("vault set failed: %v", err)
+	}
+
+	// Use vault ref in exec
+	cmd2 := exec.Command(binary, "exec", "--", "echo", "{{vault:EXEC_TEST_SECRET}}")
+	cmd2.Dir = dir
+	cmd2.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PASSWORD=testpassword",
+		"FACTORLY_VAULT_PATH="+vaultPath,
+	)
+	var stdout2 strings.Builder
+	cmd2.Stdout = &stdout2
+	if err := cmd2.Run(); err != nil {
+		t.Fatalf("exec with vault ref failed: %v", err)
+	}
+
+	output := strings.TrimSpace(stdout2.String())
+	if output != "secret_value_123" {
+		t.Errorf("expected 'secret_value_123', got %q", output)
+	}
+}
+
 // helpers
 
 func findPetstoreSpec(t *testing.T) string {

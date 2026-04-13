@@ -1,16 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
-	"time"
 
-	"github.com/factorly-dev/factorly-cli/internal/logger"
-	"github.com/factorly-dev/factorly-cli/internal/output"
-	"github.com/factorly-dev/factorly-cli/internal/provider"
+	"github.com/factorly-dev/factorly-cli/internal/config"
+	"github.com/factorly-dev/factorly-cli/internal/registry"
+	"github.com/factorly-dev/factorly-cli/internal/vault"
 	"github.com/spf13/cobra"
 )
 
@@ -27,11 +24,14 @@ var execCmd = &cobra.Command{
 	Long: `Run a single shell command with output compression, truncation,
 and audit logging. The zero-config equivalent of a CLI tool definition.
 
+Supports {{vault:KEY}} and {{env:VAR}} references in arguments:
+  factorly exec -- curl -H "Authorization: Bearer {{vault:GITHUB_TOKEN}}" https://api.github.com/user
+
 Examples:
   factorly exec -- git status
-  factorly exec -- curl https://api.github.com/users/octocat
   factorly exec --compress json -- npm test
-  factorly exec --env-isolation strict -- ./deploy.sh`,
+  factorly exec --env-isolation strict -- ./deploy.sh
+  factorly exec -i -- psql -h localhost mydb`,
 	RunE: runExec,
 }
 
@@ -40,137 +40,106 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("usage: factorly exec -- <command> [args...]")
 	}
 
-	// Build compression hints
-	var hints []output.Hint
+	// Build synthetic tool config from command args
+	toolCfg := config.ToolConfig{
+		Type:    "cli",
+		Command: args[0],
+		Args:    args[1:],
+	}
+
+	// Apply flags
+	if execInteractive {
+		toolCfg.Interactive = true
+	}
 	switch execCompress {
 	case "none":
 		// no compression
 	case "json":
-		hints = []output.Hint{output.HintJSON}
+		toolCfg.Compress = []string{"json"}
 	case "logs":
-		hints = []output.Hint{output.HintLogs}
+		toolCfg.Compress = []string{"logs"}
 	default:
-		hints = []output.Hint{output.HintAll}
+		toolCfg.Compress = []string{"all"}
+	}
+	toolCfg.MaxOutput = execMaxOutput
+	if execEnvIsolation == "strict" {
+		toolCfg.EnvIsolation = "strict"
 	}
 
-	maxOutput := execMaxOutput
+	toolName := "exec"
 
-	// Build environment
-	env := provider.BuildEnv(nil, execEnvIsolation == "strict")
+	// Build synthetic config
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			toolName: toolCfg,
+		},
+	}
+
+	// Build registry
+	reg := registry.New()
+	reg.Register(&registry.Tool{
+		Name:        toolName,
+		Type:        "cli",
+		ProviderKey: "cli",
+		MaxOutput:   toolCfg.MaxOutput,
+		Compress:    toolCfg.Compress,
+	})
 
 	vlog("exec: %s", strings.Join(args, " "))
 
-	toolName := strings.Join(args, " ")
+	// Resolve {{env:VAR}} and {{vault:KEY}} refs in args
+	resolver := vault.NewResolver()
+	resolver.Register("env", vault.EnvBackend{})
 
-	// Run command
-	c := exec.Command(args[0], args[1:]...)
-	c.Env = env
-
-	// Interactive mode: connect directly to terminal, skip compression
-	if execInteractive {
-		c.Stdin = os.Stdin
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-
-		start := time.Now()
-		err := c.Run()
-		duration := time.Since(start)
-
-		exitCode := 0
+	// Check if vault refs are present — open vault lazily
+	hasVaultRefs := false
+	for _, a := range args {
+		if vault.HasVaultRefs(a) {
+			hasVaultRefs = true
+			break
+		}
+	}
+	if vault.HasVaultRefs(toolCfg.Command) {
+		hasVaultRefs = true
+	}
+	if hasVaultRefs {
+		backend, err := openVault()
 		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				exitCode = exitErr.ExitCode()
-			} else {
-				exitCode = 1
-			}
+			return fmt.Errorf("resolving vault refs: %w", err)
 		}
-
-		// Log (no output captured in interactive mode)
-		logExec(&logger.Entry{
-			Timestamp:  time.Now(),
-			Interface:  "exec",
-			Tool:       toolName,
-			DurationMs: duration.Milliseconds(),
-			Status:     map[bool]string{true: "error", false: "success"}[exitCode != 0],
-		})
-
-		if exitCode != 0 {
-			os.Exit(exitCode)
-		}
-		return nil
+		defer backend.Close()
+		resolver.Register("vault", backend)
 	}
 
-	// Captured mode: compress and log output
-	c.Stdin = os.Stdin
+	// Resolve all refs
+	toolCfg.Command, _ = resolver.Resolve(toolCfg.Command)
+	for i, a := range toolCfg.Args {
+		toolCfg.Args[i], _ = resolver.Resolve(a)
+	}
+	cfg.Tools[toolName] = toolCfg
 
-	var stdout, stderr bytes.Buffer
-	c.Stdout = &stdout
-	c.Stderr = &stderr
-
-	start := time.Now()
-	err := c.Run()
-	duration := time.Since(start)
-
-	exitCode := 0
+	// Bootstrap providers (builds CLIProvider with our synthetic tool)
+	p, err := bootstrapProviders(cfg, reg)
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			return nil
+		return fmt.Errorf("bootstrap: %w", err)
+	}
+
+	// Execute through proxy (gets compression, truncation, logging for free)
+	result, err := p.Execute(toolName, nil, "exec")
+	if err != nil {
+		return err
+	}
+
+	if result.Output != "" {
+		fmt.Print(result.Output)
+	}
+	if result.IsError() {
+		if result.Error != "" {
+			fmt.Fprint(os.Stderr, result.Error)
 		}
-	}
-
-	// Process output
-	raw := stdout.String()
-	originalBytes := len(raw)
-	processed := raw
-
-	if len(hints) > 0 || maxOutput > 0 {
-		processed = output.Process(raw, maxOutput, hints...)
-	}
-	processedBytes := len(processed)
-
-	// Log to audit trail
-	logEntry := &logger.Entry{
-		Timestamp:  time.Now(),
-		Interface:  "exec",
-		Tool:       toolName,
-		DurationMs: duration.Milliseconds(),
-	}
-	if originalBytes != processedBytes {
-		logEntry.OriginalBytes = originalBytes
-		logEntry.ProcessedBytes = processedBytes
-	}
-	if exitCode != 0 {
-		logEntry.Status = "error"
-		logEntry.Error = stderr.String()
-	} else {
-		logEntry.Status = "success"
-		logEntry.Output = processed
-	}
-	logExec(logEntry)
-
-	// Print output
-	fmt.Print(processed)
-	if stderrStr := stderr.String(); stderrStr != "" {
-		fmt.Fprint(os.Stderr, stderrStr)
-	}
-
-	if exitCode != 0 {
-		os.Exit(exitCode)
+		os.Exit(result.ExitCode)
 	}
 	return nil
-}
-
-func logExec(entry *logger.Entry) {
-	if os.Getenv("FACTORLY_NO_LOG") == "" {
-		log, err := logger.NewJSONL("")
-		if err == nil {
-			_ = log.Log(entry)
-			_ = log.Close()
-		}
-	}
 }
 
 func init() {
