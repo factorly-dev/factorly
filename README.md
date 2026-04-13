@@ -14,6 +14,7 @@
 [![Release](https://img.shields.io/badge/Release-v0.1.10-blue?logo=github)](https://github.com/factorly-dev/factorly-cli/releases)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 [![npm](https://img.shields.io/npm/v/@factorly/cli)](https://www.npmjs.com/package/@factorly/cli)
+[![PyPI](https://img.shields.io/pypi/v/factorly)](https://pypi.org/project/factorly/)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](docs/)
 
 One command. All your tools. Credentials stay out of your agent's hands. 
