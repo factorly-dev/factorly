@@ -6,9 +6,9 @@
 
 # Factorly
 
-Your agent calls tools. Factorly holds the keys.
+One command. All your tools. Credentials stay out of your agent's hands.
 
-A security and governance layer between AI agents and the tools they use. REST APIs, CLI commands, MCP servers — one config, one audit log, one set of rules.
+Factorly sits between your AI agent and the tools it uses. Secrets stay in an encrypted vault. Every call is logged. Governance rules control what the agent can do. REST APIs, CLI commands, and MCP servers — one config, one audit log, one set of rules.
 
 ## Install
 

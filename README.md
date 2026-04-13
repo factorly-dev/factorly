@@ -17,11 +17,11 @@
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](docs/)
 
-One command. All your tools. Credentials stay out of your agent's hands. 
+One command. All your tools. Credentials stay out of your agent's hands.
 
 </center>
 
-Factorly is a security and governance layer between AI agents and the tools they use. REST APIs, CLI commands, and MCP servers — one config, one audit log, one set of rules.
+Factorly sits between your AI agent and the tools it uses. Secrets stay in an encrypted vault. Every call is logged. Governance rules control what the agent can do. REST APIs, CLI commands, and MCP servers — one config, one audit log, one set of rules.
 
 Your agent sees tool names and data. Never secrets.
 
@@ -54,64 +54,39 @@ pip install factorly
 go install github.com/factorly-dev/factorly-cli@latest
 ```
 
-Or build from source:
+## Secure Any MCP Server in One Command
+
+Already using an MCP server? Wrap it with Factorly — audit logging, output compression, loop detection, and rate limiting with zero config:
 
 ```bash
-git clone https://github.com/factorly-dev/factorly-cli.git
-cd factorly-cli && make build
+factorly wrap -- npx @modelcontextprotocol/server-github
 ```
 
-## Try It in 10 Seconds
-
-Run any command through Factorly's safety layer — compression, logging, and governance with zero config:
-
-```bash
-factorly exec -- git status
-factorly exec -- curl https://api.github.com/users/octocat
-```
-
-Wrap any existing MCP server:
-
-```bash
-factorly wrap -- npx @modelcontextprotocol/server-everything
-```
-
-Or install a pre-built template for a service you already use:
-
-```bash
-factorly tools import templates github
-factorly call github.list_repos --username octocat
-```
-
-36 templates available: GitHub, Slack, Linear, Stripe, Notion, Gmail, Telegram, and more. Run `factorly tools import templates` to see the full list.
+Your agent connects to Factorly instead of the MCP server directly. Same tools, same interface — but now every call is logged, output is compressed, and secrets are isolated.
 
 ## Quick Start
 
 ```bash
-# 1. Initialize a project
-factorly init
+# 1. Install a template (36 services: GitHub, Slack, Stripe, Linear, Gmail, ...)
+factorly tools import templates github
 
-# 2. Store a secret
+# 2. Store your credentials in the encrypted vault
 factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
 
 # 3. Connect to your agent (auto-detects Claude Code, Cursor, Codex)
 factorly sync
-
-# That's it. Your agent now has access to your tools via MCP.
 ```
 
-### What your agent sees
-
-Once synced, your agent discovers Factorly's tools automatically. In Claude Code:
+That's it. Your agent now discovers Factorly's tools via MCP:
 
 ```
 > List my GitHub repos
 
-I'll use the github.repos tool to look that up.
+I'll use the github.list_repos tool to look that up.
 
-[Calling github.repos with username=octocat]
+[Calling github.list_repos with username=octocat]
 
-Found 30 repositories. Here are the first 5:
+Found 30 repositories:
 1. octocat/Hello-World
 2. octocat/Spoon-Knife
 ...
@@ -119,87 +94,17 @@ Found 30 repositories. Here are the first 5:
 
 The agent never sees your GitHub token. Factorly injected it, made the API call, logged it, and returned the data.
 
-## Configure Tools
-
-The simplest tool is three lines:
-
-```yaml
-# .factorly/factorly.yaml
-tools:
-  echo:
-    type: cli
-    command: echo
-    args: ["{{message}}"]
-```
-
-A REST API with auth:
-
-```yaml
-  github.repos:
-    type: rest
-    base_url: https://api.github.com
-    method: GET
-    path: /users/{{username}}/repos
-    auth:
-      type: bearer
-      token: "{{vault:GITHUB_TOKEN}}"
-```
-
-An existing MCP server:
-
-```yaml
-  slack:
-    type: mcp
-    command: npx
-    args: ["@modelcontextprotocol/server-slack"]
-    env:
-      SLACK_TOKEN: "{{vault:SLACK_TOKEN}}"
-```
-
-Or skip YAML entirely — use a [template](docs/templates.md) or [import from an OpenAPI spec](docs/openapi-import.md).
-
-## Secrets Never Leave Factorly
-
-Secrets live in an encrypted vault (AES-256-GCM, Argon2id key derivation, per-entry encryption). Your agent config has zero credentials in it.
-
-```bash
-# Store secrets
-factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
-factorly vault set STRIPE_KEY sk_live_xxxxxxxxxxxx
-
-# Reference them in your tool config
-# token: "{{vault:GITHUB_TOKEN}}"
-
-# List what's stored
-factorly vault list
-```
-
-The vault password can come from an environment variable (`FACTORLY_VAULT_PASSWORD`), a key file (`~/.config/factorly/vault.key`), or an interactive prompt. See [Vault docs](docs/vault.md).
-
-## What You Get
-
-| Feature | Description |
-|---------|-------------|
-| **Credential isolation** | Secrets in encrypted vault (AES-256-GCM). Agent never sees them. |
-| **Governance** | Deny, confirm, rate limit, and loop detection per tool. |
-| **Audit log** | Every call logged — who, what, when, with what params, what was returned. |
-| **Output efficiency** | Compression + truncation saves agent context window. |
-| **36 templates** | Pre-built configs for GitHub, Slack, Stripe, Gmail, Linear, Telegram, and more. |
-| **Zero-config proxy** | `factorly wrap` adds safety to any MCP server instantly. |
-| **Any protocol** | REST APIs, CLI commands, MCP servers. One config format. |
-| **OAuth 2.0** | PKCE flow with auto-refresh for Google, GitHub, Microsoft, Slack. |
-
 ## Documentation
 
-| Topic | |
-|-------|---|
-| [Getting Started](docs/getting-started.md) | Install, configure, connect |
-| [Config Reference](docs/config-reference.md) | Full YAML schema |
-| [CLI Reference](docs/cli-reference.md) | All commands and flags |
-| [Templates](docs/templates.md) | 36 pre-built service configs |
-| [Vault](docs/vault.md) | Encrypted secret storage |
-| [OAuth](docs/oauth.md) | OAuth 2.0 with PKCE |
-| [Logging](docs/logging.md) | Audit log format and querying |
+| | |
+|---|---|
+| [Getting Started](docs/getting-started.md) | Install, configure, connect to your agent |
+| [Config Reference](docs/config-reference.md) | Full YAML schema for CLI, REST, and MCP tools |
+| [CLI Reference](docs/cli-reference.md) | All commands, flags, and environment variables |
+| [Templates](docs/templates.md) | 36 pre-built configs for popular services |
+| [Vault](docs/vault.md) | Encrypted secret storage (AES-256-GCM) |
+| [OAuth](docs/oauth.md) | OAuth 2.0 with PKCE and auto-refresh |
+| [Logging](docs/logging.md) | Audit log format, querying, and `factorly logs` |
 
 ## License
 
