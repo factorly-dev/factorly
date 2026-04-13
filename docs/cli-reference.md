@@ -76,13 +76,19 @@ FACTORLY_DISABLED_TOOLS   # comma-separated tool names to disable (applies to ca
 
 ## `factorly exec` — run a command with compression + logging
 
-Runs a single shell command through Factorly's output processing and audit logging pipeline. The zero-config equivalent of a CLI tool definition.
+Runs a single shell command through Factorly's full safety layer — the zero-config equivalent of a CLI tool definition. Uses the same code path as config-based CLI tools.
 
 ```bash
 factorly exec -- git status
-factorly exec -- curl https://api.github.com/users/octocat
 factorly exec --compress json -- npm test
 factorly exec --env-isolation strict -- ./deploy.sh
+factorly exec -i -- psql -h localhost mydb
+```
+
+Supports `{{vault:KEY}}` and `{{env:VAR}}` references in arguments — secrets stay out of shell history:
+
+```bash
+factorly exec -- curl -H "Authorization: Bearer {{vault:GITHUB_TOKEN}}" https://api.github.com/user
 ```
 
 ### Flags
@@ -91,13 +97,14 @@ factorly exec --env-isolation strict -- ./deploy.sh
 --max-output <bytes>      # max output bytes (default: 50000)
 --compress <mode>         # compression: all, json, logs, none (default: "all")
 --env-isolation <mode>    # "strict" for minimal env (default: inherit parent)
+-i, --interactive         # connect directly to terminal (skip compression, for TTY tools)
 ```
 
 ### What happens
 
-1. Runs the command and captures stdout/stderr
-2. Applies compression (ANSI strip, whitespace normalize, JSON compact, log dedup)
-3. Truncates output if over `--max-output`
+1. Resolves `{{env:VAR}}` and `{{vault:KEY}}` references in arguments
+2. Runs the command through the CLI provider (same as config-based tools)
+3. Applies compression and truncation (unless `-i` interactive mode)
 4. Logs to the JSONL audit trail (interface: `exec`)
 5. Prints processed output and preserves the command's exit code
 

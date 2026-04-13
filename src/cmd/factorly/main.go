@@ -121,6 +121,10 @@ var callCmd = &cobra.Command{
 			}
 		}
 
+		if err := checkCommandAllowed("call"); err != nil {
+			return err
+		}
+
 		if len(args) == 0 {
 			return fmt.Errorf("usage: factorly call <tool> [--param value ...]")
 		}
@@ -607,6 +611,14 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 
 	p := proxy.New(reg, providers, logIface, proxyOpts...)
 	return p, nil
+}
+
+// checkCommandAllowed returns an error if the command is disabled in config.
+func checkCommandAllowed(name string) error {
+	if _, err := config.IsCommandDisabled(name); err != nil {
+		return err
+	}
+	return nil
 }
 
 // requireArgs returns a cobra args validator with a helpful error message.

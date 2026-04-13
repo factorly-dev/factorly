@@ -16,6 +16,9 @@ import (
 var authCmd = &cobra.Command{
 	Use:   "auth",
 	Short: "Manage OAuth authentication",
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return checkCommandAllowed("auth")
+	},
 }
 
 var authLoginCmd = &cobra.Command{

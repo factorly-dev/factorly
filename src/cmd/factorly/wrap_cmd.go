@@ -43,6 +43,9 @@ With options:
 }
 
 func runWrap(cmd *cobra.Command, args []string) error {
+	if err := checkCommandAllowed("wrap"); err != nil {
+		return err
+	}
 	// Determine target: HTTP URL or stdio command
 	var serverName string
 	var toolCfg config.ToolConfig

@@ -28,6 +28,9 @@ to MCP clients like Claude Code and Cursor.
 
 By default, uses stdio transport. Use --http to start an HTTP server instead.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := checkCommandAllowed("serve"); err != nil {
+			return err
+		}
 		cfg, reg, err := loadConfig()
 		if err != nil {
 			return err

@@ -16,6 +16,9 @@ var vaultPath string
 var vaultCmd = &cobra.Command{
 	Use:   "vault",
 	Short: "Manage encrypted secrets",
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return checkCommandAllowed("vault")
+	},
 }
 
 var vaultSetCmd = &cobra.Command{

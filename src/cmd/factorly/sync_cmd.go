@@ -57,6 +57,9 @@ Existing MCP server entries in the config files are preserved.`,
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
+	if err := checkCommandAllowed("sync"); err != nil {
+		return err
+	}
 	// Resolve vault refs in token before building entry
 	if syncToken != "" && vault.HasVaultRefs(syncToken) {
 		backend, err := openVault()

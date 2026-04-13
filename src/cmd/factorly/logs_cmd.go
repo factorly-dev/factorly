@@ -46,6 +46,9 @@ func init() {
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
+	if err := checkCommandAllowed("logs"); err != nil {
+		return err
+	}
 	if logsStats {
 		return runLogsStats()
 	}

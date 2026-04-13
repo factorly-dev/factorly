@@ -5,6 +5,7 @@
 ```yaml
 # factorly.yaml or .factorly/factorly.yaml
 tools_dir: ./tools              # optional, scan directory for tool files
+disabled_commands: [vault, exec] # optional, block specific CLI commands
 
 tools:
   <tool-name>:
@@ -166,6 +167,21 @@ tools:
 ```
 
 Without `env_isolation: strict`, the `env:` field adds or overrides vars on top of the full parent environment.
+
+## Disabled Commands
+
+Restrict which Factorly CLI commands are available. Useful for locking down access in shared or deployed environments.
+
+```yaml
+disabled_commands:
+  - vault    # prevent direct vault access
+  - exec     # prevent ad-hoc command execution
+  - wrap     # prevent wrapping arbitrary MCP servers
+```
+
+Disabled commands return a clear error: `command "vault" is disabled in .factorly/factorly.yaml`. Commands not in the list work normally.
+
+Supported commands: `call`, `exec`, `wrap`, `serve`, `sync`, `logs`, `vault`, `auth`.
 
 ## Parameter inference
 

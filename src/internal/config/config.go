@@ -22,9 +22,10 @@ func vlog(format string, args ...any) {
 }
 
 type Config struct {
-	ToolsDir       string                         `yaml:"tools_dir,omitempty"`
-	Tools          map[string]ToolConfig          `yaml:"tools"`
-	OAuthProviders map[string]OAuthProviderConfig `yaml:"oauth_providers,omitempty"`
+	ToolsDir         string                         `yaml:"tools_dir,omitempty"`
+	Tools            map[string]ToolConfig          `yaml:"tools"`
+	OAuthProviders   map[string]OAuthProviderConfig `yaml:"oauth_providers,omitempty"`
+	DisabledCommands []string                       `yaml:"disabled_commands,omitempty"`
 }
 
 type OAuthProviderConfig struct {
@@ -564,6 +565,29 @@ func OAuthTokenKey(auth *AuthConfig) string {
 		return auth.Provider + "_oauth"
 	}
 	return ""
+}
+
+// IsCommandDisabled checks if a command is disabled in the config.
+// Reads only the disabled_commands field from the config file — lightweight,
+// no full config parse or validation.
+func IsCommandDisabled(command string) (bool, error) {
+	path := FindConfig()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, nil // no config = nothing disabled
+	}
+	var partial struct {
+		DisabledCommands []string `yaml:"disabled_commands"`
+	}
+	if err := yaml.Unmarshal(data, &partial); err != nil {
+		return false, nil // unparseable = nothing disabled
+	}
+	for _, d := range partial.DisabledCommands {
+		if d == command {
+			return true, fmt.Errorf("command %q is disabled in %s", command, path)
+		}
+	}
+	return false, nil
 }
 
 func HasPlaceholder(args []string, name string) bool {

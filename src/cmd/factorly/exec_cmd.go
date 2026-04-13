@@ -36,6 +36,9 @@ Examples:
 }
 
 func runExec(cmd *cobra.Command, args []string) error {
+	if err := checkCommandAllowed("exec"); err != nil {
+		return err
+	}
 	if len(args) == 0 {
 		return fmt.Errorf("usage: factorly exec -- <command> [args...]")
 	}

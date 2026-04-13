@@ -2538,6 +2538,87 @@ func TestExecVaultResolution(t *testing.T) {
 	}
 }
 
+// --- Disabled Commands ---
+
+func TestDisabledCommandBlocked(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `disabled_commands: [exec, vault]
+tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["{{text}}"]
+`,
+	})
+
+	// exec should be blocked
+	_, stderr, code := run(t, dir, "exec", "--", "echo", "hello")
+	if code == 0 {
+		t.Fatal("expected exec to be blocked")
+	}
+	if !strings.Contains(stderr, "disabled") {
+		t.Errorf("expected 'disabled' in error, got %q", stderr)
+	}
+
+	// vault should be blocked
+	_, stderr, code = run(t, dir, "vault", "list")
+	if code == 0 {
+		t.Fatal("expected vault to be blocked")
+	}
+	if !strings.Contains(stderr, "disabled") {
+		t.Errorf("expected 'disabled' in error, got %q", stderr)
+	}
+
+	// call should still work
+	stdout, _, code := run(t, dir, "call", "echo", "--text", "allowed")
+	if code != 0 {
+		t.Fatalf("expected call to work, got exit %d", code)
+	}
+	if !strings.Contains(stdout, "allowed") {
+		t.Errorf("expected 'allowed' in output, got %q", stdout)
+	}
+}
+
+func TestDisabledCommandServe(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `disabled_commands: [serve]
+tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["hello"]
+`,
+	})
+
+	_, stderr, code := run(t, dir, "serve")
+	if code == 0 {
+		t.Fatal("expected serve to be blocked")
+	}
+	if !strings.Contains(stderr, "disabled") {
+		t.Errorf("expected 'disabled' in error, got %q", stderr)
+	}
+}
+
+func TestDisabledCommandNoneConfigured(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["{{text}}"]
+`,
+	})
+
+	// No disabled_commands — everything should work
+	stdout, _, code := run(t, dir, "call", "echo", "--text", "works")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "works") {
+		t.Errorf("expected 'works' in output, got %q", stdout)
+	}
+}
+
 // helpers
 
 func findPetstoreSpec(t *testing.T) string {
