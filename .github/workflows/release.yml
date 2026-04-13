@@ -56,3 +56,23 @@ jobs:
           fi
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Publish to PyPI
+        working-directory: pip
+        run: |
+          pip install build twine
+          CURRENT=$(python -c "import re; print(re.search(r'version = \"(.+?)\"', open('pyproject.toml').read()).group(1))")
+          PUBLISHED=$(pip index versions factorly 2>/dev/null | grep -oP 'factorly \(\K[^)]+' || echo "none")
+          if [ "$CURRENT" = "$PUBLISHED" ]; then
+            echo "PyPI factorly@$CURRENT already published, skipping"
+          else
+            python -m build
+            twine upload dist/*
+          fi
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
