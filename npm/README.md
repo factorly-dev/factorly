@@ -9,7 +9,7 @@
 # Factorly
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v0.1.9-blue?logo=github)](https://github.com/factorly-dev/factorly-cli/releases)
+[![Release](https://img.shields.io/badge/Release-v0.1.10-blue?logo=github)](https://github.com/factorly-dev/factorly-cli/releases)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 
 Your agent calls tools. Factorly holds the keys.
