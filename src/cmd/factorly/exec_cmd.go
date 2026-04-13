@@ -18,6 +18,7 @@ var (
 	execMaxOutput    int
 	execCompress     string
 	execEnvIsolation string
+	execInteractive  bool
 )
 
 var execCmd = &cobra.Command{
@@ -59,9 +60,47 @@ func runExec(cmd *cobra.Command, args []string) error {
 
 	vlog("exec: %s", strings.Join(args, " "))
 
+	toolName := strings.Join(args, " ")
+
 	// Run command
 	c := exec.Command(args[0], args[1:]...)
 	c.Env = env
+
+	// Interactive mode: connect directly to terminal, skip compression
+	if execInteractive {
+		c.Stdin = os.Stdin
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+
+		start := time.Now()
+		err := c.Run()
+		duration := time.Since(start)
+
+		exitCode := 0
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				exitCode = exitErr.ExitCode()
+			} else {
+				exitCode = 1
+			}
+		}
+
+		// Log (no output captured in interactive mode)
+		logExec(&logger.Entry{
+			Timestamp:  time.Now(),
+			Interface:  "exec",
+			Tool:       toolName,
+			DurationMs: duration.Milliseconds(),
+			Status:     map[bool]string{true: "error", false: "success"}[exitCode != 0],
+		})
+
+		if exitCode != 0 {
+			os.Exit(exitCode)
+		}
+		return nil
+	}
+
+	// Captured mode: compress and log output
 	c.Stdin = os.Stdin
 
 	var stdout, stderr bytes.Buffer
@@ -96,7 +135,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	logEntry := &logger.Entry{
 		Timestamp:  time.Now(),
 		Interface:  "exec",
-		Tool:       strings.Join(args, " "),
+		Tool:       toolName,
 		DurationMs: duration.Milliseconds(),
 	}
 	if originalBytes != processedBytes {
@@ -110,14 +149,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 		logEntry.Status = "success"
 		logEntry.Output = processed
 	}
-
-	if os.Getenv("FACTORLY_NO_LOG") == "" {
-		log, logErr := logger.NewJSONL("")
-		if logErr == nil {
-			_ = log.Log(logEntry)
-			_ = log.Close()
-		}
-	}
+	logExec(logEntry)
 
 	// Print output
 	fmt.Print(processed)
@@ -131,8 +163,19 @@ func runExec(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func logExec(entry *logger.Entry) {
+	if os.Getenv("FACTORLY_NO_LOG") == "" {
+		log, err := logger.NewJSONL("")
+		if err == nil {
+			_ = log.Log(entry)
+			_ = log.Close()
+		}
+	}
+}
+
 func init() {
 	execCmd.Flags().IntVar(&execMaxOutput, "max-output", 50000, "max output bytes per call")
 	execCmd.Flags().StringVar(&execCompress, "compress", "all", "compression mode: all, json, logs, none")
 	execCmd.Flags().StringVar(&execEnvIsolation, "env-isolation", "", "environment isolation: strict (minimal env) or standard (default, inherit parent)")
+	execCmd.Flags().BoolVarP(&execInteractive, "interactive", "i", false, "connect directly to terminal (skip compression, for TTY tools)")
 }

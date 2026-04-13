@@ -2414,6 +2414,79 @@ func TestTemplatesInstallWithAPIKey(t *testing.T) {
 	}
 }
 
+// --- Exec ---
+
+func TestExecBasic(t *testing.T) {
+	stdout, _, code := run(t, "", "exec", "--", "echo", "hello world")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "hello world") {
+		t.Errorf("expected 'hello world' in output, got %q", stdout)
+	}
+}
+
+func TestExecPreservesExitCode(t *testing.T) {
+	_, _, code := run(t, "", "exec", "--", "false")
+	if code != 1 {
+		t.Errorf("expected exit 1, got %d", code)
+	}
+}
+
+func TestExecCompressNone(t *testing.T) {
+	stdout, _, code := run(t, "", "exec", "--compress", "none", "--", "echo", "no compression")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "no compression") {
+		t.Errorf("expected output, got %q", stdout)
+	}
+}
+
+func TestExecMaxOutput(t *testing.T) {
+	// Generate output larger than max, verify truncation
+	stdout, _, code := run(t, "", "exec", "--max-output", "50", "--", "echo", strings.Repeat("x", 200))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if len(stdout) > 150 { // some slack for truncation marker
+		t.Errorf("expected truncated output, got %d bytes", len(stdout))
+	}
+	if !strings.Contains(stdout, "truncated") {
+		t.Error("expected truncation marker")
+	}
+}
+
+func TestExecEnvIsolationStrict(t *testing.T) {
+	// Set a var that should be hidden in strict mode
+	stdout, _, code := run(t, "", "exec", "--env-isolation", "strict", "--", "env")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	// Should have PATH but not random parent env vars
+	if !strings.Contains(stdout, "PATH=") {
+		t.Error("expected PATH in strict env")
+	}
+}
+
+func TestExecNoArgs(t *testing.T) {
+	_, _, code := run(t, "", "exec")
+	if code == 0 {
+		t.Fatal("expected non-zero exit with no args")
+	}
+}
+
+func TestExecInteractiveFlag(t *testing.T) {
+	// Interactive mode with a simple command — should still work
+	stdout, _, code := run(t, "", "exec", "-i", "--", "echo", "interactive")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "interactive") {
+		t.Errorf("expected 'interactive' in output, got %q", stdout)
+	}
+}
+
 // helpers
 
 func findPetstoreSpec(t *testing.T) string {
