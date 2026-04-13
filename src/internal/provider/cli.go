@@ -70,7 +70,7 @@ func (p *CLIProvider) Execute(toolName string, params map[string]string) (*Resul
 	cmd := exec.CommandContext(ctx, def.Command, args...)
 
 	// Build environment: strict = minimal base, standard = full parent
-	cmd.Env = buildEnv(def.Env, def.EnvStrict)
+	cmd.Env = BuildEnv(def.Env, def.EnvStrict)
 
 	// Interactive mode: connect directly to terminal
 	if def.Interactive {

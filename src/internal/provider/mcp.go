@@ -110,7 +110,7 @@ func ConnectMCP(def MCPServerDef) (*client.Client, error) {
 		c, err = connectStdioRestricted(def)
 	} else {
 		// Standard mode: pass explicit env vars (mcp-go merges with parent env)
-		env := buildEnv(def.Env, false)
+		env := BuildEnv(def.Env, false)
 		c, err = client.NewStdioMCPClient(def.Command, env, def.Args...)
 	}
 	if err != nil {
@@ -139,7 +139,7 @@ func ConnectMCP(def MCPServerDef) (*client.Client, error) {
 // The mcp-go library always appends provided env to os.Environ(), so we temporarily
 // replace the process environment with only our allowed vars during the spawn.
 func connectStdioRestricted(def MCPServerDef) (*client.Client, error) {
-	restricted := buildEnv(def.Env, true)
+	restricted := BuildEnv(def.Env, true)
 
 	envMu.Lock()
 	saved := os.Environ()

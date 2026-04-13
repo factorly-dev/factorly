@@ -61,7 +61,14 @@ cd factorly-cli && make build
 
 ## Try It in 10 Seconds
 
-Wrap any existing MCP server — instant audit logging, output compression, loop detection, and rate limiting with zero config:
+Run any command through Factorly's safety layer — compression, logging, and governance with zero config:
+
+```bash
+factorly exec -- git status
+factorly exec -- curl https://api.github.com/users/octocat
+```
+
+Wrap any existing MCP server:
 
 ```bash
 factorly wrap -- npx @modelcontextprotocol/server-everything

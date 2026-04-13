@@ -32,7 +32,7 @@ func TestBuildEnvStrictExcludesSecrets(t *testing.T) {
 	os.Setenv("TEST_LEAKED_SECRET", "should-not-appear")
 	defer os.Unsetenv("TEST_LEAKED_SECRET")
 
-	env := buildEnv(map[string]string{"ALLOWED": "yes"}, true)
+	env := BuildEnv(map[string]string{"ALLOWED": "yes"}, true)
 	envMap := envToMap(env)
 
 	if envMap["ALLOWED"] != "yes" {
@@ -47,7 +47,7 @@ func TestBuildEnvStandardInheritsParent(t *testing.T) {
 	os.Setenv("TEST_INHERITED_VAR", "visible")
 	defer os.Unsetenv("TEST_INHERITED_VAR")
 
-	env := buildEnv(map[string]string{"EXTRA": "added"}, false)
+	env := BuildEnv(map[string]string{"EXTRA": "added"}, false)
 	envMap := envToMap(env)
 
 	if envMap["TEST_INHERITED_VAR"] != "visible" {
@@ -59,7 +59,7 @@ func TestBuildEnvStandardInheritsParent(t *testing.T) {
 }
 
 func TestBuildEnvStrictLimited(t *testing.T) {
-	env := buildEnv(nil, true)
+	env := BuildEnv(nil, true)
 	// Should only have base env (at most 5)
 	if len(env) > 5 {
 		t.Errorf("strict mode: expected at most 5 vars, got %d", len(env))
@@ -67,7 +67,7 @@ func TestBuildEnvStrictLimited(t *testing.T) {
 }
 
 func TestBuildEnvStandardHasMany(t *testing.T) {
-	env := buildEnv(nil, false)
+	env := BuildEnv(nil, false)
 	// Standard mode inherits full parent — should have many vars
 	if len(env) < 5 {
 		t.Errorf("standard mode: expected many vars, got %d", len(env))
@@ -77,8 +77,8 @@ func TestBuildEnvStandardHasMany(t *testing.T) {
 func TestBuildEnvExplicitInBothModes(t *testing.T) {
 	explicit := map[string]string{"GITHUB_TOKEN": "resolved-token-value"}
 
-	strictEnv := envToMap(buildEnv(explicit, true))
-	standardEnv := envToMap(buildEnv(explicit, false))
+	strictEnv := envToMap(BuildEnv(explicit, true))
+	standardEnv := envToMap(BuildEnv(explicit, false))
 
 	if strictEnv["GITHUB_TOKEN"] != "resolved-token-value" {
 		t.Error("expected explicit var in strict mode")

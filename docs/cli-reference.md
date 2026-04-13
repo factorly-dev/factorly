@@ -42,6 +42,8 @@ factorly logs --status blocked      # filter by status
 factorly logs --detail              # show full entry details
 factorly logs --stats               # show summary statistics
 factorly logs -f                    # follow mode (tail -f style)
+factorly exec -- <command> [args]   # run a command with compression + logging
+factorly exec --compress json -- curl https://api.example.com  # with options
 factorly wrap -- <command> [args]   # zero-config MCP proxy for any server
 factorly wrap --url <url>          # proxy a remote MCP server
 factorly version                    # print version
@@ -71,6 +73,33 @@ FACTORLY_NO_LOG           # disable call logging when set
 FACTORLY_MAX_OUTPUT       # global max output bytes (fallback for per-tool max_output)
 FACTORLY_DISABLED_TOOLS   # comma-separated tool names to disable (applies to call + tools listing)
 ```
+
+## `factorly exec` — run a command with compression + logging
+
+Runs a single shell command through Factorly's output processing and audit logging pipeline. The zero-config equivalent of a CLI tool definition.
+
+```bash
+factorly exec -- git status
+factorly exec -- curl https://api.github.com/users/octocat
+factorly exec --compress json -- npm test
+factorly exec --env-isolation strict -- ./deploy.sh
+```
+
+### Flags
+
+```bash
+--max-output <bytes>      # max output bytes (default: 50000)
+--compress <mode>         # compression: all, json, logs, none (default: "all")
+--env-isolation <mode>    # "strict" for minimal env (default: inherit parent)
+```
+
+### What happens
+
+1. Runs the command and captures stdout/stderr
+2. Applies compression (ANSI strip, whitespace normalize, JSON compact, log dedup)
+3. Truncates output if over `--max-output`
+4. Logs to the JSONL audit trail (interface: `exec`)
+5. Prints processed output and preserves the command's exit code
 
 ## `factorly wrap` — zero-config MCP proxy
 

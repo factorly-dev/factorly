@@ -18,10 +18,10 @@ func baseEnv() []string {
 	return env
 }
 
-// buildEnv constructs the environment for a child process.
+// BuildEnv constructs the environment for a child process.
 // In strict mode: base env (PATH, HOME, USER, LANG, TERM) + explicit vars only.
 // In standard mode: full parent env + explicit vars (Go default behavior).
-func buildEnv(explicit map[string]string, strict bool) []string {
+func BuildEnv(explicit map[string]string, strict bool) []string {
 	var env []string
 	if strict {
 		env = baseEnv()
