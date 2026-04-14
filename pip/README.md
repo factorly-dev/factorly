@@ -6,6 +6,12 @@
 
 # Factorly
 
+[![PyPI](https://img.shields.io/pypi/v/factorly)](https://pypi.org/project/factorly/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
+[![GitHub](https://img.shields.io/badge/GitHub-factorly-181717?logo=github)](https://github.com/factorly-dev/factorly)
+[![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](https://github.com/factorly-dev/factorly/tree/main/docs)
+
 One command. All your tools. Credentials stay out of your agent's hands.
 
 Factorly is a local proxy between your AI agent and the tools it uses. Secrets stay in an encrypted vault. Every call is logged. Governance rules let you deny destructive operations, require approval for writes, rate-limit calls, and detect agent loops. REST APIs, CLI commands, and MCP servers — one config, one audit log, one set of rules.
@@ -16,31 +22,27 @@ Factorly is a local proxy between your AI agent and the tools it uses. Secrets s
 pip install factorly
 ```
 
-Or with pipx:
-
-```bash
-pipx install factorly
-```
-
-## Try It in 10 Seconds
-
-```bash
-# Run any command with compression + logging
-factorly exec -- git status
-
-# Wrap any MCP server with zero config
-factorly wrap -- npx @modelcontextprotocol/server-everything
-
-# Install a template for a service you use
-factorly tools import templates github
-```
-
 ## Quick Start
 
 ```bash
-factorly init                              # set up a project
-factorly vault set GITHUB_TOKEN ghp_xxx    # store a secret
-factorly sync                              # connect to Claude Code / Cursor
+# 1. Install a template (36 services: GitHub, Slack, Stripe, Linear, Gmail, ...)
+factorly tools import templates github
+
+# 2. Store your credentials in the encrypted vault
+factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
+
+# 3. Connect to your agent (auto-detects Claude Code, Cursor, Codex)
+factorly sync
+```
+
+The agent never sees your GitHub token. Factorly injected it, made the API call, logged it, and returned the data.
+
+## Already Using an MCP Server?
+
+Wrap it with Factorly — no config file needed, no changes to the server:
+
+```bash
+factorly wrap -- npx @modelcontextprotocol/server-github
 ```
 
 ## What You Get

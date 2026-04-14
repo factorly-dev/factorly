@@ -48,16 +48,6 @@ Your agent sees tool names and data. Never secrets.
 
 **go:** `go install github.com/factorly-dev/factorly@latest`
 
-## Secure Any MCP Server in One Command
-
-Already using an MCP server? Wrap it with Factorly — no config file needed, no changes to the server:
-
-```bash
-factorly wrap -- npx @modelcontextprotocol/server-github
-```
-
-Your agent connects to Factorly instead of the MCP server directly. Same tools, same interface — but now every call is logged, output is compressed, loops are detected, and calls are rate-limited.
-
 ## Quick Start
 
 ```bash
@@ -87,6 +77,16 @@ Found 30 repositories:
 ```
 
 The agent never sees your GitHub token. Factorly injected it, made the API call, logged it, and returned the data.
+
+## Already Using an MCP Server?
+
+Wrap it with Factorly — no config file needed, no changes to the server:
+
+```bash
+factorly wrap -- npx @modelcontextprotocol/server-github
+```
+
+Your agent connects to Factorly instead of the MCP server directly. Same tools, same interface — but now every call is logged, output is compressed, loops are detected, and calls are rate-limited.
 
 ## Documentation
 

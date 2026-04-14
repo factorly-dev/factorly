@@ -8,9 +8,11 @@
 
 # Factorly
 
+[![npm](https://img.shields.io/npm/v/factorly)](https://www.npmjs.com/package/factorly)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v0.2.0-blue?logo=github)](https://github.com/factorly-dev/factorly/releases)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
+[![GitHub](https://img.shields.io/badge/GitHub-factorly-181717?logo=github)](https://github.com/factorly-dev/factorly)
+[![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](https://github.com/factorly-dev/factorly/tree/main/docs)
 
 One command. All your tools. Credentials stay out of your agent's hands.
 
@@ -24,23 +26,27 @@ Factorly is a local proxy between your AI agent and the tools it uses. Secrets s
 npm install -g factorly
 ```
 
-## Try It in 10 Seconds
-
-```bash
-# Wrap any MCP server with zero config
-factorly wrap -- npx @modelcontextprotocol/server-everything
-
-# Or install a template for a service you use
-factorly tools import templates github
-factorly call github.list_repos --username octocat
-```
-
 ## Quick Start
 
 ```bash
-factorly init                              # set up a project
-factorly vault set GITHUB_TOKEN ghp_xxx    # store a secret
-factorly sync                              # connect to Claude Code / Cursor
+# 1. Install a template (36 services: GitHub, Slack, Stripe, Linear, Gmail, ...)
+factorly tools import templates github
+
+# 2. Store your credentials in the encrypted vault
+factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
+
+# 3. Connect to your agent (auto-detects Claude Code, Cursor, Codex)
+factorly sync
+```
+
+The agent never sees your GitHub token. Factorly injected it, made the API call, logged it, and returned the data.
+
+## Already Using an MCP Server?
+
+Wrap it with Factorly — no config file needed, no changes to the server:
+
+```bash
+factorly wrap -- npx @modelcontextprotocol/server-github
 ```
 
 ## What You Get
@@ -49,7 +55,7 @@ factorly sync                              # connect to Claude Code / Cursor
 - **Governance** — deny, confirm, rate limit, loop detection per tool
 - **Audit log** — every call logged with params, response, and governance outcome
 - **36 templates** — pre-built configs for GitHub, Slack, Stripe, Gmail, Linear, and more
-- **Zero-config proxy** — `factorly wrap` adds safety to any MCP server instantly
+- **Zero-config proxy** — `factorly wrap` and `factorly exec` add safety instantly
 
 ## Supported Platforms
 
