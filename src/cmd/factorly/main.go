@@ -494,13 +494,21 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			restTools[name] = restDef
 			vlog("  registered rest tool: %s", name)
 		case "mcp":
-			mcpServers[name] = provider.MCPServerDef{
+			def := provider.MCPServerDef{
 				Command:   toolCfg.Command,
 				Args:      toolCfg.Args,
 				Env:       resolveVaultMap(resolver, toolCfg.Env),
 				EnvStrict: toolCfg.EnvIsolation == "strict",
 				URL:       resolveVaultRef(resolver, toolCfg.URL),
 			}
+			if toolCfg.Timeout != "" {
+				if d, err := time.ParseDuration(toolCfg.Timeout); err == nil {
+					def.Timeout = d
+				} else {
+					vlog("warning: invalid timeout %q for mcp server %s: %v", toolCfg.Timeout, name, err)
+				}
+			}
+			mcpServers[name] = def
 			vlog("  registered mcp server: %s", name)
 		}
 	}

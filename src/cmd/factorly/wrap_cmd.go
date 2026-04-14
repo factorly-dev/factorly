@@ -23,6 +23,7 @@ var (
 	wrapServeHTTP    string
 	wrapHTTPToken    string
 	wrapEnvIsolation string
+	wrapTimeout      string
 )
 
 var wrapCmd = &cobra.Command{
@@ -79,6 +80,11 @@ func runWrap(cmd *cobra.Command, args []string) error {
 		toolCfg.Compress = []string{"all"}
 	}
 	toolCfg.MaxOutput = wrapMaxOutput
+
+	// Apply timeout
+	if wrapTimeout != "" {
+		toolCfg.Timeout = wrapTimeout
+	}
 
 	// Apply environment isolation
 	if wrapEnvIsolation == "strict" {
@@ -160,4 +166,5 @@ func init() {
 	wrapCmd.Flags().StringVar(&wrapServeHTTP, "http", "", "start HTTP transport on this address (e.g. :3000) instead of stdio")
 	wrapCmd.Flags().StringVar(&wrapHTTPToken, "http-token", "", "require Bearer token authentication for HTTP transport")
 	wrapCmd.Flags().StringVar(&wrapEnvIsolation, "env-isolation", "", "environment isolation: strict (minimal env) or standard (default, inherit parent)")
+	wrapCmd.Flags().StringVar(&wrapTimeout, "timeout", "", "tool call timeout (e.g. 30s, 5m; default: 30s)")
 }

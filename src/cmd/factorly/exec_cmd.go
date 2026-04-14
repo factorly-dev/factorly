@@ -16,6 +16,7 @@ var (
 	execCompress     string
 	execEnvIsolation string
 	execInteractive  bool
+	execTimeout      string
 )
 
 var execCmd = &cobra.Command{
@@ -65,6 +66,9 @@ func runExec(cmd *cobra.Command, args []string) error {
 		toolCfg.Compress = []string{"all"}
 	}
 	toolCfg.MaxOutput = execMaxOutput
+	if execTimeout != "" {
+		toolCfg.Timeout = execTimeout
+	}
 	if execEnvIsolation == "strict" {
 		toolCfg.EnvIsolation = "strict"
 	}
@@ -150,4 +154,5 @@ func init() {
 	execCmd.Flags().StringVar(&execCompress, "compress", "all", "compression mode: all, json, logs, none")
 	execCmd.Flags().StringVar(&execEnvIsolation, "env-isolation", "", "environment isolation: strict (minimal env) or standard (default, inherit parent)")
 	execCmd.Flags().BoolVarP(&execInteractive, "interactive", "i", false, "connect directly to terminal (skip compression, for TTY tools)")
+	execCmd.Flags().StringVar(&execTimeout, "timeout", "", "execution timeout (e.g. 30s, 5m; default: 30s)")
 }

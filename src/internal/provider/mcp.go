@@ -27,6 +27,7 @@ type MCPServerDef struct {
 	Env       map[string]string // stdio transport: environment variables
 	EnvStrict bool              // when true, child gets minimal env instead of inheriting parent
 	URL       string            // http transport: server URL
+	Timeout   time.Duration     // per-tool call timeout (0 = default 30s)
 }
 
 // DiscoveredTool is a tool discovered from a child MCP server.
@@ -49,6 +50,7 @@ type mcpConn struct {
 	client     *client.Client
 	serverKey  string
 	remoteName map[string]string // factorly tool name → remote tool name
+	timeout    time.Duration     // per-server call timeout (0 = default)
 }
 
 // MCPProvider wraps child MCP servers and forwards tool calls.
@@ -91,6 +93,7 @@ func (p *MCPProvider) Setup() error {
 			client:     c,
 			serverKey:  name,
 			remoteName: make(map[string]string),
+			timeout:    def.Timeout,
 		}
 	}
 	return nil
@@ -250,7 +253,11 @@ func (p *MCPProvider) Execute(toolName string, params map[string]string) (*Resul
 	callReq.Params.Name = remoteName
 	callReq.Params.Arguments = args
 
-	ctx, cancel := context.WithTimeout(context.Background(), mcpTimeout)
+	timeout := conn.timeout
+	if timeout == 0 {
+		timeout = mcpTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	start := time.Now()

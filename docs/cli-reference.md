@@ -98,6 +98,7 @@ factorly exec -- curl -H "Authorization: Bearer {{vault:GITHUB_TOKEN}}" https://
 --compress <mode>         # compression: all, json, logs, none (default: "all")
 --env-isolation <mode>    # "strict" for minimal env (default: inherit parent)
 -i, --interactive         # connect directly to terminal (skip compression, for TTY tools)
+--timeout <duration>      # execution timeout (e.g. 30s, 5m; default: 30s)
 ```
 
 ### What happens
@@ -130,6 +131,7 @@ factorly wrap --url http://localhost:3001/mcp
 --http <addr>        # serve wrapped server over HTTP (e.g. ":3000")
 --http-token <tok>   # Bearer token for HTTP mode
 --env-isolation <mode>  # "strict" for minimal env, default inherits parent
+--timeout <duration>    # tool call timeout (e.g. 30s, 5m; default: 30s)
 ```
 
 ### Defaults
