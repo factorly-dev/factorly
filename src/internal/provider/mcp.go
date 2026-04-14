@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/factorly-dev/factorly-cli/internal"
+	"github.com/factorly-dev/factorly/internal"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 )

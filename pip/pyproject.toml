@@ -23,9 +23,9 @@ classifiers = [
 factorly = "factorly.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/factorly-dev/factorly-cli"
-Documentation = "https://github.com/factorly-dev/factorly-cli/tree/main/docs"
-Repository = "https://github.com/factorly-dev/factorly-cli"
+Homepage = "https://github.com/factorly-dev/factorly"
+Documentation = "https://github.com/factorly-dev/factorly/tree/main/docs"
+Repository = "https://github.com/factorly-dev/factorly"
 
 [tool.setuptools.packages.find]
 include = ["factorly*"]

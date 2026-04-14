@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	factorlyServer "github.com/factorly-dev/factorly-cli/internal/server"
-	"github.com/factorly-dev/factorly-cli/internal/vault"
+	factorlyServer "github.com/factorly-dev/factorly/internal/server"
+	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"

@@ -130,7 +130,7 @@ This opens your browser for the OAuth consent flow. Tokens are stored in the vau
 
 Templates are plain YAML — the same format as any Factorly tool config. You can:
 
-- **Copy manually** instead of using the command: grab a YAML file from the [templates directory](https://github.com/factorly-dev/factorly-cli/tree/main/src/internal/templates/yaml) and drop it in `.factorly/tools/`
+- **Copy manually** instead of using the command: grab a YAML file from the [templates directory](https://github.com/factorly-dev/factorly/tree/main/src/internal/templates/yaml) and drop it in `.factorly/tools/`
 - **Edit after install** — add parameters, change paths, adjust governance
 - **Use as examples** — reference the YAML when writing your own tool configs
 

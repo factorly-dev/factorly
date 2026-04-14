@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/factorly-dev/factorly-cli/internal/agent"
+	"github.com/factorly-dev/factorly/internal/agent"
 )
 
 func testPolicy(rules map[string]*Rule, confirmFn ConfirmFunc, t *testing.T) *Policy {

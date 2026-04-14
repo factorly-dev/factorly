@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/factorly-dev/factorly-cli/internal/agent"
+	"github.com/factorly-dev/factorly/internal/agent"
 )
 
 // Action describes what the shadow layer decided.

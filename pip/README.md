@@ -63,7 +63,7 @@ The pip package downloads the pre-built Go binary for your platform on first run
 
 ## Documentation
 
-Full docs at [github.com/factorly-dev/factorly-cli](https://github.com/factorly-dev/factorly-cli)
+Full docs at [github.com/factorly-dev/factorly](https://github.com/factorly-dev/factorly)
 
 ## License
 

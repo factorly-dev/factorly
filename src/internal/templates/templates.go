@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/factorly-dev/factorly-cli/internal/config"
+	"github.com/factorly-dev/factorly/internal/config"
 	"gopkg.in/yaml.v3"
 )
 

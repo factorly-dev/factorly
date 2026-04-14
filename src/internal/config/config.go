@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/factorly-dev/factorly-cli/internal/vault"
+	"github.com/factorly-dev/factorly/internal/vault"
 	"gopkg.in/yaml.v3"
 )
 

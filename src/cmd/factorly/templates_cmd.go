@@ -9,8 +9,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/factorly-dev/factorly-cli/internal/config"
-	"github.com/factorly-dev/factorly-cli/internal/templates"
+	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-dev/factorly/internal/templates"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

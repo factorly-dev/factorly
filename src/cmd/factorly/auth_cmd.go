@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/factorly-dev/factorly-cli/internal/config"
-	"github.com/factorly-dev/factorly-cli/internal/oauth"
-	"github.com/factorly-dev/factorly-cli/internal/vault"
+	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-dev/factorly/internal/oauth"
+	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/spf13/cobra"
 )
 

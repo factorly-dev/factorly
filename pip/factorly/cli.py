@@ -9,7 +9,7 @@ import urllib.request
 
 from factorly import __version__
 
-REPO = "factorly-dev/factorly-cli"
+REPO = "factorly-dev/factorly"
 
 PLATFORM_MAP = {
     "Darwin": "darwin",

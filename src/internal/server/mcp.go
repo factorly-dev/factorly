@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/factorly-dev/factorly-cli/internal"
-	"github.com/factorly-dev/factorly-cli/internal/agent"
-	"github.com/factorly-dev/factorly-cli/internal/proxy"
-	"github.com/factorly-dev/factorly-cli/internal/registry"
+	"github.com/factorly-dev/factorly/internal"
+	"github.com/factorly-dev/factorly/internal/agent"
+	"github.com/factorly-dev/factorly/internal/proxy"
+	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )

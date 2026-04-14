@@ -13,7 +13,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/factorly-dev/factorly-cli/internal/logger"
+	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/spf13/cobra"
 )
 

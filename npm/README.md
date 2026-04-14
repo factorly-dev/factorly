@@ -9,7 +9,7 @@
 # Factorly
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v0.1.10-blue?logo=github)](https://github.com/factorly-dev/factorly-cli/releases)
+[![Release](https://img.shields.io/badge/Release-v0.1.10-blue?logo=github)](https://github.com/factorly-dev/factorly/releases)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 
 One command. All your tools. Credentials stay out of your agent's hands.
@@ -63,7 +63,7 @@ The npm package downloads the pre-built Go binary for your platform during insta
 
 ## Documentation
 
-Full docs at [github.com/factorly-dev/factorly-cli](https://github.com/factorly-dev/factorly-cli)
+Full docs at [github.com/factorly-dev/factorly](https://github.com/factorly-dev/factorly)
 
 ## License
 

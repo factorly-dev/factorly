@@ -8,10 +8,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/factorly-dev/factorly-cli/internal/config"
-	"github.com/factorly-dev/factorly-cli/internal/naming"
-	"github.com/factorly-dev/factorly-cli/internal/registry"
-	factorlyServer "github.com/factorly-dev/factorly-cli/internal/server"
+	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-dev/factorly/internal/naming"
+	"github.com/factorly-dev/factorly/internal/registry"
+	factorlyServer "github.com/factorly-dev/factorly/internal/server"
 	"github.com/spf13/cobra"
 )
 

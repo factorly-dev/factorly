@@ -11,14 +11,14 @@ pip install factorly
 ```
 
 ```bash
-go install github.com/factorly-dev/factorly-cli@latest
+go install github.com/factorly-dev/factorly@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/factorly-dev/factorly-cli.git
-cd factorly-cli && make build
+git clone https://github.com/factorly-dev/factorly.git
+cd factorly && make build
 # binary at build/factorly — add to PATH or move to /usr/local/bin
 ```
 

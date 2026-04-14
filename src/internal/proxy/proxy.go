@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/factorly-dev/factorly-cli/internal/agent"
-	"github.com/factorly-dev/factorly-cli/internal/logger"
-	"github.com/factorly-dev/factorly-cli/internal/output"
-	"github.com/factorly-dev/factorly-cli/internal/provider"
-	"github.com/factorly-dev/factorly-cli/internal/registry"
-	"github.com/factorly-dev/factorly-cli/internal/shadow"
+	"github.com/factorly-dev/factorly/internal/agent"
+	"github.com/factorly-dev/factorly/internal/logger"
+	"github.com/factorly-dev/factorly/internal/output"
+	"github.com/factorly-dev/factorly/internal/provider"
+	"github.com/factorly-dev/factorly/internal/registry"
+	"github.com/factorly-dev/factorly/internal/shadow"
 )
 
 // Option configures a Proxy.
