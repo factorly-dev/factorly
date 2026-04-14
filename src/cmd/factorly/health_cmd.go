@@ -175,6 +175,9 @@ func checkOAuthToken(tokenKey string, resolver *vault.Resolver) string {
 	}
 
 	if bundle.IsExpired(0) {
+		if bundle.RefreshToken != "" {
+			return fmt.Sprintf("oauth: %s ⟳ expired (will auto-refresh on next call)", tokenKey)
+		}
 		return fmt.Sprintf("oauth: %s ✗ expired (run: factorly auth login)", tokenKey)
 	}
 

@@ -124,7 +124,11 @@ var authStatusCmd = &cobra.Command{
 				continue
 			}
 			if bundle.IsExpired(0) {
-				fmt.Printf("%-20s  ✗ expired (run: factorly auth login %s)\n", key, providerName)
+				if bundle.RefreshToken != "" {
+					fmt.Printf("%-20s  ⟳ expired (will auto-refresh on next call)\n", key)
+				} else {
+					fmt.Printf("%-20s  ✗ expired (run: factorly auth login %s)\n", key, providerName)
+				}
 			} else if !bundle.Expiry.IsZero() {
 				remaining := time.Until(bundle.Expiry).Round(time.Minute)
 				fmt.Printf("%-20s  ✓ valid (expires in %s)\n", key, remaining)
