@@ -14,7 +14,7 @@ const result = spawnSync(BINARY, process.argv.slice(2), {
 
 if (result.error) {
   if (result.error.code === "ENOENT") {
-    console.error("factorly binary not found. Run: npm rebuild @factorly/cli");
+    console.error("factorly binary not found. Run: npm rebuild factorly");
   } else {
     console.error(`factorly: ${result.error.message}`);
   }

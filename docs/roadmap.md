@@ -25,7 +25,7 @@
 - [x] **Call logging** — JSONL audit trail with savings, governance, and agent fields
 - [x] **`factorly exec`** — run any command through Factorly's safety layer (vault/env resolution, compression, logging)
 - [x] **Disabled commands** — `disabled_commands` config to restrict CLI access per project
-- [x] **npm distribution** — `npm install -g @factorly/cli`
+- [x] **npm distribution** — `npm install -g factorly`
 
 ## Future?
 

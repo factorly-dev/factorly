@@ -48,11 +48,11 @@ jobs:
         working-directory: npm
         run: |
           CURRENT=$(node -p "require('./package.json').version")
-          PUBLISHED=$(npm view @factorly/cli version 2>/dev/null || echo "none")
+          PUBLISHED=$(npm view factorly version 2>/dev/null || echo "none")
           if [ "$CURRENT" = "$PUBLISHED" ]; then
-            echo "npm @factorly/cli@$CURRENT already published, skipping"
+            echo "npm factorly@$CURRENT already published, skipping"
           else
-            npm publish --access=public
+            npm publish
           fi
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

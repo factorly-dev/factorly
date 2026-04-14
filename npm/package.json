@@ -1,5 +1,5 @@
 {
-  "name": "@factorly/cli",
+  "name": "factorly",
   "version": "0.1.10",
   "description": "Your agent calls tools. Factorly holds the keys.",
   "homepage": "https://github.com/factorly-dev/factorly-cli",
@@ -24,9 +24,6 @@
     "openapi",
     "factorly"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "files": [
     "install.js",
     "bin/",

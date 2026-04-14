@@ -3,7 +3,7 @@
 ## Install
 
 ```bash
-npm install -g @factorly/cli
+npm install -g factorly
 ```
 
 ```bash

@@ -12,7 +12,7 @@
 [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen?logo=github)](https://github.com/factorly-dev/factorly-cli/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@factorly/cli)](https://www.npmjs.com/package/@factorly/cli)
+[![npm](https://img.shields.io/npm/v/factorly)](https://www.npmjs.com/package/factorly)
 [![PyPI](https://img.shields.io/pypi/v/factorly)](https://pypi.org/project/factorly/)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](docs/)
@@ -43,7 +43,7 @@ Your agent sees tool names and data. Never secrets.
 ## Install
 
 ```bash
-npm install -g @factorly/cli
+npm install -g factorly
 ```
 
 ```bash

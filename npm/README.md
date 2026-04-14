@@ -21,7 +21,7 @@ Factorly sits between your AI agent and the tools it uses. Secrets stay in an en
 ## Install
 
 ```bash
-npm install -g @factorly/cli
+npm install -g factorly
 ```
 
 ## Try It in 10 Seconds
