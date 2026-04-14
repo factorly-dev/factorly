@@ -8,7 +8,7 @@
 
 One command. All your tools. Credentials stay out of your agent's hands.
 
-Factorly sits between your AI agent and the tools it uses. Secrets stay in an encrypted vault. Every call is logged. Governance rules control what the agent can do. REST APIs, CLI commands, and MCP servers — one config, one audit log, one set of rules.
+Factorly is a local proxy between your AI agent and the tools it uses. Secrets stay in an encrypted vault. Every call is logged. Governance rules let you deny destructive operations, require approval for writes, rate-limit calls, and detect agent loops. REST APIs, CLI commands, and MCP servers — one config, one audit log, one set of rules.
 
 ## Install
 

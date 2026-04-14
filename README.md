@@ -21,7 +21,7 @@ One command. All your tools. Credentials stay out of your agent's hands.
 
 </center>
 
-Factorly sits between your AI agent and the tools it uses. Secrets stay in an encrypted vault. Every call is logged. Governance rules control what the agent can do. REST APIs, CLI commands, and MCP servers — one config, one audit log, one set of rules.
+Factorly is a local proxy between your AI agent and the tools it uses. Secrets stay in an encrypted vault. Every call is logged. Governance rules let you deny destructive operations, require approval for writes, rate-limit calls, and detect agent loops. REST APIs, CLI commands, and MCP servers — one config, one audit log, one set of rules.
 
 Your agent sees tool names and data. Never secrets.
 
@@ -42,27 +42,21 @@ Your agent sees tool names and data. Never secrets.
 
 ## Install
 
-```bash
-npm install -g factorly
-```
+**npm:** `npm install -g factorly`
 
-```bash
-pip install factorly
-```
+**pip:** `pip install factorly`
 
-```bash
-go install github.com/factorly-dev/factorly@latest
-```
+**go:** `go install github.com/factorly-dev/factorly@latest`
 
 ## Secure Any MCP Server in One Command
 
-Already using an MCP server? Wrap it with Factorly — audit logging, output compression, loop detection, and rate limiting with zero config:
+Already using an MCP server? Wrap it with Factorly — no config file needed, no changes to the server:
 
 ```bash
 factorly wrap -- npx @modelcontextprotocol/server-github
 ```
 
-Your agent connects to Factorly instead of the MCP server directly. Same tools, same interface — but now every call is logged, output is compressed, and secrets are isolated.
+Your agent connects to Factorly instead of the MCP server directly. Same tools, same interface — but now every call is logged, output is compressed, loops are detected, and calls are rate-limited.
 
 ## Quick Start
 
