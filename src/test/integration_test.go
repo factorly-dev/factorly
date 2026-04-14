@@ -861,8 +861,11 @@ tools:
 	if code != 0 {
 		t.Fatalf("auth status failed with code %d", code)
 	}
-	if !strings.Contains(stdout, "✗") {
-		t.Error("expected ✗ for expired token")
+	if !strings.Contains(stdout, "⟳") {
+		t.Error("expected ⟳ for expired token with refresh token")
+	}
+	if !strings.Contains(stdout, "auto-refresh") {
+		t.Error("expected 'auto-refresh' message for expired token with refresh token")
 	}
 }
 
