@@ -65,7 +65,7 @@ var vaultSetCmd = &cobra.Command{
 	},
 }
 
-var vaultGetCmd = &cobra.Command{
+var _ = /*vaultGetCmd*/ &cobra.Command{
 	Use:   "get <key>",
 	Short: "Retrieve a secret from the vault",
 	Args:  requireArgs(1, "factorly vault get <key>"),
@@ -215,5 +215,5 @@ func promptSecret(label string) (string, error) {
 
 func init() {
 	vaultCmd.PersistentFlags().StringVar(&vaultPath, "vault-path", "", "path to vault file (default: ~/.config/factorly/vault.enc)")
-	vaultCmd.AddCommand(vaultSetCmd, vaultGetCmd, vaultListCmd, vaultDeleteCmd)
+	vaultCmd.AddCommand(vaultSetCmd /*vaultGetCmd,*/, vaultListCmd, vaultDeleteCmd)
 }
