@@ -910,13 +910,10 @@ tools:
 		t.Error("expected 'Logged out' message")
 	}
 
-	// Verify token is gone (vault get is hidden, use vault list instead)
-	listOut, _, code := runVault(t, vaultPath, "vault", "list")
-	if code != 0 {
-		t.Fatalf("vault list failed with code %d", code)
-	}
-	if strings.Contains(listOut, "github_oauth") {
-		t.Error("expected github_oauth to be removed from vault")
+	// Verify token is gone
+	_, _, code = runVault(t, vaultPath, "vault", "get", "github_oauth")
+	if code == 0 {
+		t.Error("expected non-zero exit for deleted token")
 	}
 }
 
@@ -2406,8 +2403,8 @@ func TestTemplatesInstallWithAPIKey(t *testing.T) {
 		t.Error("expected vault reference in generated YAML")
 	}
 
-	// Verify key was stored in vault (vault get is hidden, use vault list)
-	cmd3 := exec.Command(binary, "vault", "list")
+	// Verify key was stored in vault
+	cmd3 := exec.Command(binary, "vault", "get", "LINEAR_API_KEY")
 	cmd3.Dir = dir
 	cmd3.Env = append(os.Environ(),
 		"FACTORLY_NO_LOG=1",
@@ -2417,10 +2414,10 @@ func TestTemplatesInstallWithAPIKey(t *testing.T) {
 	var out3 strings.Builder
 	cmd3.Stdout = &out3
 	if err := cmd3.Run(); err != nil {
-		t.Fatalf("vault list failed: %v", err)
+		t.Fatalf("vault get failed: %v", err)
 	}
-	if !strings.Contains(out3.String(), "LINEAR_API_KEY") {
-		t.Errorf("expected LINEAR_API_KEY in vault list, got %q", out3.String())
+	if strings.TrimSpace(out3.String()) != "lin_test_key_123" {
+		t.Errorf("expected vault to contain API key, got %q", out3.String())
 	}
 }
 
