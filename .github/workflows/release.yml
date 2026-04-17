@@ -34,10 +34,10 @@ jobs:
           generate_release_notes: true
           make_latest: true
           files: |
-            build/factorly-linux-amd64
-            build/factorly-darwin-amd64
-            build/factorly-darwin-arm64
-            build/factorly-windows-amd64.exe
+            build/factorly-${{ steps.version.outputs.version }}-linux-amd64
+            build/factorly-${{ steps.version.outputs.version }}-darwin-amd64
+            build/factorly-${{ steps.version.outputs.version }}-darwin-arm64
+            build/factorly-${{ steps.version.outputs.version }}-windows-amd64.exe
 
       - uses: actions/setup-node@v4
         with:

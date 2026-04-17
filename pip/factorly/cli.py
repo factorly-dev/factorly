@@ -52,7 +52,7 @@ def get_binary_name():
         sys.exit(1)
 
     ext = ".exe" if platform.system() == "Windows" else ""
-    return f"factorly-{plat}-{arch}{ext}"
+    return f"factorly-{__version__}-{plat}-{arch}{ext}"
 
 
 def is_installed():

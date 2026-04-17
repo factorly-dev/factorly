@@ -39,7 +39,7 @@ function getBinaryName() {
   }
 
   const ext = process.platform === "win32" ? ".exe" : "";
-  return `factorly-${platform}-${arch}${ext}`;
+  return `factorly-${VERSION}-${platform}-${arch}${ext}`;
 }
 
 function download(url) {
