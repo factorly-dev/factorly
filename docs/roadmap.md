@@ -26,6 +26,7 @@
 - [x] **`factorly exec`** — run any command through Factorly's safety layer (vault/env resolution, compression, logging)
 - [x] **Disabled commands** — `disabled_commands` config to restrict CLI access per project
 - [x] **Built-in tools** — governed shell, read, write, fetch, clipboard with default safety guards
+- [x] **Per-project vault** — `.factorly/vault.enc` with fallback to global, separate passwords, lazy opening
 - [x] **npm distribution** — `npm install -g factorly`
 
 ## Future?

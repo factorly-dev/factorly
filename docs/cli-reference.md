@@ -60,14 +60,16 @@ factorly version                    # print version
 ## Vault flags
 
 ```bash
-    --vault-path       # path to vault file (default: ~/.config/factorly/vault.enc)
+    --vault-path       # explicit path to vault file (overrides auto-detection)
+    --global           # use global vault (~/.config/factorly/vault.enc) instead of project vault
 ```
 
 ## Environment variables
 
 ```bash
-FACTORLY_VAULT_PASSWORD   # vault master password (for CI/automation)
-FACTORLY_VAULT_PATH       # vault file path override
+FACTORLY_VAULT_PASSWORD           # global vault password (also shared fallback for project vault)
+FACTORLY_PROJECT_VAULT_PASSWORD   # project vault password (.factorly/vault.enc)
+FACTORLY_VAULT_PATH               # vault file path override
 FACTORLY_HTTP_TOKEN       # HTTP server auth token (fallback for --http-token)
 FACTORLY_NO_LOG           # disable call logging when set
 FACTORLY_MAX_OUTPUT       # global max output bytes (fallback for per-tool max_output)

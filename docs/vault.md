@@ -64,17 +64,52 @@ factorly call github.repos --username octocat
 
 Each entry has its own random salt and nonce, regenerated on every write. Entry keys are zeroized immediately after use. The master key is zeroized on `Close()`.
 
-## Vault password
+## Project vs Global Vault
 
-The vault is locked with a master password. Resolved in order:
+Factorly supports per-project vaults. When a `.factorly/` directory exists, vault commands default to `.factorly/vault.enc` (project vault). The global vault at `~/.config/factorly/vault.enc` is the fallback.
 
-1. `FACTORLY_VAULT_PASSWORD` env var (CI/automation)
-2. `~/.config/factorly/vault.key` file (headless servers)
-3. Interactive prompt (normal dev UX)
+```bash
+# Default: writes to .factorly/vault.enc (if .factorly/ exists)
+factorly vault set PROJECT_KEY secret
+
+# Explicit global
+factorly vault --global set PERSONAL_KEY secret
+
+# vault get checks project first, falls back to global
+factorly vault get PROJECT_KEY   # → from project vault
+factorly vault get PERSONAL_KEY  # → falls back to global vault
+```
+
+### Resolution order
+
+1. `--vault-path` flag (explicit override)
+2. `--global` flag (forces global vault)
+3. `FACTORLY_VAULT_PATH` env var
+4. `.factorly/vault.enc` (project vault, if `.factorly/` directory exists)
+5. `~/.config/factorly/vault.enc` (global fallback)
+
+`{{vault:KEY}}` references in tool configs resolve from both vaults — project first, global fallback. No syntax change needed.
+
+### Separate passwords
+
+Each vault can have its own password:
+
+**Project vault:**
+1. `FACTORLY_PROJECT_VAULT_PASSWORD` env var
+2. `FACTORLY_VAULT_PASSWORD` env var (shared fallback)
+3. `.factorly/vault.key` file (0600 permissions)
+4. Interactive prompt: `Vault password (project):`
+
+**Global vault:**
+1. `FACTORLY_VAULT_PASSWORD` env var
+2. `~/.config/factorly/vault.key` file (0600 permissions)
+3. Interactive prompt: `Vault password (global):`
+
+The global vault is opened **lazily** — only when a key isn't found in the project vault. If all your secrets are in the project vault, the global password is never requested.
 
 ## Vault path
 
-Default: `~/.config/factorly/vault.enc`. Override with `--vault-path` flag or `FACTORLY_VAULT_PATH` env var.
+Default: `.factorly/vault.enc` (project) or `~/.config/factorly/vault.enc` (global). Override with `--vault-path` flag or `FACTORLY_VAULT_PATH` env var.
 
 ## Migration
 
