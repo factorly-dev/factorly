@@ -747,7 +747,25 @@ func initResolver(cfg *config.Config) (*vault.Resolver, error) {
 	}
 
 	vlog("vault references detected, opening vault")
-	backend, err := openVault()
+
+	// Use fallback vault (project first, global second) for config resolution
+	projectPath := projectVaultPath()
+	globalPath := vault.DefaultVaultPath()
+	_, projectExists := os.Stat(projectPath)
+	_, globalExists := os.Stat(globalPath)
+
+	var backend vault.Backend
+	var err error
+
+	if projectExists == nil && globalExists == nil {
+		// Both exist — use fallback
+		backend, err = openFallbackVault()
+	} else {
+		// Single vault — use openVault() which respects flags/env
+		b, openErr := openVault()
+		backend = b
+		err = openErr
+	}
 	if err != nil {
 		return nil, fmt.Errorf("vault required but failed to open: %w", err)
 	}

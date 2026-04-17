@@ -1797,6 +1797,140 @@ dupe:
 	}
 }
 
+// --- Project Vault ---
+
+func TestProjectVaultDefaultsToProject(t *testing.T) {
+	dir := t.TempDir()
+	// Create .factorly/ directory so vault defaults to project
+	os.MkdirAll(filepath.Join(dir, ".factorly"), 0o755)
+
+	projectVault := filepath.Join(dir, ".factorly", "vault.enc")
+
+	// Set a key — should go to project vault
+	cmd := exec.Command(binary, "vault", "set", "PROJECT_KEY", "project_val")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_PROJECT_VAULT_PASSWORD=projpw",
+	)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("vault set failed: %v", err)
+	}
+
+	// Project vault file should exist
+	if _, err := os.Stat(projectVault); os.IsNotExist(err) {
+		t.Fatal("expected .factorly/vault.enc to be created")
+	}
+
+	// List should show the key
+	cmd2 := exec.Command(binary, "vault", "list")
+	cmd2.Dir = dir
+	cmd2.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_PROJECT_VAULT_PASSWORD=projpw",
+	)
+	var out strings.Builder
+	cmd2.Stdout = &out
+	if err := cmd2.Run(); err != nil {
+		t.Fatalf("vault list failed: %v", err)
+	}
+	if !strings.Contains(out.String(), "PROJECT_KEY") {
+		t.Errorf("expected PROJECT_KEY in list, got %q", out.String())
+	}
+}
+
+func TestProjectVaultGlobalFlag(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".factorly"), 0o755)
+
+	globalVault := filepath.Join(dir, "global.enc")
+
+	// Set in global vault explicitly
+	cmd := exec.Command(binary, "vault", "--global", "--vault-path", globalVault, "set", "GLOBAL_KEY", "global_val")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PASSWORD=globalpw",
+	)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("vault --global set failed: %v", err)
+	}
+
+	// Global vault should exist, project vault should not
+	if _, err := os.Stat(globalVault); os.IsNotExist(err) {
+		t.Fatal("expected global vault to be created")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".factorly", "vault.enc")); err == nil {
+		t.Error("expected project vault NOT to be created with --global")
+	}
+}
+
+func TestProjectVaultGetFallsBackToGlobal(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".factorly"), 0o755)
+
+	projectVault := filepath.Join(dir, ".factorly", "vault.enc")
+	globalVault := filepath.Join(dir, "global.enc")
+
+	// Create project vault with PROJECT_KEY
+	cmd := exec.Command(binary, "vault", "--vault-path", projectVault, "set", "PROJECT_KEY", "from_project")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PASSWORD=pw",
+	)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("project vault set failed: %v", err)
+	}
+
+	// Create global vault with GLOBAL_KEY
+	cmd2 := exec.Command(binary, "vault", "--vault-path", globalVault, "set", "GLOBAL_KEY", "from_global")
+	cmd2.Dir = dir
+	cmd2.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PASSWORD=pw",
+	)
+	if err := cmd2.Run(); err != nil {
+		t.Fatalf("global vault set failed: %v", err)
+	}
+
+	// Get PROJECT_KEY — should come from project vault
+	cmd3 := exec.Command(binary, "vault", "get", "PROJECT_KEY")
+	cmd3.Dir = dir
+	cmd3.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_PROJECT_VAULT_PASSWORD=pw",
+		"FACTORLY_VAULT_PASSWORD=pw",
+		"FACTORLY_VAULT_PATH="+globalVault,
+	)
+	var out3 strings.Builder
+	cmd3.Stdout = &out3
+	if err := cmd3.Run(); err != nil {
+		t.Fatalf("vault get PROJECT_KEY failed: %v", err)
+	}
+	if strings.TrimSpace(out3.String()) != "from_project" {
+		t.Errorf("expected 'from_project', got %q", out3.String())
+	}
+
+	// Get GLOBAL_KEY — should fall back to global vault
+	cmd4 := exec.Command(binary, "vault", "get", "GLOBAL_KEY")
+	cmd4.Dir = dir
+	cmd4.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_PROJECT_VAULT_PASSWORD=pw",
+		"FACTORLY_VAULT_PASSWORD=pw",
+		"FACTORLY_VAULT_PATH="+globalVault,
+	)
+	var out4 strings.Builder
+	cmd4.Stdout = &out4
+	if err := cmd4.Run(); err != nil {
+		t.Fatalf("vault get GLOBAL_KEY (fallback) failed: %v", err)
+	}
+	if strings.TrimSpace(out4.String()) != "from_global" {
+		t.Errorf("expected 'from_global', got %q", out4.String())
+	}
+}
+
 // --- Vault ---
 
 func TestVaultSetAndList(t *testing.T) {
