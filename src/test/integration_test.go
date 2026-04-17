@@ -922,6 +922,7 @@ tools:
 func TestHealthAllHealthy(t *testing.T) {
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": `
+disable_builtins: true
 tools:
   echo.test:
     type: cli
@@ -949,6 +950,7 @@ tools:
 func TestHealthBrokenCLI(t *testing.T) {
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": `
+disable_builtins: true
 tools:
   good:
     type: cli
@@ -984,6 +986,7 @@ func TestHealthRESTReachable(t *testing.T) {
 
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": fmt.Sprintf(`
+disable_builtins: true
 tools:
   api.test:
     type: rest
@@ -1006,6 +1009,7 @@ func TestHealthMCPServer(t *testing.T) {
 	// Use factorly itself as a child MCP server
 	dir := setupDir(t, map[string]string{
 		"child.yaml": `
+disable_builtins: true
 tools:
   echo:
     type: cli
@@ -1013,6 +1017,7 @@ tools:
     args: ["{{msg}}"]
 `,
 		"factorly.yaml": fmt.Sprintf(`
+disable_builtins: true
 tools:
   child:
     type: mcp
