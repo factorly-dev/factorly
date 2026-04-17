@@ -15,13 +15,14 @@ type Parameter struct {
 }
 
 type Tool struct {
-	Name        string
-	Type        string
-	Description string
-	Parameters  []Parameter
-	ProviderKey string
-	MaxOutput   int
-	Compress    []string
+	Name           string
+	Type           string
+	Description    string
+	Parameters     []Parameter
+	ProviderKey    string
+	MaxOutput      int
+	Compress       []string
+	AllowOverrides []string // allow overrides for built-in tool guards
 }
 
 type Registry struct {

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/factorly-dev/factorly/internal"
+	"github.com/factorly-dev/factorly/internal/builtins"
 	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/factorly-dev/factorly/internal/oauth"
@@ -33,6 +34,7 @@ var configPath string
 var configDir string
 var verbose bool
 var wrapMode bool
+var serveMode string // "stdio" or "http" — controls built-in tool registration
 
 func vlog(format string, args ...any) {
 	if verbose {
@@ -420,6 +422,13 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 		return nil, nil, err
 	}
 
+	// Register built-in tools (after user tools, so built-ins overwrite on conflict)
+	mode := serveMode
+	if mode == "" {
+		mode = "stdio"
+	}
+	builtins.Register(cfg, builtins.Options{Mode: mode})
+
 	vlog("loaded %d tools", len(cfg.Tools))
 
 	reg := registry.New()
@@ -432,7 +441,7 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 				Required:    p.Required,
 			}
 		}
-		reg.Register(&registry.Tool{
+		tool := &registry.Tool{
 			Name:        name,
 			Type:        toolCfg.Type,
 			Description: toolCfg.Description,
@@ -440,7 +449,18 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 			ProviderKey: toolCfg.Type,
 			MaxOutput:   toolCfg.MaxOutput,
 			Compress:    toolCfg.Compress,
-		})
+		}
+		// Pass allow overrides from shadow config to registry for built-in guards
+		if toolCfg.Shadow != nil {
+			var overrides []string
+			overrides = append(overrides, toolCfg.Shadow.AllowPatterns...)
+			overrides = append(overrides, toolCfg.Shadow.AllowPaths...)
+			overrides = append(overrides, toolCfg.Shadow.AllowURLs...)
+			if len(overrides) > 0 {
+				tool.AllowOverrides = overrides
+			}
+		}
+		reg.Register(tool)
 	}
 
 	return cfg, reg, nil

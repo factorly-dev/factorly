@@ -16,6 +16,7 @@
 | **MCP servers** | Spawn child servers (stdio) or connect to remote (HTTP). Tools discovered automatically. |
 | **Output processing** | Compression (JSON compact, log dedup, ANSI strip) + truncation with head/tail split. |
 | **Governance** | Deny, confirm, rate limit, loop detection. Per-tool shadow policy. |
+| **Built-in tools** | Governed shell, file read/write, fetch, clipboard — with default safety guards. |
 
 ## Getting Started
 

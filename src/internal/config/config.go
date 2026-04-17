@@ -29,6 +29,7 @@ type Config struct {
 	Tools            map[string]ToolConfig          `yaml:"tools"`
 	OAuthProviders   map[string]OAuthProviderConfig `yaml:"oauth_providers,omitempty"`
 	DisabledCommands []string                       `yaml:"disabled_commands,omitempty"`
+	DisableBuiltins  bool                           `yaml:"disable_builtins,omitempty"`
 }
 
 type OAuthProviderConfig struct {
@@ -93,10 +94,13 @@ type ParamConfig struct {
 }
 
 type ShadowConfig struct {
-	Deny      []string    `yaml:"deny,omitempty"`
-	Confirm   interface{} `yaml:"confirm,omitempty"` // []string or bool
-	RateLimit string      `yaml:"rate_limit,omitempty"`
-	LogParams []string    `yaml:"log_params,omitempty"`
+	Deny          []string    `yaml:"deny,omitempty"`
+	Confirm       interface{} `yaml:"confirm,omitempty"` // []string or bool
+	RateLimit     string      `yaml:"rate_limit,omitempty"`
+	LogParams     []string    `yaml:"log_params,omitempty"`
+	AllowPatterns []string    `yaml:"allow_patterns,omitempty"` // override denied shell patterns
+	AllowPaths    []string    `yaml:"allow_paths,omitempty"`    // override denied file paths
+	AllowURLs     []string    `yaml:"allow_urls,omitempty"`     // override denied URLs
 }
 
 // ConfirmList parses the Confirm field which can be bool (true=all) or []string.
@@ -131,6 +135,13 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("reading config: %w", err)
+		}
+		// Check if .factorly/ directory exists — if not, no config at all
+		configDir := filepath.Dir(path)
+		if filepath.Base(configDir) != ".factorly" {
+			if _, dirErr := os.Stat(filepath.Join(filepath.Dir(path), ".factorly")); os.IsNotExist(dirErr) {
+				return nil, fmt.Errorf("config file not found: %s (run 'factorly init' to create one)", path)
+			}
 		}
 		vlog("config file not found: %s (will check .factorly/)", path)
 		cfg.Tools = make(map[string]ToolConfig)
@@ -432,8 +443,9 @@ func inferParameters(cfg *Config) {
 }
 
 func validate(cfg *Config) error {
+	// Allow empty tools — built-ins will be added after validation
 	if len(cfg.Tools) == 0 {
-		return fmt.Errorf("config: no tools defined")
+		return nil
 	}
 	validTypes := map[string]bool{"cli": true, "mcp": true, "rest": true}
 	for name, tool := range cfg.Tools {

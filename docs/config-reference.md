@@ -6,6 +6,7 @@
 # factorly.yaml or .factorly/factorly.yaml
 tools_dir: ./tools              # optional, scan directory for tool files
 disabled_commands: [vault, exec] # optional, block specific CLI commands
+disable_builtins: true           # optional, disable all factorly.* built-in tools
 
 tools:
   <tool-name>:

@@ -34,6 +34,9 @@ By default, uses stdio transport. Use --http to start an HTTP server instead.`,
 		if err := checkCommandAllowed("serve"); err != nil {
 			return err
 		}
+		if httpAddr != "" {
+			serveMode = "http"
+		}
 		cfg, reg, err := loadConfig()
 		if err != nil {
 			return err

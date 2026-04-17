@@ -149,6 +149,65 @@ factorly wrap --url http://localhost:3001/mcp
 - Max output: `50000` bytes
 - Loop detection: always-on
 
+## Built-in Tools
+
+Factorly ships with governed alternatives to common agent tools. These are available automatically — no YAML config needed. All prefixed `factorly.` to avoid collision with user-defined tools.
+
+| Tool | Description | Default governance |
+|------|-------------|-------------------|
+| `factorly.shell` | Run a shell command | Confirm required, destructive patterns blocked |
+| `factorly.read_file` | Read a local file | Sensitive paths blocked (.env, .ssh, credentials) |
+| `factorly.write_file` | Write a local file | Confirm required, system paths blocked |
+| `factorly.fetch` | HTTP GET a URL | Cloud metadata + private networks blocked |
+| `factorly.clipboard` | Copy text to clipboard | Confirm required |
+
+### Context-aware
+
+In **stdio mode** (default): all 5 tools available.
+In **HTTP mode** (`--http`): only `factorly.fetch` — local tools don't make sense on a remote server.
+
+### Safety guards
+
+Built-in tools have default safety restrictions that block dangerous operations before execution:
+
+**Shell** — blocks `rm -rf /`, `curl | sh`, `DROP TABLE`, `shutdown`, fork bombs, and similar destructive patterns.
+
+**Read/Write** — blocks `.env`, `.ssh/id_*`, `*.pem`, `credentials.json`, `/etc/shadow`, system directories (`/etc/`, `/usr/`, `/bin/`), and shell configs.
+
+**Fetch** — blocks cloud metadata (`169.254.169.254`), localhost, private networks (`10.*`, `172.16-31.*`, `192.168.*`), and `file://` protocol.
+
+### Allow overrides
+
+Override default denials for specific cases:
+
+```yaml
+tools:
+  factorly.shell:
+    shadow:
+      allow_patterns: ["rm -rf ./build"]  # permit this specific command
+
+  factorly.read_file:
+    shadow:
+      allow_paths: [".env.example"]  # permit reading this file
+
+  factorly.fetch:
+    shadow:
+      allow_urls: ["http://localhost:8080"]  # permit local dev server
+```
+
+### Disabling
+
+```bash
+# Disable specific built-ins
+FACTORLY_DISABLED_TOOLS=factorly.shell,factorly.write_file
+```
+
+Or disable all built-ins in config:
+
+```yaml
+disable_builtins: true
+```
+
 ## HTTP server authentication
 
 When running `factorly serve --http`, you can secure the endpoint with a Bearer token. The token is resolved in order:

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/factorly-dev/factorly/internal/agent"
+	"github.com/factorly-dev/factorly/internal/builtins"
 	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/factorly-dev/factorly/internal/output"
 	"github.com/factorly-dev/factorly/internal/provider"
@@ -89,6 +90,28 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 				entry.HighlightParams = filterParams(params, logParams)
 			}
 			entry.AgentID = agentID
+			_ = p.logger.Log(entry)
+			return nil, err
+		}
+	}
+
+	// Built-in tool safety guard
+	if builtins.IsBuiltinTool(toolName) {
+		var allowOverrides []string
+		if tool.AllowOverrides != nil {
+			allowOverrides = tool.AllowOverrides
+		}
+		if err := builtins.CheckGuard(toolName, params, allowOverrides); err != nil {
+			entry := &logger.Entry{
+				Timestamp:    time.Now(),
+				Interface:    iface,
+				Tool:         toolName,
+				Params:       params,
+				Status:       "blocked",
+				ShadowAction: "guard_blocked",
+				Error:        err.Error(),
+				AgentID:      agentID,
+			}
 			_ = p.logger.Log(entry)
 			return nil, err
 		}

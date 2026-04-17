@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/factorly-dev/factorly/internal/builtins"
 	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/naming"
 	"github.com/factorly-dev/factorly/internal/registry"
@@ -144,6 +145,13 @@ func runWrap(cmd *cobra.Command, args []string) error {
 			serverName: toolCfg,
 		},
 	}
+
+	// Register built-in tools
+	wrapBuiltinMode := "stdio"
+	if wrapServeHTTP != "" {
+		wrapBuiltinMode = "http"
+	}
+	builtins.Register(cfg, builtins.Options{Mode: wrapBuiltinMode})
 
 	// Build empty registry (MCP tools discovered during bootstrap)
 	reg := registry.New()

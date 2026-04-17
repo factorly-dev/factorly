@@ -219,12 +219,16 @@ tools:
 }
 
 func TestValidationNoTools(t *testing.T) {
+	// Empty tools are allowed — built-in tools will be added after config load
 	path := writeTestConfig(t, `
 tools: {}
 `)
-	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for empty tools")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected no error for empty tools (built-ins fill them), got: %v", err)
+	}
+	if cfg.Tools == nil {
+		t.Fatal("expected non-nil tools map")
 	}
 }
 
