@@ -245,7 +245,7 @@ var initCmd = &cobra.Command{
 				Type:        "cli",
 				Description: "Fetch a webpage",
 				Command:     "curl",
-				Args:        []string{"-s", "{url}"},
+				Args:        []string{"-s", "{{url}}"},
 			}
 		}
 
@@ -295,7 +295,30 @@ var initCmd = &cobra.Command{
 		}
 
 		fmt.Printf("\nCreated %s\n", outPath)
-		fmt.Println("Run 'factorly tools' to see your configured tools.")
+
+		// Offer to install a template
+		addTemplate := prompt(scanner, "Install a tool template? (github, slack, linear, stripe, telegram, or skip)", "skip")
+		addTemplate = strings.ToLower(strings.TrimSpace(addTemplate))
+		if addTemplate != "" && addTemplate != "skip" && addTemplate != "n" && addTemplate != "no" {
+			fmt.Println()
+			if err := installTemplate(addTemplate); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+				fmt.Println("You can install templates later with: factorly tools import templates")
+			}
+		}
+
+		// Offer to sync with AI clients
+		doSync := prompt(scanner, "Connect to your AI agent now? (y/n)", "y")
+		if strings.HasPrefix(strings.ToLower(doSync), "y") {
+			fmt.Println()
+			if err := runSync(cmd, nil); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: sync failed: %v\n", err)
+				fmt.Println("You can sync later with: factorly sync")
+			}
+		} else {
+			fmt.Println("\nRun 'factorly sync' when you're ready to connect to your agent.")
+		}
+
 		return nil
 	},
 }

@@ -1602,8 +1602,8 @@ func runWithStdin(t *testing.T, dir string, stdin string, args ...string) (strin
 func TestInitDefaults(t *testing.T) {
 	dir := t.TempDir()
 
-	// Accept all defaults: no tools dir, yes example, no openapi
-	stdin := "n\ny\nn\n"
+	// Accept all defaults: no tools dir, yes example, no openapi, skip template, no sync
+	stdin := "n\ny\nn\nskip\nn\n"
 	stdout, _, code := runWithStdin(t, dir, stdin, "init")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
@@ -1629,8 +1629,8 @@ func TestInitDefaults(t *testing.T) {
 func TestInitWithToolsDir(t *testing.T) {
 	dir := t.TempDir()
 
-	// Yes tools dir, default path, yes example, no openapi
-	stdin := "y\n\ny\nn\n"
+	// Yes tools dir, default path, yes example, no openapi, skip template, no sync
+	stdin := "y\n\ny\nn\nskip\nn\n"
 	_, _, code := runWithStdin(t, dir, stdin, "init")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
@@ -1665,7 +1665,7 @@ func TestInitAlreadyExists(t *testing.T) {
 func TestInitWithOutFlag(t *testing.T) {
 	dir := t.TempDir()
 
-	stdin := "n\ny\nn\n"
+	stdin := "n\ny\nn\nskip\nn\n"
 	_, _, code := runWithStdin(t, dir, stdin, "init", "--out", "factorly.yaml")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
@@ -1683,7 +1683,7 @@ func TestInitWithOutFlag(t *testing.T) {
 func TestInitNoExample(t *testing.T) {
 	dir := t.TempDir()
 
-	stdin := "n\nn\nn\n"
+	stdin := "n\nn\nn\nskip\nn\n"
 	_, _, code := runWithStdin(t, dir, stdin, "init")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
