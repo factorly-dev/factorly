@@ -20,6 +20,7 @@ var (
 	execEnvIsolation string
 	execInteractive  bool
 	execTimeout      string
+	execEnvVars      []string
 )
 
 var execCmd = &cobra.Command{
@@ -76,6 +77,18 @@ func runExec(cmd *cobra.Command, args []string) error {
 		toolCfg.EnvIsolation = "strict"
 	}
 
+	// Parse --env KEY=VALUE pairs
+	if len(execEnvVars) > 0 {
+		toolCfg.Env = make(map[string]string)
+		for _, e := range execEnvVars {
+			k, v, ok := strings.Cut(e, "=")
+			if !ok {
+				return fmt.Errorf("invalid --env format %q (expected KEY=VALUE)", e)
+			}
+			toolCfg.Env[k] = v
+		}
+	}
+
 	toolName := "exec"
 
 	// Build synthetic config
@@ -97,21 +110,24 @@ func runExec(cmd *cobra.Command, args []string) error {
 
 	vlog("exec: %s", strings.Join(args, " "))
 
-	// Resolve {{env:VAR}} and {{vault:KEY}} refs in args
-	resolver := vault.NewResolver()
-	resolver.Register("env", vault.EnvBackend{})
-
-	// Check if vault refs are present — open vault lazily
-	hasVaultRefs := false
-	for _, a := range args {
+	// Check if vault refs are present anywhere — open vault lazily
+	hasVaultRefs := vault.HasVaultRefs(toolCfg.Command)
+	for _, a := range toolCfg.Args {
 		if vault.HasVaultRefs(a) {
 			hasVaultRefs = true
 			break
 		}
 	}
-	if vault.HasVaultRefs(toolCfg.Command) {
-		hasVaultRefs = true
+	for _, v := range toolCfg.Env {
+		if vault.HasVaultRefs(v) {
+			hasVaultRefs = true
+			break
+		}
 	}
+
+	// Build resolver with env + optional vault backends
+	resolver := vault.NewResolver()
+	resolver.Register("env", vault.EnvBackend{})
 	if hasVaultRefs {
 		backend, err := openVault()
 		if err != nil {
@@ -121,7 +137,18 @@ func runExec(cmd *cobra.Command, args []string) error {
 		resolver.Register("vault", backend)
 	}
 
-	// Resolve all refs
+	// Phase 1: resolve env values first (they may reference parent env/vault)
+	for k, v := range toolCfg.Env {
+		toolCfg.Env[k], _ = resolver.Resolve(v)
+	}
+
+	// Phase 2: rebuild resolver with resolved --env values as overrides
+	// so args can reference them via {{env:KEY}}
+	if len(toolCfg.Env) > 0 {
+		resolver.Register("env", vault.EnvBackendWithOverrides{Overrides: toolCfg.Env})
+	}
+
+	// Phase 3: resolve command and args
 	toolCfg.Command, _ = resolver.Resolve(toolCfg.Command)
 	for i, a := range toolCfg.Args {
 		toolCfg.Args[i], _ = resolver.Resolve(a)
@@ -158,4 +185,5 @@ func init() {
 	execCmd.Flags().StringVar(&execEnvIsolation, "env-isolation", "", "environment isolation: strict (minimal env) or standard (default, inherit parent)")
 	execCmd.Flags().BoolVarP(&execInteractive, "interactive", "i", false, "connect directly to terminal (skip compression, for TTY tools)")
 	execCmd.Flags().StringVar(&execTimeout, "timeout", "", "execution timeout (e.g. 30s, 5m; default: 30s)")
+	execCmd.Flags().StringArrayVar(&execEnvVars, "env", nil, "set env var (KEY=VALUE, supports {{env:VAR}} and {{vault:KEY}}); repeatable")
 }

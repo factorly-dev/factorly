@@ -2548,6 +2548,43 @@ func TestExecVaultResolution(t *testing.T) {
 	}
 }
 
+// --- Exec --env ---
+
+func TestExecEnvFlag(t *testing.T) {
+	stdout, _, code := run(t, "", "exec", "--env", "FOO=bar", "--env", "BAZ=qux", "--", "echo", "{{env:FOO}} {{env:BAZ}}")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "bar qux") {
+		t.Errorf("expected 'bar qux', got %q", stdout)
+	}
+}
+
+func TestExecEnvFlagStrictIsolation(t *testing.T) {
+	stdout, _, code := run(t, "", "exec", "--env-isolation", "strict", "--env", "CUSTOM=hello", "--", "env")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "CUSTOM=hello") {
+		t.Error("expected CUSTOM=hello in strict env")
+	}
+	if !strings.Contains(stdout, "PATH=") {
+		t.Error("expected PATH in strict env")
+	}
+}
+
+func TestExecEnvFlagWithParentEnv(t *testing.T) {
+	// --env can reference parent env vars via {{env:HOME}}
+	stdout, _, code := run(t, "", "exec", "--env", "MY_HOME={{env:HOME}}", "--", "echo", "{{env:MY_HOME}}")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	stdout = strings.TrimSpace(stdout)
+	if stdout == "" || stdout == "{{env:MY_HOME}}" {
+		t.Errorf("expected resolved HOME value, got %q", stdout)
+	}
+}
+
 // --- Disabled Commands ---
 
 func TestDisabledCommandBlocked(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/naming"
 	"github.com/factorly-dev/factorly/internal/registry"
 	factorlyServer "github.com/factorly-dev/factorly/internal/server"
+	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/spf13/cobra"
 )
 
@@ -27,6 +28,7 @@ var (
 	wrapHTTPToken    string
 	wrapEnvIsolation string
 	wrapTimeout      string
+	wrapEnvVars      []string
 )
 
 var wrapCmd = &cobra.Command{
@@ -92,6 +94,41 @@ func runWrap(cmd *cobra.Command, args []string) error {
 	// Apply environment isolation
 	if wrapEnvIsolation == "strict" {
 		toolCfg.EnvIsolation = "strict"
+	}
+
+	// Parse --env KEY=VALUE pairs and resolve refs
+	if len(wrapEnvVars) > 0 {
+		if toolCfg.Env == nil {
+			toolCfg.Env = make(map[string]string)
+		}
+		resolver := vault.NewResolver()
+		resolver.Register("env", vault.EnvBackend{})
+
+		hasVaultRefs := false
+		for _, e := range wrapEnvVars {
+			_, v, _ := strings.Cut(e, "=")
+			if vault.HasVaultRefs(v) {
+				hasVaultRefs = true
+				break
+			}
+		}
+		if hasVaultRefs {
+			backend, err := openVault()
+			if err != nil {
+				return fmt.Errorf("resolving vault refs in --env: %w", err)
+			}
+			defer backend.Close()
+			resolver.Register("vault", backend)
+		}
+
+		for _, e := range wrapEnvVars {
+			k, v, ok := strings.Cut(e, "=")
+			if !ok {
+				return fmt.Errorf("invalid --env format %q (expected KEY=VALUE)", e)
+			}
+			resolved, _ := resolver.Resolve(v)
+			toolCfg.Env[k] = resolved
+		}
 	}
 
 	// Apply shadow governance
@@ -170,4 +207,5 @@ func init() {
 	wrapCmd.Flags().StringVar(&wrapHTTPToken, "http-token", "", "require Bearer token authentication for HTTP transport")
 	wrapCmd.Flags().StringVar(&wrapEnvIsolation, "env-isolation", "", "environment isolation: strict (minimal env) or standard (default, inherit parent)")
 	wrapCmd.Flags().StringVar(&wrapTimeout, "timeout", "", "tool call timeout (e.g. 30s, 5m; default: 30s)")
+	wrapCmd.Flags().StringArrayVar(&wrapEnvVars, "env", nil, "set env var (KEY=VALUE, supports {{env:VAR}} and {{vault:KEY}}); repeatable")
 }

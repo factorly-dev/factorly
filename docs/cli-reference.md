@@ -97,8 +97,16 @@ factorly exec -- curl -H "Authorization: Bearer {{vault:GITHUB_TOKEN}}" https://
 --max-output <bytes>      # max output bytes (default: 50000)
 --compress <mode>         # compression: all, json, logs, none (default: "all")
 --env-isolation <mode>    # "strict" for minimal env (default: inherit parent)
+--env KEY=VALUE           # set env var (repeatable; supports {{env:VAR}} and {{vault:KEY}})
 -i, --interactive         # connect directly to terminal (skip compression, for TTY tools)
 --timeout <duration>      # execution timeout (e.g. 30s, 5m; default: 30s)
+```
+
+Use `--env` with `--env-isolation strict` to pass specific vars into a restricted environment:
+
+```bash
+factorly exec --env-isolation strict --env DISPLAY={{env:DISPLAY}} -- xsel --clipboard
+factorly exec --env-isolation strict --env GITHUB_TOKEN={{vault:GITHUB_TOKEN}} -- gh pr list
 ```
 
 ### What happens
@@ -131,6 +139,7 @@ factorly wrap --url http://localhost:3001/mcp
 --http <addr>        # serve wrapped server over HTTP (e.g. ":3000")
 --http-token <tok>   # Bearer token for HTTP mode
 --env-isolation <mode>  # "strict" for minimal env, default inherits parent
+--env KEY=VALUE         # set env var (repeatable; supports {{env:VAR}} and {{vault:KEY}})
 --timeout <duration>    # tool call timeout (e.g. 30s, 5m; default: 30s)
 ```
 
