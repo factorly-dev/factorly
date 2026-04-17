@@ -7,11 +7,11 @@ name = "factorly"
 version = "0.2.0"
 description = "Security and governance layer for AI agent tool access"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "GPL-3.0"}
 requires-python = ">=3.8"
 classifiers = [
     "Development Status :: 4 - Beta",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Programming Language :: Python :: 3",
     "Topic :: Security",
     "Topic :: Software Development :: Libraries",

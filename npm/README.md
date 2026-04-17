@@ -9,7 +9,7 @@
 # Factorly
 
 [![npm](https://img.shields.io/npm/v/factorly)](https://www.npmjs.com/package/factorly)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 [![GitHub](https://img.shields.io/badge/GitHub-factorly-181717?logo=github)](https://github.com/factorly-dev/factorly)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](https://github.com/factorly-dev/factorly/tree/main/docs)
@@ -73,4 +73,4 @@ Full docs at [github.com/factorly-dev/factorly](https://github.com/factorly-dev/
 
 ## License
 
-MIT
+GPL-3.0

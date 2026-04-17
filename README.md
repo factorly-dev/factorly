@@ -10,7 +10,7 @@
 
 [![Release](https://img.shields.io/badge/Release-v0.2.0-blue?logo=github)](https://github.com/factorly-dev/factorly/releases)
 [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)](https://go.dev)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-green.svg)](LICENSE)
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen?logo=github)](https://github.com/factorly-dev/factorly/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/factorly)](https://www.npmjs.com/package/factorly)
 [![PyPI](https://img.shields.io/pypi/v/factorly)](https://pypi.org/project/factorly/)
@@ -102,4 +102,4 @@ Your agent connects to Factorly instead of the MCP server directly. Same tools, 
 
 ## License
 
-MIT
+GPL-3.0

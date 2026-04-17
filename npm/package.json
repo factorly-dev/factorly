@@ -7,7 +7,7 @@
     "type": "git",
     "url": "https://github.com/factorly-dev/factorly.git"
   },
-  "license": "MIT",
+  "license": "GPL-3.0",
   "bin": {
     "factorly": "./bin/factorly.js"
   },
