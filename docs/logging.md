@@ -44,6 +44,67 @@ factorly logs --stats            # summary statistics
 factorly logs -f                 # follow mode (tail -f)
 ```
 
+### Examples
+
+**Recent calls** — `factorly logs` shows the most recent entries with tool name, status, and duration:
+
+```
+$ factorly logs -n 5
+  2026-04-17 09:15:32  github.list_repos      success   215ms
+  2026-04-17 09:15:34  github.get_repo         success   187ms
+  2026-04-17 09:15:40  exec                    success   312ms
+  2026-04-17 09:15:42  clipboard.copy          success    45ms
+  2026-04-17 09:15:50  factorly.shell          blocked     0ms
+```
+
+**Summary statistics** — `factorly logs --stats` gives a quick overview of call volume, success rates, most-used tools, output savings, and blocked calls:
+
+```
+$ factorly logs --stats
+  Log: ~/.config/factorly/calls.jsonl (194 entries)
+
+  By Status:
+    success    162  (83.5%)
+    error      29  (14.9%)
+    blocked    3  (1.5%)
+
+  By Tool (top 10):
+    github.list_repos              42
+    slack.post_message             31
+    github.get_repo                28
+    exec                           22
+    stripe.list_charges            15
+    gmail.send_message             12
+    linear.list_issues             9
+    github.profile                 8
+    jira.get_issue                 6
+    notion.query_database          5
+
+  Output Savings:
+    21 calls processed, 34.4 KB → 33.4 KB (3% saved)
+
+  Blocked Calls:
+    3 total (3 denied)
+```
+
+**Filter by status** — find all blocked calls to investigate governance triggers:
+
+```
+$ factorly logs --status blocked
+  2026-04-17 08:02:11  factorly.shell          blocked     0ms
+  2026-04-17 08:14:55  factorly.read_file      blocked     0ms
+  2026-04-17 09:15:50  factorly.shell          blocked     0ms
+```
+
+**Filter by tool** — narrow down to calls for a specific tool:
+
+```
+$ factorly logs --tool github
+  2026-04-17 09:15:32  github.list_repos      success   215ms
+  2026-04-17 09:15:34  github.get_repo         success   187ms
+  2026-04-17 09:16:01  github.profile          success   142ms
+```
+
 ## Output savings
 
 When output processing is enabled (compression or truncation), the log records `original_bytes` and `processed_bytes` for each call. Query savings with `jq`:
