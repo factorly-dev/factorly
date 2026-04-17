@@ -1,3 +1,6 @@
+# Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+# SPDX-License-Identifier: gpl
+
 """Factorly CLI wrapper — downloads and runs the Go binary."""
 
 import os

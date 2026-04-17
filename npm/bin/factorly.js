@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+/**
+ * Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ * SPDX-License-Identifier: gpl
+ */
+
 "use strict";
 
 const { spawnSync } = require("child_process");

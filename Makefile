@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-integration test-coverage clean vet lint fix fmt tidy ci release version check-version run init
+.PHONY: build test test-unit test-integration test-coverage clean vet lint fix fmt tidy ci release version check-version run init license
 
 BINARY  := factorly
 OUTDIR  := build
@@ -38,9 +38,11 @@ init:
 	cd $(SRCDIR) && go mod download
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	go install gotest.tools/gotestsum@latest
+	go install github.com/google/addlicense@latest
 
 GOLANGCI_LINT := $(or $(shell which golangci-lint 2>/dev/null),$(shell go env GOPATH)/bin/golangci-lint)
 GOTESTSUM     := $(or $(shell which gotestsum 2>/dev/null),$(shell go env GOPATH)/bin/gotestsum)
+ADDLICENSE    := $(or $(shell which addlicense 2>/dev/null),$(shell go env GOPATH)/bin/addlicense)
 
 lint:
 	cd $(SRCDIR) && $(GOLANGCI_LINT) run ./...
@@ -69,6 +71,10 @@ ci: tidy fmt vet lint check-version test
 
 clean:
 	rm -rf $(OUTDIR)
+
+# Add GPL license headers to source files
+license:
+	$(ADDLICENSE) -c "Jordan Sherer <hi@jordansherer.com>" -l gpl -s -v -ignore 'vendor/**' -ignore 'node_modules/**' -ignore '**/*.yaml' -ignore '**/*.yml' -ignore '**/*.json' -ignore '**/*.md' -ignore '**/*.toml' .
 
 # Bump patch version: 0.1.0 → 0.1.1
 # Usage: make version            (bump patch)
