@@ -7,6 +7,7 @@
 - [x] **REST provider** — wrap HTTP APIs with auth, path/query/body routing
 - [x] **MCP provider** — spawn child servers (stdio) or connect to remote (HTTP)
 - [x] **`factorly init`** — interactive project setup
+- [x] **`factorly exec`** — run any command through Factorly's safety layer (vault/env resolution, compression, logging)
 - [x] **`factorly wrap`** — zero-config proxy for any MCP server
 - [x] **`factorly serve`** — MCP server mode (stdio + HTTP with token auth)
 - [x] **`factorly tools`** — list, add, remove, import (OpenAPI, templates, curl)
@@ -23,11 +24,11 @@
 - [x] **Environment isolation** — opt-in strict mode for child processes
 - [x] **36 tool templates** — pre-built YAML configs for popular services
 - [x] **Call logging** — JSONL audit trail with savings, governance, and agent fields
-- [x] **`factorly exec`** — run any command through Factorly's safety layer (vault/env resolution, compression, logging)
 - [x] **Disabled commands** — `disabled_commands` config to restrict CLI access per project
 - [x] **Built-in tools** — governed shell, read, write, fetch, clipboard with default safety guards
 - [x] **Per-project vault** — `.factorly/vault.enc` with fallback to global, separate passwords, lazy opening
 - [x] **npm distribution** — `npm install -g factorly`
+- [x] **External vault backends** — tool-style config for 1Password, AWS SM, GCP SM, any CLI-based secret manager
 
 ## Future?
 
@@ -38,18 +39,16 @@
 
 ### Observability
 - [ ] **Dashboard** — localhost web UI showing live call feed, savings counter, agent activity, blocked call breakdown
-- [ ] **`factorly report`** — generate a shareable summary of tool usage, savings, and governance actions for a time period
 - [ ] **Webhook notifications** — alert on blocked calls, rate limits, errors via webhook (Slack, Telegram, HTTP)
+- [ ] **`factorly report`** — generate a shareable summary of tool usage, savings, and governance actions for a time period
 
 ### Security & auth
 - [ ] **OAuth 2.1 server** — MCP-spec authorization server with PKCE, dynamic client registration, and token endpoints ([spec](oauth-server-spec.md))
 - [ ] **Hosted OAuth** — Factorly-managed OAuth app registrations for Google, Microsoft, Salesforce (eliminates provider-side app setup)
-- [x] **External vault backends** — tool-style config for 1Password, AWS SM, GCP SM, any CLI-based secret manager
 - [ ] **Config signing** — verify tool config integrity hasn't been tampered with post-deployment
 - [ ] **Secret rotation helpers** — workflows for rotating vault keys with zero downtime
 
 ### Scale & collaboration
-- [ ] **Factorly Cloud** — hosted version with team management, shared vaults, and centralized governance
 - [ ] **Team configs** — shared tool definitions and governance policies across a team
 - [ ] **Shared credential vault** — team-scoped secrets with role-based access
 - [ ] **Cost attribution** — track estimated API call costs per agent per tool with budget enforcement
