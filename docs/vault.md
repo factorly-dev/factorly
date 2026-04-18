@@ -62,7 +62,7 @@ factorly call github.repos --username octocat
 | File | AES-256-GCM | Password → Argon2id (128MB, 2 iterations) → master key | Protects key names + encrypted entry blobs |
 | Per-entry | AES-256-GCM | Master key + 16-byte random salt → HKDF-SHA256 → entry key | Protects each secret value independently |
 
-Each entry has its own random salt and nonce, regenerated on every write. Entry keys are zeroized immediately after use. The master key is zeroized on `Close()`.
+Each entry has its own random salt and nonce, regenerated on every write. Entry keys are zeroized immediately after use. The master key is zeroized on `Close()`. The password is accepted as a byte slice and zeroed immediately after Argon2id key derivation — it does not persist in memory beyond vault initialization.
 
 ## Project vs Global Vault
 

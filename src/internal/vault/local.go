@@ -75,13 +75,15 @@ func DefaultVaultPath() string {
 }
 
 // OpenLocal opens or creates an encrypted vault at the default path.
-func OpenLocal(password string) (*LocalBackend, error) {
+// The password slice is zeroed after key derivation.
+func OpenLocal(password []byte) (*LocalBackend, error) {
 	return OpenLocalAt(DefaultVaultPath(), password)
 }
 
 // OpenLocalAt opens or creates an encrypted vault at the given path.
+// The password slice is zeroed after key derivation.
 // Acquires a shared lock to read, releases after loading into memory.
-func OpenLocalAt(path, password string) (*LocalBackend, error) {
+func OpenLocalAt(path string, password []byte) (*LocalBackend, error) {
 	b := &LocalBackend{
 		path:     path,
 		lockPath: path + ".lock",
@@ -320,8 +322,10 @@ func (b *LocalBackend) save() error {
 
 // --- Key derivation ---
 
-func deriveKey(password string, salt []byte) []byte {
-	return argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, keyLen)
+func deriveKey(password []byte, salt []byte) []byte {
+	key := argon2.IDKey(password, salt, argonTime, argonMemory, argonThreads, keyLen)
+	zeroize(password) // clear password from memory after derivation
+	return key
 }
 
 func deriveEntryKey(masterKey, entrySalt []byte) ([]byte, error) {

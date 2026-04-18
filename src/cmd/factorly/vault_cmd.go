@@ -178,7 +178,7 @@ func openVault() (*vault.LocalBackend, error) {
 	if err != nil {
 		return nil, err
 	}
-	return vault.OpenLocalAt(path, password)
+	return vault.OpenLocalAt(path, []byte(password))
 }
 
 // openSmartVault returns a vault backend that searches project vault first,
@@ -217,7 +217,7 @@ func openFallbackVault() (vault.Backend, error) {
 		if err != nil {
 			return nil, fmt.Errorf("global vault: %w", err)
 		}
-		return vault.OpenLocalAt(globalPath, pw)
+		return vault.OpenLocalAt(globalPath, []byte(pw))
 	}
 
 	// Open project vault
@@ -225,7 +225,7 @@ func openFallbackVault() (vault.Backend, error) {
 	if err != nil {
 		return nil, fmt.Errorf("project vault: %w", err)
 	}
-	project, err := vault.OpenLocalAt(projectPath, pw)
+	project, err := vault.OpenLocalAt(projectPath, []byte(pw))
 	if err != nil {
 		return nil, fmt.Errorf("opening project vault: %w", err)
 	}
@@ -244,7 +244,7 @@ func openFallbackVault() (vault.Backend, error) {
 			if err != nil {
 				return nil, err
 			}
-			return vault.OpenLocalAt(globalPath, gpw)
+			return vault.OpenLocalAt(globalPath, []byte(gpw))
 		},
 	}, nil
 }
