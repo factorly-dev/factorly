@@ -1,6 +1,6 @@
 {
   "name": "factorly",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Your agent calls tools. Factorly holds the keys.",
   "homepage": "https://github.com/factorly-dev/factorly",
   "repository": {
