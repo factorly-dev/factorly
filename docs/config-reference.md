@@ -50,15 +50,48 @@ tools:
       Accept: application/json
     auth:                       # optional
       type: bearer              # bearer, basic, header, or oauth
-      token: {{vault:API_KEY}}   # vault ref or {{env:ENV_VAR}}
+      token: {{vault:API_KEY}}   # for bearer
       # header: X-Api-Key       # for header type
       # value: {{vault:KEY}}     # for header type
+
+      # OAuth (inline):
+      # type: oauth
+      # client_id: {{vault:CLIENT_ID}}
+      # client_secret: {{vault:CLIENT_SECRET}}
+      # auth_url: https://provider.com/oauth/authorize
+      # token_url: https://provider.com/oauth/token
+      # scopes: ["read", "write"]
+      # token_key: provider_oauth    # vault key for token bundle
+
+      # OAuth (provider reference):
+      # type: oauth
+      # provider: google             # references oauth_providers section
+
+    env_isolation: strict       # optional, restrict child env to essentials
     parameters:
       - name: id
         in: path                # path, query, header, or body
         required: true
       - name: limit
         in: query
+
+    shadow:                     # optional, governance rules
+      deny: [dangerous_action]
+      confirm: true             # or ["specific_action"]
+      rate_limit: 100/hour
+      log_params: [id]
+      allow_patterns: []        # override denied shell patterns (built-in tools)
+      allow_paths: []           # override denied file paths (built-in tools)
+      allow_urls: []            # override denied URLs (built-in tools)
+
+# OAuth providers (shared across tools)
+oauth_providers:
+  google:
+    client_id: "{{vault:GOOGLE_CLIENT_ID}}"
+    client_secret: "{{vault:GOOGLE_CLIENT_SECRET}}"
+    auth_url: https://accounts.google.com/o/oauth2/v2/auth
+    token_url: https://oauth2.googleapis.com/token
+    scopes: ["https://www.googleapis.com/auth/drive.readonly"]
 ```
 
 ## Secret references
