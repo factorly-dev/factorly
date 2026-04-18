@@ -64,6 +64,8 @@ factorly call github.repos --username octocat
 
 Each entry has its own random salt and nonce, regenerated on every write. Entry keys are zeroized immediately after use. The master key is zeroized on `Close()`. The password is accepted as a byte slice and zeroed immediately after Argon2id key derivation — it does not persist in memory beyond vault initialization.
 
+All vault operations (`get`, `set`, `delete`, `list`) are recorded in the [audit log](logging.md#vault-audit-trail). Secret values are never logged — only the operation and key name.
+
 ## Project vs Global Vault
 
 Factorly supports per-project vaults. When a `.factorly/` directory exists, vault commands default to `.factorly/vault.enc` (project vault). The global vault at `~/.config/factorly/vault.enc` is the fallback.

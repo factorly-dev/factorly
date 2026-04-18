@@ -11,7 +11,7 @@ Every tool call — whether through `factorly call` or `factorly serve` — is l
 | Field | Description |
 |-------|-------------|
 | `timestamp` | ISO 8601 timestamp |
-| `interface` | `cli` or `mcp` |
+| `interface` | `cli`, `mcp`, `exec`, or `vault` |
 | `tool` | Tool name |
 | `params` | Parameters passed to the tool |
 | `status` | `success`, `error`, or `blocked` |
@@ -104,6 +104,23 @@ $ factorly logs --tool github
   2026-04-17 09:15:34  github.get_repo         success   187ms
   2026-04-17 09:16:01  github.profile          success   142ms
 ```
+
+## Vault audit trail
+
+Vault operations (`get`, `set`, `delete`, `list`) are logged with `interface: "vault"`. Secret values are never logged — only the operation and key name.
+
+```bash
+factorly logs --tool vault
+```
+
+```
+  12:34:05  vault.set     success  —
+  12:34:10  vault.get     success  —
+  12:35:02  vault.list    success  —
+  12:35:15  vault.delete  success  —
+```
+
+The `params` field contains the key name (e.g., `{"key": "GITHUB_TOKEN"}`) but never the secret value.
 
 ## Output savings
 

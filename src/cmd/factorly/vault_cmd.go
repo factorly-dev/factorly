@@ -9,11 +9,37 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
+
+// logVaultOp logs a vault operation to the JSONL audit trail.
+// Never logs secret values — only the operation and key name.
+func logVaultOp(op string, key string, status string) {
+	if os.Getenv("FACTORLY_NO_LOG") != "" {
+		return
+	}
+	log, err := logger.NewJSONL("")
+	if err != nil {
+		return
+	}
+	defer log.Close()
+
+	entry := &logger.Entry{
+		Timestamp: time.Now(),
+		Interface: "vault",
+		Tool:      "vault." + op,
+		Status:    status,
+	}
+	if key != "" {
+		entry.Params = map[string]string{"key": key}
+	}
+	_ = log.Log(entry)
+}
 
 var vaultPath string
 var vaultGlobal bool
@@ -64,8 +90,10 @@ var vaultSetCmd = &cobra.Command{
 			}
 		}
 		if err := backend.Set(key, value); err != nil {
+			logVaultOp("set", key, "error")
 			return err
 		}
+		logVaultOp("set", key, "success")
 		fmt.Fprintf(os.Stderr, "Stored %s in vault\n", key)
 		return nil
 	},
@@ -87,8 +115,10 @@ var vaultGetCmd = &cobra.Command{
 
 		value, err := backend.Get(args[0])
 		if err != nil {
+			logVaultOp("get", args[0], "error")
 			return err
 		}
+		logVaultOp("get", args[0], "success")
 		fmt.Print(value)
 		return nil
 	},
@@ -109,8 +139,10 @@ var vaultListCmd = &cobra.Command{
 
 		keys, err := backend.List()
 		if err != nil {
+			logVaultOp("list", "", "error")
 			return err
 		}
+		logVaultOp("list", "", "success")
 		for _, k := range keys {
 			fmt.Println(k)
 		}
@@ -133,8 +165,10 @@ var vaultDeleteCmd = &cobra.Command{
 		defer backend.Close()
 
 		if err := backend.Delete(args[0]); err != nil {
+			logVaultOp("delete", args[0], "error")
 			return err
 		}
+		logVaultOp("delete", args[0], "success")
 		fmt.Fprintf(os.Stderr, "Deleted %s from vault\n", args[0])
 		return nil
 	},
