@@ -773,36 +773,39 @@ func initResolver(cfg *config.Config) (*vault.Resolver, error) {
 		vlog("registered external vault backend: %s", name)
 	}
 
-	// Try to open local vault (project + global fallback)
-	projectPath := projectVaultPath()
-	globalPath := vault.DefaultVaultPath()
-	_, projectExists := os.Stat(projectPath)
-	_, globalExists := os.Stat(globalPath)
+	// Try to open local vault
+	// resolveVaultPath() respects --vault-path, --global, FACTORLY_VAULT_PATH,
+	// project vault, and global vault — in that priority order.
+	resolvedPath := resolveVaultPath()
+	if _, err := os.Stat(resolvedPath); err == nil {
+		// Resolved vault exists — open it (may be fallback if both project+global exist)
+		projectPath := projectVaultPath()
+		globalPath := vault.DefaultVaultPath()
+		_, projectExists := os.Stat(projectPath)
+		_, globalExists := os.Stat(globalPath)
 
-	if projectExists == nil || globalExists == nil {
 		var backend vault.Backend
-		var err error
+		var openErr error
 
-		if projectExists == nil && globalExists == nil {
-			backend, err = openFallbackVault()
+		if projectExists == nil && globalExists == nil && vaultPath == "" && !vaultGlobal {
+			backend, openErr = openFallbackVault()
 		} else {
-			b, openErr := openVault()
+			b, e := openVault()
 			backend = b
-			err = openErr
+			openErr = e
 		}
-		if err != nil {
-			// If external backends are configured, local vault failure is non-fatal
+		if openErr != nil {
 			if len(cfg.VaultBackends) > 0 {
-				vlog("local vault failed to open: %v (external backends available)", err)
+				vlog("local vault failed to open: %v (external backends available)", openErr)
 			} else {
-				return nil, fmt.Errorf("vault required but failed to open: %w", err)
+				return nil, fmt.Errorf("vault required but failed to open: %w", openErr)
 			}
 		} else {
 			resolver.Register("vault", backend)
 			vlog("vault opened successfully")
 		}
 	} else if len(cfg.VaultBackends) == 0 {
-		return nil, fmt.Errorf("vault required but no local vault found and no external backends configured")
+		return nil, fmt.Errorf("vault required but no vault found at %s (run 'factorly vault set' to create one)", resolvedPath)
 	}
 
 	return resolver, nil

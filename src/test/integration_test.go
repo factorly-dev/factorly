@@ -2062,6 +2062,53 @@ tools:
 	}
 }
 
+func TestVaultPathEnvOverride(t *testing.T) {
+	// Vault at a custom path (not project or global default) should work
+	// via FACTORLY_VAULT_PATH — this is what CI uses
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+disable_builtins: true
+tools:
+  test.echo:
+    type: cli
+    command: echo
+    args: ["secret={{vault:CUSTOM_KEY}}"]
+`,
+	})
+
+	customVault := filepath.Join(dir, "custom-vault.enc")
+
+	// Create vault at custom path
+	cmd := exec.Command(binary, "vault", "--vault-path", customVault, "set", "CUSTOM_KEY", "custom_value")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PASSWORD=pw",
+	)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("vault set failed: %v", err)
+	}
+
+	// Call tool with FACTORLY_VAULT_PATH pointing to custom vault
+	cmd2 := exec.Command(binary, "call", "test.echo", "-c", filepath.Join(dir, "factorly.yaml"))
+	cmd2.Dir = dir
+	cmd2.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PASSWORD=pw",
+		"FACTORLY_VAULT_PATH="+customVault,
+	)
+	var out strings.Builder
+	cmd2.Stdout = &out
+	var stderr strings.Builder
+	cmd2.Stderr = &stderr
+	if err := cmd2.Run(); err != nil {
+		t.Fatalf("call failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(out.String(), "secret=custom_value") {
+		t.Errorf("expected 'secret=custom_value', got %q", out.String())
+	}
+}
+
 func TestExternalVaultBackendSetBlocked(t *testing.T) {
 	dir := setupDir(t, map[string]string{
 		".factorly/factorly.yaml": `

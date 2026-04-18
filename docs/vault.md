@@ -169,6 +169,10 @@ External backends are **read-only** — manage secrets in the external tool dire
 
 If the local vault isn't configured, external backends still work. You can use `{{op:KEY}}` or `{{hcvault:KEY}}` without any local vault.
 
+## See also
+
+- [Factorly Vault vs HashiCorp Vault](vault-comparison.md) — when to use which
+
 ---
 
 [← Back to README](../README.md)
