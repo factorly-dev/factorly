@@ -4,7 +4,7 @@
 
 ```yaml
 # factorly.yaml or .factorly/factorly.yaml
-tools_dir: ./tools              # optional, scan directory for tool files
+tools_dir: ./tools               # optional, scan directory for tool files
 disabled_commands: [vault, exec] # optional, block specific CLI commands
 disable_builtins: true           # optional, disable all factorly.* built-in tools
 
@@ -18,40 +18,49 @@ vault_backends:                  # optional, external secret managers
       command: op
       args: ["item", "list", "--format=json"]
 
+
+oauth_providers: # shared across tools
+  google:
+    client_id: "{{vault:GOOGLE_CLIENT_ID}}"
+    client_secret: "{{vault:GOOGLE_CLIENT_SECRET}}"
+    auth_url: https://accounts.google.com/o/oauth2/v2/auth
+    token_url: https://oauth2.googleapis.com/token
+    scopes: ["https://www.googleapis.com/auth/drive.readonly"]
+
 tools:
   <tool-name>:
-    type: cli | rest | mcp      # required
-    description: "..."          # optional, shown to agent
+    type: cli | rest | mcp       # required
+    description: "..."           # optional, shown to agent
 
     # For CLI commands:
-    command: curl               # executable to run
+    command: curl                # executable to run
     args: ["-s", "{{url}}"]      # {{param}} placeholders are substituted
-    stdin: "{{input}}"            # optional, pipe to subprocess stdin
+    stdin: "{{input}}"           # optional, pipe to subprocess stdin
     interactive: true            # optional, connect to terminal (TTY)
 
     # For MCP servers (stdio — spawn subprocess):
-    command: npx                # executable to start the server
-    args: ["@org/server-name"] # arguments
-    env:                        # environment variables
+    command: npx                 # executable to start the server
+    args: ["@org/server-name"]   # arguments
+    env:                         # environment variables
       KEY: {{vault:SECRET}}
-      AWS_PROFILE: "{{env:AWS_PROFILE}}"  # forward from host env
-    timeout: 30s                # execution timeout (e.g. "10s", "2m"; default 30s for CLI)
-    max_output: 50000           # max output bytes (default 50000)
-    compress: ["all"]           # compression hints: "json", "logs", or "all"
+      HOME: "{{env:HOME}}"       # forward from host env
+    timeout: 30s                 # execution timeout (e.g. "10s", "2m"; default 30s for CLI)
+    max_output: 50000            # max output bytes (default 50000)
+    compress: ["all"]            # compression hints: "json", "logs", or "all"
 
     # For MCP servers (HTTP — connect to remote):
-    url: http://host:3000/mcp  # server URL
+    url: http://host:3000/mcp    # server URL
 
     # For REST APIs:
     base_url: https://api.example.com
-    method: GET                 # GET, POST, PUT, PATCH, DELETE
-    path: /items/{{id}}           # {{param}} placeholders in path
-    headers:                    # static headers (optional)
+    method: GET                  # GET, POST, PUT, PATCH, DELETE
+    path: /items/{{id}}          # {{param}} placeholders in path
+    headers:                     # static headers (optional)
       Accept: application/json
-    auth:                       # optional
-      type: bearer              # bearer, basic, header, or oauth
+    auth:                        # optional
+      type: bearer               # bearer, basic, header, or oauth
       token: {{vault:API_KEY}}   # for bearer
-      # header: X-Api-Key       # for header type
+      # header: X-Api-Key        # for header type
       # value: {{vault:KEY}}     # for header type
 
       # OAuth (inline):
@@ -67,31 +76,23 @@ tools:
       # type: oauth
       # provider: google             # references oauth_providers section
 
-    env_isolation: strict       # optional, restrict child env to essentials
+    env_isolation: strict            # optional, restrict child env to essentials
     parameters:
       - name: id
-        in: path                # path, query, header, or body
+        in: path                     # path, query, header, or body
         required: true
       - name: limit
         in: query
 
-    shadow:                     # optional, governance rules
+    shadow:                          # optional, governance rules
       deny: [dangerous_action]
-      confirm: true             # or ["specific_action"]
+      confirm: true                  # or ["specific_action"]
       rate_limit: 100/hour
       log_params: [id]
-      allow_patterns: []        # override denied shell patterns (built-in tools)
-      allow_paths: []           # override denied file paths (built-in tools)
-      allow_urls: []            # override denied URLs (built-in tools)
+      allow_patterns: []             # override denied shell patterns (built-in tools)
+      allow_paths: []                # override denied file paths (built-in tools)
+      allow_urls: []                 # override denied URLs (built-in tools)
 
-# OAuth providers (shared across tools)
-oauth_providers:
-  google:
-    client_id: "{{vault:GOOGLE_CLIENT_ID}}"
-    client_secret: "{{vault:GOOGLE_CLIENT_SECRET}}"
-    auth_url: https://accounts.google.com/o/oauth2/v2/auth
-    token_url: https://oauth2.googleapis.com/token
-    scopes: ["https://www.googleapis.com/auth/drive.readonly"]
 ```
 
 ## Secret references
