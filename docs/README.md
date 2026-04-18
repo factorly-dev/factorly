@@ -42,6 +42,12 @@
 | [Logging](logging.md) | Call log format, fields, output savings, and security |
 | [Templates](templates.md) | Pre-built tool configs for 36 popular services |
 
+## Examples
+
+| Topic | Description |
+|-------|-------------|
+| [Examples](examples/README.md) | 27 end-to-end examples: getting started, auth, governance, integrations, and more |
+
 ## Contributing
 
 | Topic | Description |
