@@ -44,7 +44,7 @@
 ### Security & auth
 - [ ] **OAuth 2.1 server** — MCP-spec authorization server with PKCE, dynamic client registration, and token endpoints ([spec](oauth-server-spec.md))
 - [ ] **Hosted OAuth** — Factorly-managed OAuth app registrations for Google, Microsoft, Salesforce (eliminates provider-side app setup)
-- [ ] **External vault backends** — 1Password, GCP Secret Manager, AWS Secrets Manager, HashiCorp Vault
+- [x] **External vault backends** — tool-style config for 1Password, AWS SM, GCP SM, any CLI-based secret manager
 - [ ] **Config signing** — verify tool config integrity hasn't been tampered with post-deployment
 - [ ] **Secret rotation helpers** — workflows for rotating vault keys with zero downtime
 

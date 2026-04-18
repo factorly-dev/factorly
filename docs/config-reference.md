@@ -8,6 +8,16 @@ tools_dir: ./tools              # optional, scan directory for tool files
 disabled_commands: [vault, exec] # optional, block specific CLI commands
 disable_builtins: true           # optional, disable all factorly.* built-in tools
 
+vault_backends:                  # optional, external secret managers
+  op:                            # backend name → use as {{op:KEY}}
+    type: cli
+    get:
+      command: op
+      args: ["read", "op://Development/{{key}}"]
+    list:                        # optional
+      command: op
+      args: ["item", "list", "--format=json"]
+
 tools:
   <tool-name>:
     type: cli | rest | mcp      # required

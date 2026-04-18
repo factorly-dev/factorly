@@ -17,6 +17,7 @@ import (
 
 var vaultPath string
 var vaultGlobal bool
+var vaultBackend string
 
 var vaultCmd = &cobra.Command{
 	Use:   "vault",
@@ -31,6 +32,9 @@ var vaultSetCmd = &cobra.Command{
 	Short: "Store a secret in the vault",
 	Args:  requireArgs(1, "factorly vault set <key> [value]"),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if vaultBackend != "" {
+			return fmt.Errorf("backend %q is read-only — manage secrets in %s directly", vaultBackend, vaultBackend)
+		}
 		backend, err := openVault()
 		if err != nil {
 			return err
@@ -72,6 +76,9 @@ var vaultGetCmd = &cobra.Command{
 	Short: "Retrieve a secret from the vault",
 	Args:  requireArgs(1, "factorly vault get <key>"),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if vaultBackend != "" {
+			return getFromExternalBackend(vaultBackend, args[0])
+		}
 		backend, err := openSmartVault()
 		if err != nil {
 			return err
@@ -91,6 +98,9 @@ var vaultListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List secret names in the vault",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if vaultBackend != "" {
+			return listFromExternalBackend(vaultBackend)
+		}
 		backend, err := openVault()
 		if err != nil {
 			return err
@@ -113,6 +123,9 @@ var vaultDeleteCmd = &cobra.Command{
 	Short: "Remove a secret from the vault",
 	Args:  requireArgs(1, "factorly vault delete <key>"),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if vaultBackend != "" {
+			return fmt.Errorf("backend %q is read-only — manage secrets in %s directly", vaultBackend, vaultBackend)
+		}
 		backend, err := openVault()
 		if err != nil {
 			return err
@@ -355,8 +368,47 @@ func promptSecret(label string) (string, error) {
 	return "", fmt.Errorf("no input received")
 }
 
+func getFromExternalBackend(name, key string) error {
+	cfg, _, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	backendCfg, ok := cfg.VaultBackends[name]
+	if !ok {
+		return fmt.Errorf("unknown vault backend %q — check vault_backends in your config", name)
+	}
+	backend := vault.NewExternalBackend(name, backendCfg)
+	value, err := backend.Get(key)
+	if err != nil {
+		return err
+	}
+	fmt.Print(value)
+	return nil
+}
+
+func listFromExternalBackend(name string) error {
+	cfg, _, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	backendCfg, ok := cfg.VaultBackends[name]
+	if !ok {
+		return fmt.Errorf("unknown vault backend %q — check vault_backends in your config", name)
+	}
+	backend := vault.NewExternalBackend(name, backendCfg)
+	keys, err := backend.List()
+	if err != nil {
+		return err
+	}
+	for _, k := range keys {
+		fmt.Println(k)
+	}
+	return nil
+}
+
 func init() {
 	vaultCmd.PersistentFlags().StringVar(&vaultPath, "vault-path", "", "path to vault file (overrides auto-detection)")
 	vaultCmd.PersistentFlags().BoolVar(&vaultGlobal, "global", false, "use global vault (~/.config/factorly/vault.enc) instead of project vault")
+	vaultCmd.PersistentFlags().StringVar(&vaultBackend, "backend", "", "use an external vault backend (e.g., op, aws, gcp)")
 	vaultCmd.AddCommand(vaultSetCmd, vaultGetCmd, vaultListCmd, vaultDeleteCmd)
 }

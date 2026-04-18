@@ -1931,6 +1931,191 @@ func TestProjectVaultGetFallsBackToGlobal(t *testing.T) {
 	}
 }
 
+func TestVaultRefInCLIArgs(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `
+disable_builtins: true
+tools:
+  test.echo:
+    type: cli
+    command: echo
+    args: ["secret={{vault:TEST_ARG_SECRET}}"]
+`,
+	})
+
+	vaultPath := filepath.Join(dir, ".factorly", "vault.enc")
+
+	// Store a secret
+	cmd := exec.Command(binary, "vault", "--vault-path", vaultPath, "set", "TEST_ARG_SECRET", "resolved_value")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PASSWORD=pw",
+	)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("vault set failed: %v", err)
+	}
+
+	// Call the tool — {{vault:TEST_ARG_SECRET}} in args should resolve
+	cmd2 := exec.Command(binary, "call", "test.echo")
+	cmd2.Dir = dir
+	cmd2.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_PROJECT_VAULT_PASSWORD=pw",
+	)
+	var out strings.Builder
+	cmd2.Stdout = &out
+	if err := cmd2.Run(); err != nil {
+		t.Fatalf("call failed: %v", err)
+	}
+	if !strings.Contains(out.String(), "secret=resolved_value") {
+		t.Errorf("expected 'secret=resolved_value', got %q", out.String())
+	}
+}
+
+// --- External Vault Backends ---
+
+func TestExternalVaultBackendCLI(t *testing.T) {
+	// Configure an external backend that uses echo to return a secret
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `
+disable_builtins: true
+vault_backends:
+  mock:
+    type: cli
+    get:
+      command: echo
+      args: ["secret_for_{{key}}"]
+tools:
+  test.api:
+    type: cli
+    command: echo
+    args: ["token={{mock:MY_SECRET}}"]
+`,
+	})
+
+	stdout, _, code := run(t, dir, "call", "test.api")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "token=secret_for_MY_SECRET") {
+		t.Errorf("expected resolved external backend ref, got %q", stdout)
+	}
+}
+
+func TestExternalVaultBackendList(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `
+disable_builtins: true
+vault_backends:
+  mock:
+    type: cli
+    get:
+      command: echo
+      args: ["val"]
+    list:
+      command: printf
+      args: ["KEY1\nKEY2\nKEY3"]
+tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["{{text}}"]
+`,
+	})
+
+	// Tool listing should work (external backend doesn't interfere)
+	stdout, _, code := run(t, dir, "tools")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "echo") {
+		t.Error("expected echo tool in listing")
+	}
+}
+
+func TestExternalVaultBackendNoLocalVault(t *testing.T) {
+	// External backend should work even without a local vault
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `
+disable_builtins: true
+vault_backends:
+  mock:
+    type: cli
+    get:
+      command: echo
+      args: ["external_secret"]
+tools:
+  test.api:
+    type: cli
+    command: echo
+    args: ["got={{mock:TOKEN}}"]
+`,
+	})
+
+	stdout, _, code := run(t, dir, "call", "test.api")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "got=external_secret") {
+		t.Errorf("expected external secret without local vault, got %q", stdout)
+	}
+}
+
+func TestExternalVaultBackendSetBlocked(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `
+disable_builtins: true
+vault_backends:
+  mock:
+    type: cli
+    get:
+      command: echo
+      args: ["val"]
+tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["hi"]
+`,
+	})
+
+	_, stderr, code := run(t, dir, "vault", "--backend", "mock", "set", "KEY", "val")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for set on external backend")
+	}
+	if !strings.Contains(stderr, "read-only") {
+		t.Errorf("expected 'read-only' in error, got %q", stderr)
+	}
+}
+
+func TestExternalVaultBackendDeleteBlocked(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `
+disable_builtins: true
+vault_backends:
+  mock:
+    type: cli
+    get:
+      command: echo
+      args: ["val"]
+tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["hi"]
+`,
+	})
+
+	_, stderr, code := run(t, dir, "vault", "--backend", "mock", "delete", "KEY")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for delete on external backend")
+	}
+	if !strings.Contains(stderr, "read-only") {
+		t.Errorf("expected 'read-only' in error, got %q", stderr)
+	}
+}
+
 // --- Vault ---
 
 func TestVaultSetAndList(t *testing.T) {

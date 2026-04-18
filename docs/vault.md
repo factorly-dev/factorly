@@ -115,16 +115,59 @@ Default: `.factorly/vault.enc` (project) or `~/.config/factorly/vault.enc` (glob
 
 Existing vaults are automatically migrated to per-entry encryption on first open. No action needed — the upgrade is transparent and preserves all stored values.
 
-## Extensible backends (future)
+## External Backends
 
-The vault uses a `Backend` interface. The local encrypted file is the default backend. Future backends:
+Define vault backends the same way you define tools — CLI commands that implement get and list. No vendor SDKs needed.
 
 ```yaml
-# Coming soon
-token: "{{1password:Development/GitHub/token}}"
-token: "{{gcp-sm:project-id/GITHUB_TOKEN}}"
-token: "{{aws-sm:prod/stripe-key}}"
+# .factorly/factorly.yaml
+vault_backends:
+  op:
+    type: cli
+    get:
+      command: op
+      args: ["read", "op://Development/{{key}}"]
+    list:
+      command: op
+      args: ["item", "list", "--format=json"]
+
+  aws:
+    type: cli
+    get:
+      command: aws
+      args: ["secretsmanager", "get-secret-value", "--secret-id", "{{key}}", "--query", "SecretString", "--output", "text"]
+    list:
+      command: aws
+      args: ["secretsmanager", "list-secrets", "--query", "SecretList[].Name", "--output", "text"]
+
+  gcp:
+    type: cli
+    get:
+      command: gcloud
+      args: ["secrets", "versions", "access", "latest", "--secret={{key}}"]
+    list:
+      command: gcloud
+      args: ["secrets", "list", "--format", "value(name)"]
 ```
+
+Reference them in tool configs:
+
+```yaml
+tools:
+  github.repos:
+    type: rest
+    auth:
+      type: bearer
+      token: "{{op:GITHUB_TOKEN}}"       # from 1Password
+      # token: "{{aws:prod/github-key}}" # from AWS Secrets Manager
+      # token: "{{gcp:github-token}}"    # from GCP Secret Manager
+```
+
+### How it works
+
+External backends are **read-only** — manage secrets in the external tool directly. `{{key}}` in args is replaced with the requested key. Commands inherit the full parent environment (they need AWS credentials, `op` session tokens, gcloud auth, etc.).
+
+If the local vault isn't configured, external backends still work. You can use `{{op:KEY}}` or `{{hcvault:KEY}}` without any local vault.
 
 ---
 

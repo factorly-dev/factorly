@@ -25,11 +25,12 @@ func vlog(format string, args ...any) {
 }
 
 type Config struct {
-	ToolsDir         string                         `yaml:"tools_dir,omitempty"`
-	Tools            map[string]ToolConfig          `yaml:"tools"`
-	OAuthProviders   map[string]OAuthProviderConfig `yaml:"oauth_providers,omitempty"`
-	DisabledCommands []string                       `yaml:"disabled_commands,omitempty"`
-	DisableBuiltins  bool                           `yaml:"disable_builtins,omitempty"`
+	ToolsDir         string                                 `yaml:"tools_dir,omitempty"`
+	Tools            map[string]ToolConfig                  `yaml:"tools"`
+	OAuthProviders   map[string]OAuthProviderConfig         `yaml:"oauth_providers,omitempty"`
+	VaultBackends    map[string]vault.ExternalBackendConfig `yaml:"vault_backends,omitempty"`
+	DisabledCommands []string                               `yaml:"disabled_commands,omitempty"`
+	DisableBuiltins  bool                                   `yaml:"disable_builtins,omitempty"`
 }
 
 type OAuthProviderConfig struct {

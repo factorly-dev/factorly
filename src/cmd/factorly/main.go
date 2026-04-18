@@ -485,10 +485,15 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	for name, toolCfg := range cfg.Tools {
 		switch toolCfg.Type {
 		case "cli":
+			// Resolve backend refs in args (e.g., {{vault:KEY}}, {{op:KEY}})
+			resolvedArgs := make([]string, len(toolCfg.Args))
+			for i, arg := range toolCfg.Args {
+				resolvedArgs[i] = resolveVaultRef(resolver, arg)
+			}
 			def := provider.CLIToolDef{
-				Command:     toolCfg.Command,
-				Args:        toolCfg.Args,
-				Stdin:       toolCfg.Stdin,
+				Command:     resolveVaultRef(resolver, toolCfg.Command),
+				Args:        resolvedArgs,
+				Stdin:       resolveVaultRef(resolver, toolCfg.Stdin),
 				Interactive: toolCfg.Interactive,
 				Env:         resolveVaultMap(resolver, toolCfg.Env),
 				EnvStrict:   toolCfg.EnvIsolation == "strict",
@@ -737,6 +742,18 @@ func initResolver(cfg *config.Config) (*vault.Resolver, error) {
 		if vault.HasVaultRefs(tool.BaseURL) {
 			hasRefs = true
 		}
+		for _, arg := range tool.Args {
+			if vault.HasVaultRefs(arg) {
+				hasRefs = true
+				break
+			}
+		}
+		if vault.HasVaultRefs(tool.Stdin) {
+			hasRefs = true
+		}
+		if vault.HasVaultRefs(tool.Command) {
+			hasRefs = true
+		}
 		if hasRefs {
 			break
 		}
@@ -748,31 +765,46 @@ func initResolver(cfg *config.Config) (*vault.Resolver, error) {
 
 	vlog("vault references detected, opening vault")
 
-	// Use fallback vault (project first, global second) for config resolution
+	resolver := vault.NewResolver()
+
+	// Register external vault backends first (they don't need local vault)
+	for name, backendCfg := range cfg.VaultBackends {
+		resolver.Register(name, vault.NewExternalBackend(name, backendCfg))
+		vlog("registered external vault backend: %s", name)
+	}
+
+	// Try to open local vault (project + global fallback)
 	projectPath := projectVaultPath()
 	globalPath := vault.DefaultVaultPath()
 	_, projectExists := os.Stat(projectPath)
 	_, globalExists := os.Stat(globalPath)
 
-	var backend vault.Backend
-	var err error
+	if projectExists == nil || globalExists == nil {
+		var backend vault.Backend
+		var err error
 
-	if projectExists == nil && globalExists == nil {
-		// Both exist — use fallback
-		backend, err = openFallbackVault()
-	} else {
-		// Single vault — use openVault() which respects flags/env
-		b, openErr := openVault()
-		backend = b
-		err = openErr
-	}
-	if err != nil {
-		return nil, fmt.Errorf("vault required but failed to open: %w", err)
+		if projectExists == nil && globalExists == nil {
+			backend, err = openFallbackVault()
+		} else {
+			b, openErr := openVault()
+			backend = b
+			err = openErr
+		}
+		if err != nil {
+			// If external backends are configured, local vault failure is non-fatal
+			if len(cfg.VaultBackends) > 0 {
+				vlog("local vault failed to open: %v (external backends available)", err)
+			} else {
+				return nil, fmt.Errorf("vault required but failed to open: %w", err)
+			}
+		} else {
+			resolver.Register("vault", backend)
+			vlog("vault opened successfully")
+		}
+	} else if len(cfg.VaultBackends) == 0 {
+		return nil, fmt.Errorf("vault required but no local vault found and no external backends configured")
 	}
 
-	resolver := vault.NewResolver()
-	resolver.Register("vault", backend)
-	vlog("vault opened successfully")
 	return resolver, nil
 }
 
