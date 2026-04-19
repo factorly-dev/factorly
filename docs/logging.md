@@ -23,6 +23,8 @@ Every tool call — whether through `factorly call` or `factorly serve` — is l
 | `agent_id` | MCP session identifier (tracks per-agent activity) |
 | `original_bytes` | Output size before compression/truncation |
 | `processed_bytes` | Output size after compression/truncation |
+| `prev_hash` | SHA-256 hash of the previous log entry (hash chain) |
+| `hash` | SHA-256 hash of this entry (for tamper detection) |
 
 ## Location
 
@@ -40,7 +42,8 @@ factorly logs -n 50              # last 50 entries
 factorly logs --tool github      # filter by tool name
 factorly logs --status blocked   # filter by status
 factorly logs --detail           # show full entry details
-factorly logs --stats            # summary statistics
+factorly logs --stats            # summary statistics (includes chain integrity)
+factorly logs --verify           # verify hash chain integrity
 factorly logs -f                 # follow mode (tail -f)
 ```
 
@@ -140,11 +143,32 @@ MCP sessions are tracked by `agent_id` (session ID). Each agent gets independent
 cat ~/.config/factorly/calls.jsonl | jq 'select(.agent_id == "session-abc")'
 ```
 
+## Hash chain integrity
+
+Every log entry includes a SHA-256 hash chain. Each entry's `hash` field is computed from its `prev_hash` (the previous entry's hash) plus the entry payload. The first entry chains from a zero hash.
+
+This creates a tamper-evident log — modifying or deleting any entry breaks the chain from that point forward.
+
+```bash
+# Verify the full chain
+$ factorly logs --verify
+Chain verified: 194 entries OK
+
+# Stats also show chain status
+$ factorly logs --stats
+  ...
+  Hash Chain:
+    194 entries verified
+```
+
+Pre-upgrade entries (written before hash chaining was added) are skipped during verification. The first post-upgrade entry starts a new chain.
+
 ## Security
 
 - Log file is created with `0600` permissions (owner read/write only)
 - Output and error fields are truncated to 500 characters to prevent secrets from leaking via large API responses
 - Sensitive parameter values are redacted in verbose output but logged as-is in the call log (the log file is owner-only)
+- Hash chain provides tamper-evident audit trail (AARM R5)
 
 ---
 

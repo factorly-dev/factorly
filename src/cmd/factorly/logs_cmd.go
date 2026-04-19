@@ -29,6 +29,7 @@ var (
 	logsFollow    bool
 	logsDetail    bool
 	logsStats     bool
+	logsVerify    bool
 )
 
 var logsCmd = &cobra.Command{
@@ -46,11 +47,15 @@ func init() {
 	logsCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "follow mode (tail -f style)")
 	logsCmd.Flags().BoolVar(&logsDetail, "detail", false, "show full entry details")
 	logsCmd.Flags().BoolVar(&logsStats, "stats", false, "show summary statistics")
+	logsCmd.Flags().BoolVar(&logsVerify, "verify", false, "verify hash chain integrity")
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
 	if err := checkCommandAllowed("logs"); err != nil {
 		return err
+	}
+	if logsVerify {
+		return runLogsVerify()
 	}
 	if logsStats {
 		return runLogsStats()
@@ -274,6 +279,9 @@ func printLogsDetail(entries []logger.Entry) {
 			}
 			fmt.Printf("  Savings:   %d → %d bytes (%.0f%%)\n", e.OriginalBytes, e.ProcessedBytes, saved)
 		}
+		if e.Hash != "" {
+			fmt.Printf("  Hash:      %s\n", e.Hash[:16]+"...")
+		}
 		if len(e.HighlightParams) > 0 {
 			parts := make([]string, 0, len(e.HighlightParams))
 			for k, v := range e.HighlightParams {
@@ -398,8 +406,42 @@ func runLogsStats() error {
 		}
 		sort.Strings(parts)
 		fmt.Printf("    %d total (%s)\n", blockedCalls, strings.Join(parts, ", "))
+		fmt.Println()
 	}
 
+	// Hash Chain Integrity
+	fmt.Println("  Hash Chain:")
+	verified, skipped, verifyErr := logger.VerifyChain(logPath)
+	if verifyErr != nil {
+		fmt.Printf("    BROKEN — %s\n", verifyErr)
+	} else {
+		msg := fmt.Sprintf("    %s entries verified", formatCount(verified))
+		if skipped > 0 {
+			msg += fmt.Sprintf(", %s pre-upgrade entries skipped", formatCount(skipped))
+		}
+		fmt.Println(msg)
+	}
+
+	return nil
+}
+
+func runLogsVerify() error {
+	logPath := logger.DefaultLogPath()
+
+	verified, skipped, err := logger.VerifyChain(logPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("No log file found.")
+			return nil
+		}
+		return fmt.Errorf("verification failed: %w", err)
+	}
+
+	fmt.Printf("Chain verified: %d entries OK", verified)
+	if skipped > 0 {
+		fmt.Printf(" (%d pre-upgrade entries skipped)", skipped)
+	}
+	fmt.Println()
 	return nil
 }
 

@@ -41,6 +41,7 @@ factorly logs --tool github         # filter by tool name
 factorly logs --status blocked      # filter by status
 factorly logs --detail              # show full entry details
 factorly logs --stats               # show summary statistics
+factorly logs --verify              # verify hash chain integrity
 factorly logs -f                    # follow mode (tail -f style)
 factorly exec -- <command> [args]   # run a command with compression + logging
 factorly exec --compress json -- curl https://api.example.com  # with options
