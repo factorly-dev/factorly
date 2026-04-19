@@ -92,6 +92,10 @@ version:
 		*) echo "Unknown BUMP=$(BUMP). Use major, minor, or patch." >&2; exit 1;; \
 	esac; \
 	NEW="$$major.$$minor.$$patch"; \
+	echo "Bump $(VERSION) → $$NEW?"; \
+	printf "[y/N] "; \
+	read ans; \
+	case "$$ans" in [yY]*) ;; *) echo "Aborted."; exit 1;; esac; \
 	sed -i "s/\"$(VERSION)\"/\"$$NEW\"/" $(SRCDIR)/internal/version.go; \
 	sed -i "s/\"version\": \"$(VERSION)\"/\"version\": \"$$NEW\"/" npm/package.json; \
 	sed -i "s/version = \"$(VERSION)\"/version = \"$$NEW\"/" pip/pyproject.toml; \

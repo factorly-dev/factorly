@@ -25,6 +25,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/proxy"
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/factorly-dev/factorly/internal/shadow"
+	"github.com/factorly-dev/factorly/internal/update"
 	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -43,8 +44,23 @@ func vlog(format string, args ...any) {
 }
 
 func main() {
+	// Check for updates in background (at most once per day)
+	updateCh := make(chan update.Result, 1)
+	go func() {
+		updateCh <- update.Check()
+	}()
+
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
+	}
+
+	// Print update message after command completes (non-blocking)
+	select {
+	case result := <-updateCh:
+		if result.Message != "" {
+			fmt.Fprintf(os.Stderr, "\n%s\n", result.Message)
+		}
+	default:
 	}
 }
 
@@ -59,7 +75,15 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("factorly %s\n", internal.Version)
+		result := update.Check()
+		if result.UpToDate {
+			fmt.Printf("factorly %s (latest)\n", internal.Version)
+		} else if result.Message != "" {
+			fmt.Printf("factorly %s\n", internal.Version)
+			fmt.Fprintf(os.Stderr, "\n%s\n", result.Message)
+		} else {
+			fmt.Printf("factorly %s\n", internal.Version)
+		}
 	},
 }
 
