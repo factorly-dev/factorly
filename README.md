@@ -17,90 +17,144 @@
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](docs/)
 
-One command. All your tools. Credentials stay out of your agent's hands.
+Stop giving your AI agents your API keys.
 
 </center>
 
-Factorly is a local proxy between your AI agent and the tools it uses. Secrets stay in an encrypted vault. Every call is logged. Governance rules let you deny destructive operations, require approval for writes, rate-limit calls, and detect agent loops. REST APIs, CLI commands, and MCP servers — one config, one audit log, one set of rules.
+Factorly is a local proxy between your AI agent and the tools it uses. Secrets stay in an encrypted vault on your device. Every call is logged, governed, and rate-limited.
 
-Your agent sees tool names and data. Never secrets.
+Install it, and your agent has safe access to GitHub, Slack, Stripe, and 30+ more services, plus any CLI or MCP server, in under a minute.
 
-```
-┌──────────────────────┐         ┌──────────────────────────────┐
-│  Your Agent          │         │  Factorly                    │
-│                      │         │                              │
-│  Knows:              │  call   │  Injects:                    │
-│  - tool names        │────────▶│  - Authorization headers     │
-│  - parameter names   │         │  - API keys from vault       │
-│                      │◀────────│  - Base URLs                 │
-│  Never sees:         │  data   │                              │
-│  - API keys          │         │  Logs every call.            │
-│  - tokens            │         │  Returns only data.          │
-│  - credentials       │         │                              │
-└──────────────────────┘         └──────────────────────────────┘
+## Quick start
+
+```typescript
+npm install -g factorly
+  # or: pip install factorly
+  # or: go install github.com/factorly-dev/factorly@latest
+
+factorly init
 ```
 
-## Install
+---
 
-**npm:** `npm install -g factorly`
+## The problem
 
-**pip:** `pip install factorly`
+Most MCP setups today expose secrets too broadly — API keys in `.env` files, OAuth tokens in config, credentials inherited from your user permissions. That means weak isolation, inconsistent policy enforcement, and incomplete audit trails.
 
-**go:** `go install github.com/factorly-dev/factorly@latest`
+## How it works
 
-## Quick Start
+```
+┌────────────┐       ┌────────────┐       ┌────────────┐
+│            │       │            │       │            │
+│ Your Agent │──────▶│  Factorly  │──────▶│ Your Tools │
+│            │       │            │       │            │
+└────────────┘       └────────────┘       └────────────┘
+  Knows tools          Injects creds        GitHub, Slack,
+  Knows params         Enforces policy      Stripe, REST,
+  Makes requests       Logs everything      MCP, CLI
+                       Rate-limits
+  
+  Never sees:
+  API keys             ◀──────────────────  Returns only
+  Tokens               data, never secrets  data
+  Credentials
+```
+
+Your agent connects to Factorly as a single MCP server or CLI tool.
+
+Factorly proxies every call, injecting real credentials server-side, enforcing policy, and logging everything.
+
+The agent never handles secrets. The agent never bypasses governance.
+
+---
+
+## Features
+
+MCP servers, REST APIs, CLI commands. One config, one endpoint, one audit log.
+
+Your agent connects to Factorly once and sees all its approved tools.
+
+### Encrypted vault
+
+Your API keys, OAuth tokens, and secrets live in Factorly's fully encrypted local vault, using AES-256-GCM with per-entry encryption. Keys stay on your device. The agent sees tool names and data — never secrets.
 
 ```bash
-# 1. Install a template (36 services: GitHub, Slack, Stripe, Linear, Gmail, ...)
-factorly tools import templates github
+# Store a secret — encrypted on disk, decrypted on demand
+$ factorly vault set GITHUB_TOKEN
+  Enter value: ••••••••••••••••
 
-# 2. Store your credentials in the encrypted vault
-factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
+# Reference it in any tool config
+  token: "{{vault:GITHUB_TOKEN}}"
 
-# 3. Connect to your agent (auto-detects Claude Code, Cursor, Codex)
-factorly sync
+# Your agent calls a tool — Factorly injects the secret
+  Agent sees: data
+  Agent never sees: ghp_xxxx...
 ```
 
-That's it. Your agent now discovers Factorly's tools via MCP:
+### 36 templates
 
-```
-> List my GitHub repos
-
-I'll use the github.list_repos tool to look that up.
-
-[Calling github.list_repos with username=octocat]
-
-Found 30 repositories:
-1. octocat/Hello-World
-2. octocat/Spoon-Knife
-...
-```
-
-The agent never sees your GitHub token. Factorly injected it, made the API call, logged it, and returned the data.
-
-## Already Using an MCP Server?
-
-Wrap it with Factorly — no config file needed, no changes to the server:
+Pre-built configs for GitHub, Slack, Stripe, Linear, Gmail, Notion, Jira, HubSpot, Salesforce, and more. One command installs. One command connects to Claude Code, Cursor, or Codex.
 
 ```bash
-factorly wrap -- npx @modelcontextprotocol/server-github
+$ factorly tools import templates github
+$ factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
+$ factorly sync
 ```
 
-Your agent connects to Factorly instead of the MCP server directly. Same tools, same interface — but now every call is logged, output is compressed, loops are detected, and calls are rate-limited.
+### Wrap any MCP server
 
-## Documentation
+Already using an MCP server? Wrap it with zero config:
 
-| | |
-|---|---|
-| [Getting Started](docs/getting-started.md) | Install, configure, connect to your agent |
-| [Config Reference](docs/config-reference.md) | Full YAML schema for CLI, REST, and MCP tools |
-| [CLI Reference](docs/cli-reference.md) | All commands, flags, and environment variables |
-| [Templates](docs/templates.md) | 36 pre-built configs for popular services |
-| [Vault](docs/vault.md) | Encrypted secret storage (AES-256-GCM) |
-| [OAuth](docs/oauth.md) | OAuth 2.0 with PKCE and auto-refresh |
-| [Logging](docs/logging.md) | Audit log format, querying, and `factorly logs` |
-| [Examples](docs/examples/) | 27 practical, copy-paste examples for every feature |
+```bash
+$ factorly wrap -- npx @modelcontextprotocol/server-github
+```
+
+Same tools, same interface. Now every call is logged, output is compressed, loops are detected, and calls are rate-limited.
+
+### Governance
+
+Block destructive operations. Require confirmation before writes. Rate-limit calls. Loop detection is always on — Factorly fingerprints identical calls and blocks runaway agents after 12 repeats.
+
+```yaml
+shadow:
+  deny: [delete_repository, delete_branch]
+  confirm: [merge_pull_request, create_release]
+  rate_limit: 100/hour
+```
+
+Built-in tools block dangerous patterns like `rm -rf`, `curl | sh`, and `DROP TABLE` out of the box. Write and delete templates ship with `confirm: true` by default.
+
+```bash
+# Agent tries to run a destructive command
+$ factorly call shell --command "rm -rf /"
+  ✗ blocked: command matches deny pattern "rm -rf"
+
+# Logged and denied. The command never executed.
+```
+
+### Audit trail
+
+Every tool call logged: who called what, when, with what parameters, what was returned, what was blocked. Per-agent identity tracking for multi-agent setups.
+
+```bash
+$ factorly logs --tool github --status blocked
+$ factorly logs -f    # follow in real time
+```
+
+### Output compression
+
+Agent tools return too much data. Factorly compresses JSON, deduplicates log output, and truncates to head + tail — saving tokens without losing signal. Savings tracked per-call in the audit log.
+
+## Docs
+
+- [Installation](docs/installation.md)
+- [Configuration](docs/configuration.md)
+- [CLI Reference](docs/cli.md)
+- [OAuth Setup](docs/oauth.md)
+- [Audit Logging](docs/logging.md)
+- [Template Library](docs/templates.md)
+- [Examples](docs/examples/)
 
 ## License
 
-GPL-3.0
+[GPL-3.0](LICENSE)
