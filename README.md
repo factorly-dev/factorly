@@ -99,6 +99,7 @@ Your agent connects to Factorly instead of the MCP server directly. Same tools, 
 | [Vault](docs/vault.md) | Encrypted secret storage (AES-256-GCM) |
 | [OAuth](docs/oauth.md) | OAuth 2.0 with PKCE and auto-refresh |
 | [Logging](docs/logging.md) | Audit log format, querying, and `factorly logs` |
+| [Examples](docs/examples/) | 27 practical, copy-paste examples for every feature |
 
 ## License
 
