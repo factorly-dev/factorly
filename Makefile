@@ -109,6 +109,16 @@ version:
 	git tag "v$$NEW"; \
 	echo "Tagged v$$NEW"
 
+# Generate release notes from commit messages since last tag
+release-notes:
+	@PREV_TAG=$$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo ""); \
+	if [ -z "$$PREV_TAG" ]; then \
+		RANGE="v$(VERSION)"; \
+	else \
+		RANGE="$$PREV_TAG..v$(VERSION)"; \
+	fi; \
+	git log $$RANGE --no-merges --format="%B---" | sed '/^$$/d'
+
 # Cross-platform release builds
 release: clean build
 	@mkdir -p $(OUTDIR)

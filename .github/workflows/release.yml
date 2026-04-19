@@ -26,12 +26,25 @@ jobs:
         id: version
         run: echo "version=$(grep 'Version' src/internal/version.go | head -1 | sed 's/.*"\(.*\)".*/\1/')" >> "$GITHUB_OUTPUT"
 
+      - name: Generate release notes
+        id: notes
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="v${{ steps.version.outputs.version }}"
+          else
+            RANGE="${PREV_TAG}..v${{ steps.version.outputs.version }}"
+          fi
+          NOTES=$(git log $RANGE --no-merges --format="%B---" | sed '/^$/d')
+          # Write to file to avoid escaping issues
+          echo "$NOTES" > /tmp/release-notes.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
-          generate_release_notes: true
+          body_path: /tmp/release-notes.md
           make_latest: true
           files: |
             build/factorly-${{ steps.version.outputs.version }}-linux-amd64
