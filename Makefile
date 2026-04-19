@@ -111,13 +111,15 @@ version:
 
 # Generate release notes from commit messages since last tag
 release-notes:
-	@PREV_TAG=$$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo ""); \
+	@CUR_TAG="v$(VERSION)"; \
+	PREV_TAG=$$(git tag --sort=-v:refname | grep -A1 "^$$CUR_TAG$$" | tail -1); \
+	if [ "$$PREV_TAG" = "$$CUR_TAG" ]; then PREV_TAG=""; fi; \
 	if [ -z "$$PREV_TAG" ]; then \
-		RANGE="v$(VERSION)"; \
+		RANGE="$$CUR_TAG"; \
 	else \
-		RANGE="$$PREV_TAG..v$(VERSION)"; \
+		RANGE="$$PREV_TAG..$$CUR_TAG"; \
 	fi; \
-	git log $$RANGE --no-merges --format="%B---" | sed '/^$$/d'
+	git log $$RANGE --no-merges --format="%B---" | sed '/^$$/d' | sed '/^Bump version/,/^---$$/d'
 
 # Cross-platform release builds
 release: clean build

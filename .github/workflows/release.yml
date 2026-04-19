@@ -29,15 +29,16 @@ jobs:
       - name: Generate release notes
         id: notes
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          git fetch --tags
+          CUR_TAG="v${{ steps.version.outputs.version }}"
+          PREV_TAG=$(git tag --sort=-v:refname | grep -A1 "^${CUR_TAG}$" | tail -1)
+          if [ "$PREV_TAG" = "$CUR_TAG" ]; then PREV_TAG=""; fi
           if [ -z "$PREV_TAG" ]; then
-            RANGE="v${{ steps.version.outputs.version }}"
+            RANGE="${CUR_TAG}"
           else
-            RANGE="${PREV_TAG}..v${{ steps.version.outputs.version }}"
+            RANGE="${PREV_TAG}..${CUR_TAG}"
           fi
-          NOTES=$(git log $RANGE --no-merges --format="%B---" | sed '/^$/d')
-          # Write to file to avoid escaping issues
-          echo "$NOTES" > /tmp/release-notes.md
+          git log ${RANGE} --no-merges --format="%B---" | sed '/^$/d' | sed '/^Bump version/,/^---$/d' > /tmp/release-notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
