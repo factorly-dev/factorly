@@ -32,10 +32,35 @@
 
 ## Future?
 
-### Agent integration
+### Agent harness
+- [ ] **`factorly agent`** — lightweight agent loop with tool calling, governance, and run summary ([spec](agent-spec.md))
 - [ ] **PreToolUse hooks** — `factorly hooks install` to intercept agent Bash calls, rewriting them to `factorly exec` for compression and logging without MCP ([spec](hooks-spec.md))
 - [ ] **Command-specific compression** — pattern-based output reduction for git, npm, cargo, test runners (70-90% savings vs generic compression)
 - [ ] **Response caching** — return cached results for identical tool calls within a configurable window, reducing API quota usage and latency
+
+### AARM conformance
+
+Working toward [AARM](https://aarm.dev) (Autonomous Action Runtime Management) Core conformance. AARM defines the security spec for AI agent tool-use interception — pre-execution governance, tamper-evident audit, and identity binding. Factorly already satisfies R1 (pre-execution interception). The remaining gaps are listed below, roughly ordered by value and tractability. Several require the agent harness or a hosted version of Factorly to be fully useful.
+
+#### Already satisfied
+- [x] **R1: Pre-execution interception** — shadow governance intercepts every call; deny blocks before execution; confirm pauses; rate-limit and loop detection block; all decisions logged with reason
+
+#### Near-term (local CLI)
+- [ ] **R5: Hash-chained audit logs** — append SHA-256 hash of (previous_hash + entry) to each JSONL log entry, creating a tamper-evident chain that detects retroactive modification
+- [ ] **R5: Signed receipts** — Ed25519 signatures on log entries for offline verification of audit trail integrity
+- [ ] **R4: MODIFY decision** — parameter transformation before execution (e.g., strip `--force` from git commands, cap SQL `LIMIT` clauses, redact PII from prompts)
+- [ ] **R3: Parameter validation** — type, range, pattern, and allowlist/blocklist checks on tool call arguments beyond current built-in guards
+
+#### Requires agent harness
+- [ ] **R4: DEFER decision** — suspend actions when context is insufficient or ambiguous, resume when context is collected or timeout triggers denial
+- [ ] **R2: Context accumulation** — feed accumulated session state (prior actions, data classifications, original user request) into policy evaluation
+- [ ] **R3: Context-dependent policy** — policies that evaluate against accumulated context, not just static tool names (e.g., "3rd delete in a row", "action diverges from stated intent")
+- [ ] **R7: Semantic distance tracking** — cosine similarity between agent actions and stated intent, with drift thresholds triggering alerts or deferral
+
+#### Requires hosted Factorly
+- [ ] **R6: Full identity binding** — multi-level identity: human principal, service identity, agent identity, session, role/privilege scope
+- [ ] **R9: Least privilege enforcement** — JIT credential issuance with per-operation scoping and minimal validity periods
+- [ ] **R8: Telemetry export** — structured event streaming (OCSF/CEF) to SIEM/SOAR platforms in real time
 
 ### Observability
 - [ ] **Dashboard** — localhost web UI showing live call feed, savings counter, agent activity, blocked call breakdown
