@@ -91,7 +91,7 @@ func fetchLatestVersion() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "factorly-update-check")
+	req.Header.Set("User-Agent", fmt.Sprintf("factorly/%s", internal.Version))
 
 	resp, err := client.Do(req)
 	if err != nil {
