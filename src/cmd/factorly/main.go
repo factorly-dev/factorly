@@ -44,23 +44,29 @@ func vlog(format string, args ...any) {
 }
 
 func main() {
-	// Check for updates in background (at most once per day)
-	updateCh := make(chan update.Result, 1)
-	go func() {
-		updateCh <- update.Check()
-	}()
+	// Check for updates in background (at most once per day).
+	// Skip for "version" command — it does its own synchronous check.
+	var updateCh chan update.Result
+	if len(os.Args) < 2 || os.Args[1] != "version" {
+		updateCh = make(chan update.Result, 1)
+		go func() {
+			updateCh <- update.Check()
+		}()
+	}
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 
 	// Print update message after command completes (non-blocking)
-	select {
-	case result := <-updateCh:
-		if result.Message != "" {
-			fmt.Fprintf(os.Stderr, "\n%s\n", result.Message)
+	if updateCh != nil {
+		select {
+		case result := <-updateCh:
+			if result.Message != "" {
+				fmt.Fprintf(os.Stderr, "\n%s\n", result.Message)
+			}
+		default:
 		}
-	default:
 	}
 }
 
