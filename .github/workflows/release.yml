@@ -38,7 +38,7 @@ jobs:
           else
             RANGE="${PREV_TAG}..${CUR_TAG}"
           fi
-          git log ${RANGE} --no-merges --format="%B---" | sed '/^$/d' | sed '/^Bump version/,/^---$/d' > /tmp/release-notes.md
+          git log ${RANGE} --no-merges --format='%s%n%b%n---%n' | sed '/^Bump version/,/^---$/d' | sed 's/^---$/\n---/' > /tmp/release-notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

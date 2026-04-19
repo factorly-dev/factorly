@@ -119,7 +119,7 @@ release-notes:
 	else \
 		RANGE="$$PREV_TAG..$$CUR_TAG"; \
 	fi; \
-	git log $$RANGE --no-merges --format="%B---" | sed '/^$$/d' | sed '/^Bump version/,/^---$$/d'
+	git log $$RANGE --no-merges --format="%s%n%b%n---%n" | sed '/^Bump version/,/^---$$/d' | sed 's/^---$$/\n---/'
 
 # Cross-platform release builds
 release: clean build
