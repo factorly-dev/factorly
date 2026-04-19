@@ -25,15 +25,32 @@ Factorly is a local proxy between your AI agent and the tools it uses. Secrets s
 
 Install it, and your agent has safe access to GitHub, Slack, Stripe, and 30+ more services, plus any CLI or MCP server, in under a minute.
 
-## Quick start
+## Install
 
-```typescript
+Install with your package manager of choice:
+
+```bash
 npm install -g factorly
   # or: pip install factorly
   # or: go install github.com/factorly-dev/factorly@latest
-
-factorly init
 ```
+
+## Quick Start
+
+Then, define your tools, secure your credentials, and sync with your agent:
+
+```bash
+# 1. Configure your tools or install a template (36 services: GitHub, Slack, Stripe, Linear, Gmail, ...)
+factorly init
+
+# 2. Store your credentials in the encrypted vault
+factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
+
+# 3. Connect to your agent (auto-detects Claude Code, Cursor, Codex)
+factorly sync
+```
+
+The agent never sees your credentials. Factorly injected it, made the API call, logged it, and returned the data.
 
 ---
 
@@ -41,7 +58,9 @@ factorly init
 
 Most MCP setups today expose secrets too broadly — API keys in `.env` files, OAuth tokens in config, credentials inherited from your user permissions. That means weak isolation, inconsistent policy enforcement, and incomplete audit trails.
 
-## How it works
+## The solution
+
+Your agent connects to Factorly as a single MCP server or CLI tool.
 
 ```
 ┌────────────┐       ┌────────────┐       ┌────────────┐
@@ -59,8 +78,6 @@ Most MCP setups today expose secrets too broadly — API keys in `.env` files, O
   Tokens               data, never secrets  data
   Credentials
 ```
-
-Your agent connects to Factorly as a single MCP server or CLI tool.
 
 Factorly proxies every call, injecting real credentials server-side, enforcing policy, and logging everything.
 
