@@ -144,8 +144,7 @@ func (p *Policy) checkRateLimit(toolName string, rule *Rule, agentID string) err
 	}
 	allowed, remaining, err := p.rateStore.Check(key, rule.RateLimit.Count, rule.RateLimit.Window)
 	if err != nil {
-		// Rate store error — allow the call but warn
-		return nil
+		return fmt.Errorf("tool %q rate limit check failed (failing closed): %w", toolName, err)
 	}
 	if !allowed {
 		return fmt.Errorf("tool %q rate limited: %d/%s exceeded (resets in %s)",

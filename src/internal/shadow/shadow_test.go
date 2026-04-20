@@ -388,6 +388,26 @@ func TestRateLimitAgentScoped(t *testing.T) {
 	}
 }
 
+// --- Rate Limit Fail-Closed ---
+
+func TestRateLimitFailsClosed(t *testing.T) {
+	// Point rate store at an unwritable path to force errors
+	p := New(map[string]*Rule{
+		"api": {RateLimit: &RateLimit{Count: 10, Window: time.Minute}},
+	}, nil, "/dev/null/invalid/ratelimit.json")
+
+	action, err := p.Check(context.Background(), "api.call", nil, "cli")
+	if err == nil {
+		t.Fatal("expected error when rate store is broken")
+	}
+	if action != ActionRateLimited {
+		t.Errorf("expected ActionRateLimited, got %s", action)
+	}
+	if !strings.Contains(err.Error(), "failing closed") {
+		t.Errorf("expected 'failing closed' in error, got: %s", err.Error())
+	}
+}
+
 // --- Loop Detection Integration ---
 
 func TestLoopDetectionIntegrationWithPolicy(t *testing.T) {

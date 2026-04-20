@@ -5,6 +5,7 @@ package shadow
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -44,7 +45,7 @@ func NewRateStore(path string) *RateStore {
 func (s *RateStore) Check(toolName string, limit int, window time.Duration) (bool, time.Duration, error) {
 	entries, err := s.load()
 	if err != nil {
-		entries = make(map[string]*rateEntry)
+		return false, 0, fmt.Errorf("loading rate state: %w", err)
 	}
 
 	now := time.Now()
