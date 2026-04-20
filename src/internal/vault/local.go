@@ -91,17 +91,20 @@ func OpenLocalAt(path string, password []byte) (*LocalBackend, error) {
 
 	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		zeroize(password)
 		return nil, fmt.Errorf("creating vault directory: %w", err)
 	}
 
 	data, err := b.readWithSharedLock()
 	if err != nil {
 		if !os.IsNotExist(err) {
+			zeroize(password)
 			return nil, fmt.Errorf("reading vault: %w", err)
 		}
 		// New vault — create v2 directly
 		b.salt = make([]byte, saltLen)
 		if _, err := rand.Read(b.salt); err != nil {
+			zeroize(password)
 			return nil, fmt.Errorf("generating salt: %w", err)
 		}
 		b.key = deriveKey(password, b.salt)
@@ -111,6 +114,7 @@ func OpenLocalAt(path string, password []byte) (*LocalBackend, error) {
 
 	// Existing vault — decrypt outer layer
 	if len(data) < saltLen+nonceLen+1 {
+		zeroize(password)
 		return nil, fmt.Errorf("vault file is corrupt (too small)")
 	}
 
