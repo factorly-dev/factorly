@@ -6,8 +6,12 @@ package oauth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -188,5 +192,433 @@ func TestTokenBundleJSON(t *testing.T) {
 	}
 	if !decoded.Expiry.Equal(bundle.Expiry) {
 		t.Errorf("expected same expiry, got %v", decoded.Expiry)
+	}
+}
+
+// --- exchangeCode tests ---
+
+func TestExchangeCodeSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.FormValue("grant_type") != "authorization_code" {
+			t.Errorf("expected grant_type=authorization_code, got %s", r.FormValue("grant_type"))
+		}
+		if r.FormValue("code") != "test-auth-code" {
+			t.Errorf("expected code=test-auth-code, got %s", r.FormValue("code"))
+		}
+		if r.FormValue("code_verifier") != "test-verifier" {
+			t.Errorf("expected code_verifier=test-verifier, got %s", r.FormValue("code_verifier"))
+		}
+		if r.FormValue("redirect_uri") != "http://localhost:18019/callback" {
+			t.Errorf("expected redirect_uri, got %s", r.FormValue("redirect_uri"))
+		}
+		if r.FormValue("client_id") != "my-client" {
+			t.Errorf("expected client_id=my-client, got %s", r.FormValue("client_id"))
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "exchanged-token",
+			"refresh_token": "exchanged-refresh",
+			"token_type":    "bearer",
+			"expires_in":    7200,
+		})
+	}))
+	defer srv.Close()
+
+	cfg := ProviderConfig{ClientID: "my-client", TokenURL: srv.URL}
+	bundle, err := exchangeCode(context.Background(), cfg, "test-auth-code", "http://localhost:18019/callback", "test-verifier")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.AccessToken != "exchanged-token" {
+		t.Errorf("expected exchanged-token, got %s", bundle.AccessToken)
+	}
+	if bundle.RefreshToken != "exchanged-refresh" {
+		t.Errorf("expected exchanged-refresh, got %s", bundle.RefreshToken)
+	}
+}
+
+func TestExchangeCodeWithClientSecret(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.FormValue("client_secret") != "my-secret" {
+			t.Errorf("expected client_secret=my-secret, got %q", r.FormValue("client_secret"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "token",
+			"token_type":   "bearer",
+		})
+	}))
+	defer srv.Close()
+
+	cfg := ProviderConfig{ClientID: "id", ClientSecret: "my-secret", TokenURL: srv.URL}
+	_, err := exchangeCode(context.Background(), cfg, "code", "http://localhost/cb", "verifier")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExchangeCodeWithoutClientSecret(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.FormValue("client_secret") != "" {
+			t.Errorf("expected no client_secret, got %q", r.FormValue("client_secret"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "token",
+			"token_type":   "bearer",
+		})
+	}))
+	defer srv.Close()
+
+	cfg := ProviderConfig{ClientID: "id", TokenURL: srv.URL}
+	_, err := exchangeCode(context.Background(), cfg, "code", "http://localhost/cb", "verifier")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// --- tokenRequest error path tests ---
+
+func TestTokenRequestInvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, "not json at all")
+	}))
+	defer srv.Close()
+
+	_, err := tokenRequest(context.Background(), srv.URL, url.Values{"grant_type": {"test"}})
+	if err == nil {
+		t.Fatal("expected error for invalid JSON response")
+	}
+	if !strings.Contains(err.Error(), "parsing token response") {
+		t.Errorf("expected 'parsing token response' in error, got: %s", err.Error())
+	}
+}
+
+func TestTokenRequestMissingAccessToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"token_type": "bearer",
+			"expires_in": 3600,
+		})
+	}))
+	defer srv.Close()
+
+	_, err := tokenRequest(context.Background(), srv.URL, url.Values{"grant_type": {"test"}})
+	if err == nil {
+		t.Fatal("expected error for missing access_token")
+	}
+	if !strings.Contains(err.Error(), "missing access_token") {
+		t.Errorf("expected 'missing access_token' in error, got: %s", err.Error())
+	}
+}
+
+func TestTokenRequestOAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":             "invalid_client",
+			"error_description": "client authentication failed",
+		})
+	}))
+	defer srv.Close()
+
+	_, err := tokenRequest(context.Background(), srv.URL, url.Values{"grant_type": {"test"}})
+	if err == nil {
+		t.Fatal("expected error for OAuth error response")
+	}
+	if !strings.Contains(err.Error(), "invalid_client") {
+		t.Errorf("expected 'invalid_client' in error, got: %s", err.Error())
+	}
+}
+
+func TestTokenRequestNoExpiresIn(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "token-no-expiry",
+			"token_type":   "bearer",
+		})
+	}))
+	defer srv.Close()
+
+	bundle, err := tokenRequest(context.Background(), srv.URL, url.Values{"grant_type": {"test"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bundle.Expiry.IsZero() {
+		t.Errorf("expected zero expiry when expires_in not set, got %v", bundle.Expiry)
+	}
+}
+
+func TestTokenRequestHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, "internal server error")
+	}))
+	defer srv.Close()
+
+	_, err := tokenRequest(context.Background(), srv.URL, url.Values{"grant_type": {"test"}})
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("expected '500' in error, got: %s", err.Error())
+	}
+}
+
+// --- LoginFlow tests ---
+
+// waitForPort polls until the given port is listening or timeout expires.
+func waitForPort(t *testing.T, port int, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 50*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("port %d not listening after %s", port, timeout)
+}
+
+func TestLoginFlowSuccess(t *testing.T) {
+	// Mock token endpoint
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "login-access-token",
+			"refresh_token": "login-refresh-token",
+			"token_type":    "bearer",
+			"expires_in":    3600,
+		})
+	}))
+	defer tokenSrv.Close()
+
+	// Capture auth URL to extract state
+	var capturedURL string
+	origFn := openBrowserFn
+	openBrowserFn = func(u string) { capturedURL = u }
+	defer func() { openBrowserFn = origFn }()
+
+	cfg := ProviderConfig{
+		ClientID: "test-client",
+		AuthURL:  "http://example.com/auth",
+		TokenURL: tokenSrv.URL,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resultCh := make(chan *TokenBundle, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		bundle, err := LoginFlow(ctx, cfg)
+		if err != nil {
+			errCh <- err
+		} else {
+			resultCh <- bundle
+		}
+	}()
+
+	// Wait for callback server to start
+	waitForPort(t, 18019, 2*time.Second)
+
+	// Extract state from captured auth URL
+	parsed, err := url.Parse(capturedURL)
+	if err != nil {
+		t.Fatalf("parsing captured URL: %v", err)
+	}
+	state := parsed.Query().Get("state")
+	if state == "" {
+		t.Fatal("expected state in auth URL")
+	}
+
+	// Simulate browser callback
+	callbackURL := fmt.Sprintf("http://127.0.0.1:18019/callback?code=test-code&state=%s", url.QueryEscape(state))
+	resp, err := http.Get(callbackURL)
+	if err != nil {
+		t.Fatalf("hitting callback: %v", err)
+	}
+	resp.Body.Close()
+
+	select {
+	case bundle := <-resultCh:
+		if bundle.AccessToken != "login-access-token" {
+			t.Errorf("expected login-access-token, got %s", bundle.AccessToken)
+		}
+		if bundle.RefreshToken != "login-refresh-token" {
+			t.Errorf("expected login-refresh-token, got %s", bundle.RefreshToken)
+		}
+	case err := <-errCh:
+		t.Fatalf("LoginFlow error: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("LoginFlow timed out")
+	}
+}
+
+func TestLoginFlowStateMismatch(t *testing.T) {
+	origFn := openBrowserFn
+	openBrowserFn = func(string) {}
+	defer func() { openBrowserFn = origFn }()
+
+	cfg := ProviderConfig{
+		ClientID: "test",
+		AuthURL:  "http://example.com/auth",
+		TokenURL: "http://example.com/token",
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := LoginFlow(ctx, cfg)
+		errCh <- err
+	}()
+
+	waitForPort(t, 18019, 2*time.Second)
+
+	// Send callback with wrong state
+	resp, err := http.Get("http://127.0.0.1:18019/callback?code=test-code&state=wrong-state")
+	if err != nil {
+		t.Fatalf("hitting callback: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for state mismatch, got %d", resp.StatusCode)
+	}
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("expected error for state mismatch")
+		}
+		if !strings.Contains(err.Error(), "state mismatch") {
+			t.Errorf("expected 'state mismatch' in error, got: %s", err.Error())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("LoginFlow didn't return after state mismatch")
+	}
+}
+
+func TestLoginFlowMissingCode(t *testing.T) {
+	var capturedURL string
+	origFn := openBrowserFn
+	openBrowserFn = func(u string) { capturedURL = u }
+	defer func() { openBrowserFn = origFn }()
+
+	cfg := ProviderConfig{
+		ClientID: "test",
+		AuthURL:  "http://example.com/auth",
+		TokenURL: "http://example.com/token",
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := LoginFlow(ctx, cfg)
+		errCh <- err
+	}()
+
+	waitForPort(t, 18019, 2*time.Second)
+
+	parsed, _ := url.Parse(capturedURL)
+	state := parsed.Query().Get("state")
+
+	// Send callback with correct state but no code
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:18019/callback?state=%s", url.QueryEscape(state)))
+	if err != nil {
+		t.Fatalf("hitting callback: %v", err)
+	}
+	resp.Body.Close()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("expected error for missing code")
+		}
+		if !strings.Contains(err.Error(), "no authorization code") {
+			t.Errorf("expected 'no authorization code' in error, got: %s", err.Error())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("LoginFlow didn't return")
+	}
+}
+
+func TestLoginFlowProviderError(t *testing.T) {
+	var capturedURL string
+	origFn := openBrowserFn
+	openBrowserFn = func(u string) { capturedURL = u }
+	defer func() { openBrowserFn = origFn }()
+
+	cfg := ProviderConfig{
+		ClientID: "test",
+		AuthURL:  "http://example.com/auth",
+		TokenURL: "http://example.com/token",
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := LoginFlow(ctx, cfg)
+		errCh <- err
+	}()
+
+	waitForPort(t, 18019, 2*time.Second)
+
+	parsed, _ := url.Parse(capturedURL)
+	state := parsed.Query().Get("state")
+
+	// Send callback with OAuth error
+	callbackURL := fmt.Sprintf("http://127.0.0.1:18019/callback?state=%s&error=access_denied&error_description=user+denied", url.QueryEscape(state))
+	resp, err := http.Get(callbackURL)
+	if err != nil {
+		t.Fatalf("hitting callback: %v", err)
+	}
+	resp.Body.Close()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("expected error for provider error")
+		}
+		if !strings.Contains(err.Error(), "access_denied") {
+			t.Errorf("expected 'access_denied' in error, got: %s", err.Error())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("LoginFlow didn't return")
+	}
+}
+
+func TestLoginFlowTimeout(t *testing.T) {
+	origFn := openBrowserFn
+	openBrowserFn = func(string) {}
+	defer func() { openBrowserFn = origFn }()
+
+	cfg := ProviderConfig{
+		ClientID: "test",
+		AuthURL:  "http://example.com/auth",
+		TokenURL: "http://example.com/token",
+	}
+
+	// Already-expired context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := LoginFlow(ctx, cfg)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(err.Error(), "timed out") {
+		t.Errorf("expected 'timed out' in error, got: %s", err.Error())
 	}
 }

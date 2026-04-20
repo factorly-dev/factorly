@@ -162,7 +162,7 @@ func LoginFlow(ctx context.Context, cfg ProviderConfig) (*TokenBundle, error) {
 	// Open browser
 	fmt.Printf("Opening browser for authorization...\n")
 	fmt.Printf("If the browser doesn't open, visit:\n%s\n\n", authURL.String())
-	openBrowser(authURL.String())
+	openBrowserFn(authURL.String())
 
 	// Wait for callback
 	var code string
@@ -270,6 +270,9 @@ func tokenRequest(ctx context.Context, tokenURL string, data url.Values) (*Token
 
 	return bundle, nil
 }
+
+// openBrowserFn is a var so tests can override it.
+var openBrowserFn = openBrowser
 
 func openBrowser(url string) {
 	var cmd *exec.Cmd
