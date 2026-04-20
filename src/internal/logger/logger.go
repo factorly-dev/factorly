@@ -182,48 +182,103 @@ func VerifyChain(path string) (verified, skipped int, err error) {
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 64*1024), 512*1024)
 
+	// Collect all entries
+	type parsedLine struct {
+		lineNum int
+		raw     []byte
+		entry   *Entry
+	}
+	var lines []parsedLine
 	lineNum := 0
-	prevHash := ZeroHash
-
 	for scanner.Scan() {
 		lineNum++
-		line := scanner.Bytes()
-
+		raw := make([]byte, len(scanner.Bytes()))
+		copy(raw, scanner.Bytes())
 		var entry Entry
-		if err := json.Unmarshal(line, &entry); err != nil {
+		if err := json.Unmarshal(raw, &entry); err != nil {
+			lines = append(lines, parsedLine{lineNum, raw, nil})
+			continue
+		}
+		lines = append(lines, parsedLine{lineNum, raw, &entry})
+	}
+
+	// Find the last chain_reset marker
+	lastReset := -1
+	for i, l := range lines {
+		if l.entry != nil && IsChainReset(l.entry) {
+			lastReset = i
+		}
+	}
+
+	// Determine verification start: after the last reset, or from the beginning
+	startIdx := 0
+	prevHash := ZeroHash
+
+	if lastReset >= 0 {
+		resetEntry := lines[lastReset].entry
+		// Verify the reset marker's own hash
+		recordedHash := resetEntry.Hash
+		resetCopy := *resetEntry
+		resetCopy.Hash = ""
+		payload, _ := json.Marshal(&resetCopy)
+		computed := ComputeHash(resetCopy.PrevHash, payload)
+		if computed != recordedHash {
+			return 0, 0, &ChainError{
+				Line:     lines[lastReset].lineNum,
+				Message:  "invalid chain_reset marker",
+				Expected: computed,
+				Got:      recordedHash,
+			}
+		}
+		prevHash = recordedHash
+		verified = 1 // count the reset marker
+		startIdx = lastReset + 1
+		// Everything before the reset is skipped
+		for i := 0; i < lastReset; i++ {
+			if lines[i].entry != nil {
+				skipped++
+			}
+		}
+	}
+
+	// Verify chain from start point
+	for i := startIdx; i < len(lines); i++ {
+		l := lines[i]
+		if l.entry == nil {
 			continue
 		}
 
 		// Pre-upgrade entries without hash — skip
-		if entry.Hash == "" {
+		if l.entry.Hash == "" {
 			skipped++
 			continue
 		}
 
-		if entry.PrevHash != prevHash {
+		if l.entry.PrevHash != prevHash {
 			return verified, skipped, &ChainError{
-				Line:     lineNum,
+				Line:     l.lineNum,
 				Message:  "chain broken",
 				Expected: prevHash,
-				Got:      entry.PrevHash,
+				Got:      l.entry.PrevHash,
 			}
 		}
 
 		// Recompute hash
-		recordedHash := entry.Hash
-		entry.Hash = ""
-		payload, err := json.Marshal(&entry)
+		recordedHash := l.entry.Hash
+		entryCopy := *l.entry
+		entryCopy.Hash = ""
+		payload, err := json.Marshal(&entryCopy)
 		if err != nil {
 			return verified, skipped, &ChainError{
-				Line:    lineNum,
+				Line:    l.lineNum,
 				Message: "marshal error: " + err.Error(),
 			}
 		}
 
-		computed := ComputeHash(entry.PrevHash, payload)
+		computed := ComputeHash(entryCopy.PrevHash, payload)
 		if computed != recordedHash {
 			return verified, skipped, &ChainError{
-				Line:     lineNum,
+				Line:     l.lineNum,
 				Message:  "hash mismatch",
 				Expected: computed,
 				Got:      recordedHash,
@@ -253,6 +308,65 @@ func (e *ChainError) Error() string {
 		return fmt.Sprintf("line %d: %s: expected %s, got %s", e.Line, e.Message, e.Expected, e.Got)
 	}
 	return fmt.Sprintf("line %d: %s", e.Line, e.Message)
+}
+
+// RepairChain appends a chain_reset marker to the log file. The marker's
+// prev_hash is a SHA-256 hash of the entire file contents before the marker,
+// binding it to the complete history. New entries chain from the marker's hash.
+// Existing entries are never modified. Returns true if a reset was appended.
+func RepairChain(path string) (bool, error) {
+	// Check if repair is needed
+	_, _, verifyErr := VerifyChain(path)
+	if verifyErr == nil {
+		return false, nil
+	}
+
+	// Hash the entire file contents
+	fileData, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	fileHash := sha256.Sum256(fileData)
+	fileHashHex := hex.EncodeToString(fileHash[:])
+
+	// Build the reset marker
+	resetEntry := &Entry{
+		Timestamp: time.Now(),
+		Interface: "system",
+		Tool:      "chain_reset",
+		Status:    "repair",
+		Output:    fmt.Sprintf("chain repaired — prev_hash is SHA-256 of file contents (%d bytes)", len(fileData)),
+		PrevHash:  fileHashHex,
+	}
+	resetEntry.Hash = ""
+	payload, err := json.Marshal(resetEntry)
+	if err != nil {
+		return false, fmt.Errorf("marshaling reset entry: %w", err)
+	}
+	resetEntry.Hash = ComputeHash(fileHashHex, payload)
+
+	line, err := json.Marshal(resetEntry)
+	if err != nil {
+		return false, fmt.Errorf("marshaling reset entry: %w", err)
+	}
+	line = append(line, '\n')
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return false, fmt.Errorf("opening log file: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := f.Write(line); err != nil {
+		return false, fmt.Errorf("writing reset marker: %w", err)
+	}
+
+	return true, nil
+}
+
+// IsChainReset returns true if the entry is a chain_reset marker.
+func IsChainReset(e *Entry) bool {
+	return e.Tool == "chain_reset" && e.Status == "repair"
 }
 
 // NopLogger is a no-op logger for testing or when logging is disabled.

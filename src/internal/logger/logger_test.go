@@ -5,6 +5,8 @@ package logger
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -629,6 +631,174 @@ func TestVerifyChainPreUpgradeEntries(t *testing.T) {
 	if verified != 1 {
 		t.Errorf("expected 1 verified entry, got %d", verified)
 	}
+}
+
+func TestRepairChainFixesBreak(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.jsonl")
+
+	// Create a broken chain using dual loggers
+	l1, err := NewJSONL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l1.Log(&Entry{
+		Timestamp: time.Now(), Interface: "cli", Tool: "shell",
+		Params: map[string]string{}, Status: "success",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	l2, err := NewJSONL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l2.Log(&Entry{
+		Timestamp: time.Now(), Interface: "vault", Tool: "vault.set",
+		Params: map[string]string{"key": "X"}, Status: "success",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	l2.Close()
+
+	if err := l1.Log(&Entry{
+		Timestamp: time.Now(), Interface: "cli", Tool: "shell",
+		Params: map[string]string{}, Status: "success",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	l1.Close()
+
+	// Verify it's broken
+	_, _, err = VerifyChain(path)
+	if err == nil {
+		t.Fatal("expected broken chain before repair")
+	}
+
+	// Repair — appends a reset marker
+	repaired, err := RepairChain(path)
+	if err != nil {
+		t.Fatalf("repair failed: %v", err)
+	}
+	if !repaired {
+		t.Fatal("expected repair to append a reset marker")
+	}
+
+	// New entries after reset should chain from the marker
+	l3, err := NewJSONL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l3.Log(&Entry{
+		Timestamp: time.Now(), Interface: "cli", Tool: "test",
+		Params: map[string]string{}, Status: "success",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	l3.Close()
+
+	// Verify: entries before the break are still broken, but the reset
+	// marker + new entries form a valid chain from the marker onward.
+	// VerifyChain accepts reset markers as valid chain restart points.
+	verified, _, err := VerifyChain(path)
+	if err != nil {
+		t.Fatalf("chain should verify after repair + new entry: %v", err)
+	}
+	if verified < 2 {
+		t.Errorf("expected at least 2 verified (reset marker + new entry), got %d", verified)
+	}
+}
+
+func TestRepairChainNoBreaks(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.jsonl")
+	l, err := NewJSONL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if err := l.Log(&Entry{
+			Timestamp: time.Now(), Interface: "cli", Tool: "test",
+			Params: map[string]string{}, Status: "success",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l.Close()
+
+	repaired, err := RepairChain(path)
+	if err != nil {
+		t.Fatalf("repair failed: %v", err)
+	}
+	if repaired {
+		t.Error("expected no repair needed for clean chain")
+	}
+}
+
+func TestRepairChainMarkerHasFileHash(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.jsonl")
+
+	// Create a broken chain
+	l1, err := NewJSONL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l1.Log(&Entry{
+		Timestamp: time.Now(), Interface: "cli", Tool: "test",
+		Params: map[string]string{}, Status: "success",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	l2, err := NewJSONL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l2.Log(&Entry{
+		Timestamp: time.Now(), Interface: "cli", Tool: "test",
+		Params: map[string]string{}, Status: "success",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	l2.Close()
+
+	if err := l1.Log(&Entry{
+		Timestamp: time.Now(), Interface: "cli", Tool: "test",
+		Params: map[string]string{}, Status: "success",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	l1.Close()
+
+	// Snapshot file contents before repair
+	fileBeforeRepair, _ := os.ReadFile(path)
+
+	// Repair
+	_, err = RepairChain(path)
+	if err != nil {
+		t.Fatalf("repair failed: %v", err)
+	}
+
+	// Find the reset marker and verify its prevHash is the file hash
+	data, _ := os.ReadFile(path)
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	for _, line := range lines {
+		var entry Entry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		if IsChainReset(&entry) {
+			// Compute expected file hash
+			h := sha256.Sum256(fileBeforeRepair)
+			expectedHash := hex.EncodeToString(h[:])
+			if entry.PrevHash != expectedHash {
+				t.Errorf("reset marker prev_hash should be SHA-256 of file contents\nexpected: %s\ngot:      %s", expectedHash, entry.PrevHash)
+			}
+			if entry.Interface != "system" {
+				t.Errorf("expected interface=system, got %q", entry.Interface)
+			}
+			return
+		}
+	}
+	t.Error("expected to find a chain_reset marker")
 }
 
 func TestVerifyChainDeletedEntry(t *testing.T) {

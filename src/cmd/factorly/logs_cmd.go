@@ -30,6 +30,7 @@ var (
 	logsDetail    bool
 	logsStats     bool
 	logsVerify    bool
+	logsRepair    bool
 )
 
 var logsCmd = &cobra.Command{
@@ -48,11 +49,15 @@ func init() {
 	logsCmd.Flags().BoolVar(&logsDetail, "detail", false, "show full entry details")
 	logsCmd.Flags().BoolVar(&logsStats, "stats", false, "show summary statistics")
 	logsCmd.Flags().BoolVar(&logsVerify, "verify", false, "verify hash chain integrity")
+	logsCmd.Flags().BoolVar(&logsRepair, "repair", false, "repair broken hash chain (inserts reset markers)")
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
 	if err := checkCommandAllowed("logs"); err != nil {
 		return err
+	}
+	if logsRepair {
+		return runLogsRepair()
 	}
 	if logsVerify {
 		return runLogsVerify()
@@ -417,11 +422,31 @@ func runLogsStats() error {
 	} else {
 		msg := fmt.Sprintf("    %s entries verified", formatCount(verified))
 		if skipped > 0 {
-			msg += fmt.Sprintf(", %s pre-upgrade entries skipped", formatCount(skipped))
+			msg += fmt.Sprintf(", %s entries before chain reset skipped", formatCount(skipped))
 		}
 		fmt.Println(msg)
 	}
 
+	return nil
+}
+
+func runLogsRepair() error {
+	logPath := logger.DefaultLogPath()
+
+	repaired, err := logger.RepairChain(logPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("No log file found.")
+			return nil
+		}
+		return fmt.Errorf("repair failed: %w", err)
+	}
+
+	if !repaired {
+		fmt.Println("No chain breaks found — nothing to repair.")
+	} else {
+		fmt.Println("Chain reset marker appended. Run --verify to confirm.")
+	}
 	return nil
 }
 
@@ -439,7 +464,7 @@ func runLogsVerify() error {
 
 	fmt.Printf("Chain verified: %d entries OK", verified)
 	if skipped > 0 {
-		fmt.Printf(" (%d pre-upgrade entries skipped)", skipped)
+		fmt.Printf(" (%d entries before chain reset skipped)", skipped)
 	}
 	fmt.Println()
 	return nil
