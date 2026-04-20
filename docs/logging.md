@@ -42,9 +42,10 @@ factorly logs -n 50              # last 50 entries
 factorly logs --tool github      # filter by tool name
 factorly logs --status blocked   # filter by status
 factorly logs --detail           # show full entry details
-factorly logs --stats            # summary statistics (includes chain integrity)
-factorly logs --verify           # verify hash chain integrity
 factorly logs -f                 # follow mode (tail -f)
+factorly logs stats              # summary statistics (includes chain integrity)
+factorly logs verify             # verify hash chain integrity
+factorly logs repair             # repair broken hash chain
 ```
 
 ### Examples
@@ -60,10 +61,10 @@ $ factorly logs -n 5
   2026-04-17 09:15:50  factorly.shell          blocked     0ms
 ```
 
-**Summary statistics** — `factorly logs --stats` gives a quick overview of call volume, success rates, most-used tools, output savings, and blocked calls:
+**Summary statistics** — `factorly logs stats` gives a quick overview of call volume, success rates, most-used tools, output savings, and blocked calls:
 
 ```
-$ factorly logs --stats
+$ factorly logs stats
   Log: ~/.config/factorly/calls.jsonl (194 entries)
 
   By Status:
@@ -151,17 +152,31 @@ This creates a tamper-evident log — modifying or deleting any entry breaks the
 
 ```bash
 # Verify the full chain
-$ factorly logs --verify
+$ factorly logs verify
 Chain verified: 194 entries OK
 
 # Stats also show chain status
-$ factorly logs --stats
+$ factorly logs stats
   ...
   Hash Chain:
     194 entries verified
 ```
 
-Pre-upgrade entries (written before hash chaining was added) are skipped during verification. The first post-upgrade entry starts a new chain.
+Entries written before hash chaining was added are skipped during verification.
+
+### Repairing a broken chain
+
+If the chain is broken (e.g., from an upgrade or a bug), repair it:
+
+```bash
+$ factorly logs repair
+Chain reset marker appended. Run --verify to confirm.
+
+$ factorly logs verify
+Chain verified: 5 entries OK (224 entries before chain reset skipped)
+```
+
+Repair appends a `chain_reset` marker to the end of the log. The marker's `prev_hash` is a SHA-256 hash of the entire file contents, binding it to the complete history. New entries chain from the marker. Existing entries are never modified.
 
 ## Security
 

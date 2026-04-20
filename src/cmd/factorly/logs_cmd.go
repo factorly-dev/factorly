@@ -28,15 +28,45 @@ var (
 	logsAgent     string
 	logsFollow    bool
 	logsDetail    bool
-	logsStats     bool
-	logsVerify    bool
-	logsRepair    bool
 )
 
 var logsCmd = &cobra.Command{
 	Use:   "logs",
 	Short: "View the tool call audit log",
 	RunE:  runLogs,
+}
+
+var logsStatsCmd = &cobra.Command{
+	Use:   "stats",
+	Short: "Show summary statistics",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := checkCommandAllowed("logs"); err != nil {
+			return err
+		}
+		return runLogsStats()
+	},
+}
+
+var logsVerifyCmd = &cobra.Command{
+	Use:   "verify",
+	Short: "Verify hash chain integrity",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := checkCommandAllowed("logs"); err != nil {
+			return err
+		}
+		return runLogsVerify()
+	},
+}
+
+var logsRepairCmd = &cobra.Command{
+	Use:   "repair",
+	Short: "Repair broken hash chain (appends reset marker)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := checkCommandAllowed("logs"); err != nil {
+			return err
+		}
+		return runLogsRepair()
+	},
 }
 
 func init() {
@@ -47,23 +77,15 @@ func init() {
 	logsCmd.Flags().StringVar(&logsAgent, "agent", "", "filter by agent ID")
 	logsCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "follow mode (tail -f style)")
 	logsCmd.Flags().BoolVar(&logsDetail, "detail", false, "show full entry details")
-	logsCmd.Flags().BoolVar(&logsStats, "stats", false, "show summary statistics")
-	logsCmd.Flags().BoolVar(&logsVerify, "verify", false, "verify hash chain integrity")
-	logsCmd.Flags().BoolVar(&logsRepair, "repair", false, "repair broken hash chain (inserts reset markers)")
+
+	logsCmd.AddCommand(logsStatsCmd)
+	logsCmd.AddCommand(logsVerifyCmd)
+	logsCmd.AddCommand(logsRepairCmd)
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
 	if err := checkCommandAllowed("logs"); err != nil {
 		return err
-	}
-	if logsRepair {
-		return runLogsRepair()
-	}
-	if logsVerify {
-		return runLogsVerify()
-	}
-	if logsStats {
-		return runLogsStats()
 	}
 
 	logPath := logger.DefaultLogPath()
