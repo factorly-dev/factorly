@@ -126,18 +126,57 @@ filter:
 
 Factorly ships with built-in filters for common commands. These apply automatically when `factorly.shell` or `factorly exec` runs a recognized command and no user-defined filter is configured.
 
+### Build & test
+
+| Command | Strategy |
+|---------|----------|
+| `make` | Strip entering/leaving directory, short-circuit "Nothing to be done" |
+| `go test` | Keep PASS/FAIL/ok lines, short-circuit all-pass |
+| `cargo test` | Strip Compiling lines, short-circuit "test result: ok" |
+| `cargo build` | Strip Compiling lines, short-circuit "Finished" |
+| `pytest` | Strip platform/plugin noise, short-circuit all-passed |
+| `npm test` | Strip warnings, max 100 lines |
+| `pnpm test` | Max 100 lines |
+
+### Package managers
+
+| Command | Strategy |
+|---------|----------|
+| `npm install` | Strip warnings, short-circuit "up to date" / "added N packages" |
+| `pnpm install` | Strip progress, short-circuit "Already up to date" |
+| `pip install` | Strip "already satisfied", short-circuit "Successfully installed" |
+| `apt install` | Strip Hit/Get/Reading/Building noise, max 30 lines |
+| `apt update` | Strip Hit/Get lines, short-circuit "All packages are up to date" |
+| `brew install` | Strip download progress, short-circuit "already installed" |
+
+### Git
+
 | Command | Strategy |
 |---------|----------|
 | `git status` | Strip hint lines ("use git add..."), max 30 lines |
 | `git log` | Max 50 lines |
 | `git diff` | Max 200 lines |
-| `make` | Strip entering/leaving directory, short-circuit "Nothing to be done" |
-| `npm install` | Strip warnings, short-circuit "up to date" / "added N packages" |
-| `pnpm install` | Strip progress, short-circuit "Already up to date" |
-| `go test` | Keep PASS/FAIL/ok lines, short-circuit all-pass |
-| `cargo test` | Strip Compiling lines, short-circuit "test result: ok" |
-| `cargo build` | Strip Compiling lines, short-circuit "Finished" |
-| `pip install` | Strip "already satisfied", short-circuit "Successfully installed" |
+
+### Shell & system
+
+| Command | Strategy |
+|---------|----------|
+| `find` | Max 100 lines |
+| `grep` | Max 100 lines |
+| `rg` | Max 100 lines |
+| `ps` | Max 50 lines |
+
+### Containers & infrastructure
+
+| Command | Strategy |
+|---------|----------|
+| `docker ps` | Max 50 lines |
+| `docker logs` | Max 100 lines |
+| `kubectl get` | Max 50 lines |
+| `kubectl describe` | Max 100 lines |
+| `kubectl logs` | Max 100 lines |
+| `terraform plan` | Strip "Refreshing state", short-circuit "No changes" |
+| `terraform apply` | Strip "Refreshing state", max 100 lines |
 
 Built-in filters are overridden by any user-defined `filter:` on the tool.
 

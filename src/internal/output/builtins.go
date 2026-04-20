@@ -164,6 +164,173 @@ var builtinFilters = []builtinFilter{
 			MaxLines: 30,
 		},
 	},
+	// --- Shell / system commands ---
+	{
+		prefix: "find ",
+		filter: &Filter{
+			MaxLines: 100,
+		},
+	},
+	{
+		prefix: "grep ",
+		filter: &Filter{
+			MaxLines: 100,
+		},
+	},
+	{
+		prefix: "rg ",
+		filter: &Filter{
+			MaxLines: 100,
+		},
+	},
+	{
+		prefix: "ps ",
+		filter: &Filter{
+			MaxLines: 50,
+		},
+	},
+	{
+		prefix: "docker ps",
+		filter: &Filter{
+			MaxLines: 50,
+		},
+	},
+	{
+		prefix: "docker logs",
+		filter: &Filter{
+			MaxLines: 100,
+		},
+	},
+	{
+		prefix: "kubectl get",
+		filter: &Filter{
+			MaxLines: 50,
+		},
+	},
+	{
+		prefix: "kubectl describe",
+		filter: &Filter{
+			MaxLines: 100,
+		},
+	},
+	{
+		prefix: "kubectl logs",
+		filter: &Filter{
+			MaxLines: 100,
+		},
+	},
+	// --- Test runners ---
+	{
+		prefix: "pytest",
+		filter: &Filter{
+			StripLines: []*regexp.Regexp{
+				regexp.MustCompile(`^plugins:`),
+				regexp.MustCompile(`^collecting `),
+				regexp.MustCompile(`^platform `),
+			},
+			MatchOutput: []MatchRule{
+				{
+					Pattern: regexp.MustCompile(`passed`),
+					Message: "ok (all tests passed)",
+					Unless:  regexp.MustCompile(`failed|error`),
+				},
+			},
+			MaxLines: 100,
+		},
+	},
+	{
+		prefix: "npm test",
+		filter: &Filter{
+			StripLines: []*regexp.Regexp{
+				regexp.MustCompile(`^npm warn`),
+				regexp.MustCompile(`^\s*$`),
+			},
+			MaxLines: 100,
+		},
+	},
+	{
+		prefix: "pnpm test",
+		filter: &Filter{
+			StripLines: []*regexp.Regexp{
+				regexp.MustCompile(`^\s*$`),
+			},
+			MaxLines: 100,
+		},
+	},
+	// --- Package managers ---
+	{
+		prefix: "apt install",
+		filter: &Filter{
+			StripLines: []*regexp.Regexp{
+				regexp.MustCompile(`^\s*$`),
+				regexp.MustCompile(`^Hit:`),
+				regexp.MustCompile(`^Get:`),
+				regexp.MustCompile(`^Reading `),
+				regexp.MustCompile(`^Building `),
+			},
+			MaxLines: 30,
+		},
+	},
+	{
+		prefix: "apt update",
+		filter: &Filter{
+			StripLines: []*regexp.Regexp{
+				regexp.MustCompile(`^Hit:`),
+				regexp.MustCompile(`^Get:`),
+			},
+			MatchOutput: []MatchRule{
+				{
+					Pattern: regexp.MustCompile(`All packages are up to date`),
+					Message: "ok (up to date)",
+				},
+			},
+			MaxLines: 30,
+		},
+	},
+	{
+		prefix: "brew install",
+		filter: &Filter{
+			StripLines: []*regexp.Regexp{
+				regexp.MustCompile(`^==> Downloading`),
+				regexp.MustCompile(`^Already downloaded`),
+				regexp.MustCompile(`^###`),
+			},
+			MatchOutput: []MatchRule{
+				{
+					Pattern: regexp.MustCompile(`already installed`),
+					Message: "ok (already installed)",
+				},
+			},
+			MaxLines: 30,
+		},
+	},
+	// --- Infrastructure ---
+	{
+		prefix: "terraform plan",
+		filter: &Filter{
+			StripLines: []*regexp.Regexp{
+				regexp.MustCompile(`Refreshing state\.\.\.`),
+				regexp.MustCompile(`^\s*$`),
+			},
+			MatchOutput: []MatchRule{
+				{
+					Pattern: regexp.MustCompile(`No changes`),
+					Message: "ok (no changes)",
+				},
+			},
+			MaxLines: 100,
+		},
+	},
+	{
+		prefix: "terraform apply",
+		filter: &Filter{
+			StripLines: []*regexp.Regexp{
+				regexp.MustCompile(`Refreshing state\.\.\.`),
+				regexp.MustCompile(`^\s*$`),
+			},
+			MaxLines: 100,
+		},
+	},
 }
 
 // BuiltinFilter returns the built-in filter for the given command string,

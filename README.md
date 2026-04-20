@@ -160,7 +160,7 @@ $ factorly logs -f    # follow in real time
 
 ### Output compression
 
-Agent tools return too much data. Factorly compresses JSON, deduplicates log output, filters command-specific noise, and truncates to head + tail — saving tokens without losing signal. Built-in filters for git, make, npm, go test, cargo, and pip apply automatically. Savings tracked per-call in the audit log.
+Agent tools return too much data. Factorly compresses JSON, deduplicates log output, filters command-specific noise, and truncates to head + tail — saving tokens without losing signal. 27 built-in filters for common commands (git, make, npm, go, cargo, pytest, pip, docker, kubectl, terraform, and more) apply automatically. Savings tracked per-call in the audit log.
 
 ## Docs
 

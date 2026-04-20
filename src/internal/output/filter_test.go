@@ -327,6 +327,83 @@ func TestBuiltinFilterGoTestFail(t *testing.T) {
 	}
 }
 
+func TestBuiltinFilterFind(t *testing.T) {
+	f := BuiltinFilter("find . -name '*.go'")
+	if f == nil {
+		t.Fatal("expected built-in filter for find")
+	}
+	if f.MaxLines != 100 {
+		t.Errorf("expected max_lines=100, got %d", f.MaxLines)
+	}
+}
+
+func TestBuiltinFilterPytest(t *testing.T) {
+	f := BuiltinFilter("pytest tests/")
+	if f == nil {
+		t.Fatal("expected built-in filter for pytest")
+	}
+	got := f.Apply("platform linux\ncollecting ...\nplugins: cov-4.0\ntest_foo.py::test_one PASSED\n1 passed in 0.5s")
+	if got != "ok (all tests passed)" {
+		t.Errorf("expected short-circuit, got %q", got)
+	}
+}
+
+func TestBuiltinFilterPytestFail(t *testing.T) {
+	f := BuiltinFilter("pytest")
+	if f == nil {
+		t.Fatal("expected built-in filter for pytest")
+	}
+	input := "platform linux\ntest_foo.py::test_one PASSED\ntest_bar.py::test_two failed\n1 passed, 1 failed"
+	got := f.Apply(input)
+	if got == "ok (all tests passed)" {
+		t.Error("should not short-circuit when tests fail")
+	}
+}
+
+func TestBuiltinFilterAptUpdate(t *testing.T) {
+	f := BuiltinFilter("apt update")
+	if f == nil {
+		t.Fatal("expected built-in filter for apt update")
+	}
+	got := f.Apply("Hit:1 http://archive.ubuntu.com\nGet:2 http://security.ubuntu.com\nAll packages are up to date.")
+	if got != "ok (up to date)" {
+		t.Errorf("expected short-circuit, got %q", got)
+	}
+}
+
+func TestBuiltinFilterBrewInstall(t *testing.T) {
+	f := BuiltinFilter("brew install jq")
+	if f == nil {
+		t.Fatal("expected built-in filter for brew install")
+	}
+	got := f.Apply("Warning: jq 1.7 is already installed and up-to-date.")
+	if got != "ok (already installed)" {
+		t.Errorf("expected short-circuit, got %q", got)
+	}
+}
+
+func TestBuiltinFilterTerraformPlanNoChanges(t *testing.T) {
+	f := BuiltinFilter("terraform plan")
+	if f == nil {
+		t.Fatal("expected built-in filter for terraform plan")
+	}
+	input := "Refreshing state...\nRefreshing state...\nNo changes. Your infrastructure matches the configuration."
+	got := f.Apply(input)
+	if got != "ok (no changes)" {
+		t.Errorf("expected short-circuit, got %q", got)
+	}
+}
+
+func TestBuiltinFilterDockerPs(t *testing.T) {
+	f := BuiltinFilter("docker ps -a")
+	if f == nil {
+		t.Fatal("expected built-in filter for docker ps")
+	}
+	if f.MaxLines != 50 {
+		t.Errorf("expected max_lines=50, got %d", f.MaxLines)
+	}
+}
+
 func TestBuiltinFilterNoMatch(t *testing.T) {
 	f := BuiltinFilter("some-unknown-command --flag")
 	if f != nil {

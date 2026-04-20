@@ -205,7 +205,7 @@ Output passes through these stages in order:
 
 ### Filters
 
-Per-tool output filters for command-aware compression — strip noise lines, short-circuit verbose output to summaries, regex replace, and line-based truncation. Factorly ships with 10 built-in filters for common commands (git, make, npm, go test, cargo, pip) that apply automatically.
+Per-tool output filters for command-aware compression — strip noise lines, short-circuit verbose output to summaries, regex replace, and line-based truncation. Factorly ships with 27 built-in filters for common commands (git, make, npm, go, cargo, pytest, pip, apt, brew, docker, kubectl, terraform) that apply automatically.
 
 See [Output Filters](filters.md) for the full filter schema, stages, and built-in filter list.
 
