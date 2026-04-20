@@ -241,6 +241,128 @@ func TestCompileFilterInvalidRegex(t *testing.T) {
 	}
 }
 
+// --- Built-in filter tests ---
+
+func TestBuiltinFilterGitStatus(t *testing.T) {
+	f := BuiltinFilter("git status")
+	if f == nil {
+		t.Fatal("expected built-in filter for git status")
+	}
+	input := "On branch main\n" +
+		"Changes not staged for commit:\n" +
+		"  (use \"git add <file>...\" to update what will be committed)\n" +
+		"  (use \"git restore <file>...\" to discard changes in working directory)\n" +
+		"\tmodified:   file.go\n"
+	got := f.Apply(input)
+	if strings.Contains(got, "(use \"git") {
+		t.Error("expected hint lines to be stripped")
+	}
+	if !strings.Contains(got, "modified:   file.go") {
+		t.Error("expected modified file to be kept")
+	}
+}
+
+func TestBuiltinFilterMake(t *testing.T) {
+	f := BuiltinFilter("make build")
+	if f == nil {
+		t.Fatal("expected built-in filter for make")
+	}
+	input := "make[1]: Entering directory '/project'\ncc -o main main.c\nmake[1]: Leaving directory '/project'"
+	got := f.Apply(input)
+	if strings.Contains(got, "Entering directory") {
+		t.Error("expected directory messages to be stripped")
+	}
+	if !strings.Contains(got, "cc -o main") {
+		t.Error("expected compile command to be kept")
+	}
+}
+
+func TestBuiltinFilterMakeNothingToDo(t *testing.T) {
+	f := BuiltinFilter("make")
+	if f == nil {
+		t.Fatal("expected built-in filter for make")
+	}
+	got := f.Apply("make: Nothing to be done for 'all'.")
+	if got != "ok (nothing to do)" {
+		t.Errorf("expected short-circuit, got %q", got)
+	}
+}
+
+func TestBuiltinFilterNpmInstallUpToDate(t *testing.T) {
+	f := BuiltinFilter("npm install")
+	if f == nil {
+		t.Fatal("expected built-in filter for npm install")
+	}
+	got := f.Apply("up to date, audited 450 packages")
+	if got != "ok (up to date)" {
+		t.Errorf("expected short-circuit, got %q", got)
+	}
+}
+
+func TestBuiltinFilterGoTestPass(t *testing.T) {
+	f := BuiltinFilter("go test ./...")
+	if f == nil {
+		t.Fatal("expected built-in filter for go test")
+	}
+	got := f.Apply("PASS\nok  pkg 0.1s")
+	if got != "ok (all tests passed)" {
+		t.Errorf("expected short-circuit, got %q", got)
+	}
+}
+
+func TestBuiltinFilterGoTestFail(t *testing.T) {
+	f := BuiltinFilter("go test ./...")
+	if f == nil {
+		t.Fatal("expected built-in filter for go test")
+	}
+	input := "--- FAIL: TestFoo (0.00s)\nFAIL\nFAIL pkg 0.1s\nexit status 1"
+	got := f.Apply(input)
+	// Should NOT short-circuit because FAIL is present
+	if got == "ok (all tests passed)" {
+		t.Error("should not short-circuit when tests fail")
+	}
+	// Should keep the failure lines
+	if !strings.Contains(got, "FAIL") {
+		t.Error("expected FAIL lines to be kept")
+	}
+}
+
+func TestBuiltinFilterNoMatch(t *testing.T) {
+	f := BuiltinFilter("some-unknown-command --flag")
+	if f != nil {
+		t.Error("expected nil for unknown command")
+	}
+}
+
+func TestBuiltinFilterPipInstall(t *testing.T) {
+	f := BuiltinFilter("pip install requests")
+	if f == nil {
+		t.Fatal("expected built-in filter for pip install")
+	}
+	input := "Requirement already satisfied: requests in /lib/python3.12\n" +
+		"Requirement already satisfied: urllib3 in /lib/python3.12\n" +
+		"Successfully installed requests-2.31.0"
+	got := f.Apply(input)
+	if got != "ok (installed)" {
+		t.Errorf("expected short-circuit, got %q", got)
+	}
+}
+
+func TestBuiltinFilterCargoTestPass(t *testing.T) {
+	f := BuiltinFilter("cargo test")
+	if f == nil {
+		t.Fatal("expected built-in filter for cargo test")
+	}
+	input := "   Compiling mylib v0.1.0\n" +
+		"   Compiling myapp v0.1.0\n" +
+		"running 5 tests\n" +
+		"test result: ok. 5 passed; 0 failed"
+	got := f.Apply(input)
+	if got != "ok (all tests passed)" {
+		t.Errorf("expected short-circuit, got %q", got)
+	}
+}
+
 func TestCompileFilterFull(t *testing.T) {
 	cfg := &FilterConfig{
 		MatchOutput: []MatchOutputConfig{

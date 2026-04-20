@@ -146,10 +146,18 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 			hints = append(hints, output.Hint(h))
 		}
 
+		// Resolve filter: user-defined > built-in (for shell/exec commands)
+		filter := tool.Filter
+		if filter == nil {
+			if cmd := params["command"]; cmd != "" {
+				filter = output.BuiltinFilter(cmd)
+			}
+		}
+
 		// Apply compression + truncation
-		if len(hints) > 0 || maxOutput > 0 || tool.Filter != nil {
+		if len(hints) > 0 || maxOutput > 0 || filter != nil {
 			originalBytes = len(result.Output)
-			result.Output = output.Process(result.Output, maxOutput, tool.Filter, hints...)
+			result.Output = output.Process(result.Output, maxOutput, filter, hints...)
 			processedBytes = len(result.Output)
 		}
 	}
