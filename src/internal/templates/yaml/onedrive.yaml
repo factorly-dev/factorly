@@ -63,6 +63,7 @@ onedrive.create_folder:
       required: true
       in: body
     - name: folder
+      description: Parent folder path or ID
       required: true
       in: body
   shadow:

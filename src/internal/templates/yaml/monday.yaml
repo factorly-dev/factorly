@@ -9,6 +9,7 @@ monday.list_items:
     token: "{{vault:MONDAY_API_KEY}}"
   parameters:
     - name: query
+      description: GraphQL query to list items on a board
       required: true
       in: body
 
@@ -40,6 +41,7 @@ monday.list_boards:
     token: "{{vault:MONDAY_API_KEY}}"
   parameters:
     - name: query
+      description: GraphQL query to list boards
       required: true
       in: body
 
