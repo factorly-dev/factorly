@@ -54,6 +54,8 @@ Practical, copy-paste examples for every Factorly feature. Each is self-containe
 | 21 | [Environment Isolation](21-environment-isolation.md) | Restrict child process environment to essential variables only |
 | 22 | [Output Compression](22-output-compression.md) | Compact JSON, collapse repeated log lines, strip ANSI codes |
 | 23 | [Large Output Truncation](23-large-output-truncation.md) | Cap output size with head+tail truncation |
+| 28 | [Output Filters](28-output-filters.md) | Strip noise, short-circuit success, keep/replace lines, head/tail |
+| 29 | [Pipe Filters](29-pipe-filters.md) | Pipe output through jq, grep, sed, or custom scripts |
 
 ## CLI Power Tools
 
