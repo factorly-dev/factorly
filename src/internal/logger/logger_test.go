@@ -350,6 +350,83 @@ func TestHashChainAcrossRestart(t *testing.T) {
 	}
 }
 
+func TestHashChainInterleavedInterfaces(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.jsonl")
+	l, err := NewJSONL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+
+	// Simulate proxy and vault ops interleaved on the same logger
+	entries := []Entry{
+		{Timestamp: time.Now(), Interface: "cli", Tool: "shell", Params: map[string]string{"command": "git status"}, Status: "success"},
+		{Timestamp: time.Now(), Interface: "vault", Tool: "vault.set", Params: map[string]string{"key": "TOKEN"}, Status: "success"},
+		{Timestamp: time.Now(), Interface: "cli", Tool: "shell", Params: map[string]string{"command": "make"}, Status: "success"},
+		{Timestamp: time.Now(), Interface: "vault", Tool: "vault.get", Params: map[string]string{"key": "TOKEN"}, Status: "success"},
+		{Timestamp: time.Now(), Interface: "mcp", Tool: "github.list_repos", Params: map[string]string{}, Status: "success"},
+	}
+	for i := range entries {
+		if err := l.Log(&entries[i]); err != nil {
+			t.Fatalf("entry %d: %v", i, err)
+		}
+	}
+
+	verified, _, err := VerifyChain(path)
+	if err != nil {
+		t.Fatalf("chain broken with interleaved interfaces: %v", err)
+	}
+	if verified != 5 {
+		t.Errorf("expected 5 verified entries, got %d", verified)
+	}
+}
+
+func TestHashChainBrokenByDualLoggers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.jsonl")
+
+	// Logger 1: long-lived (simulates proxy logger)
+	l1, err := NewJSONL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l1.Close()
+
+	// Write first entry via logger 1
+	if err := l1.Log(&Entry{
+		Timestamp: time.Now(), Interface: "cli", Tool: "shell",
+		Params: map[string]string{}, Status: "success",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Logger 2: short-lived (simulates the old logVaultOp bug)
+	l2, err := NewJSONL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l2.Log(&Entry{
+		Timestamp: time.Now(), Interface: "vault", Tool: "vault.set",
+		Params: map[string]string{"key": "X"}, Status: "success",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	l2.Close()
+
+	// Logger 1 writes again — its prevHash is stale (doesn't know about l2's entry)
+	if err := l1.Log(&Entry{
+		Timestamp: time.Now(), Interface: "cli", Tool: "shell",
+		Params: map[string]string{}, Status: "success",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Chain should be broken — this is the bug we fixed by unifying loggers
+	_, _, err = VerifyChain(path)
+	if err == nil {
+		t.Fatal("expected chain to be broken when two loggers write to the same file")
+	}
+}
+
 func TestVerifyChainDetectsTampering(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.jsonl")
 

@@ -19,15 +19,21 @@ import (
 
 // logVaultOp logs a vault operation to the JSONL audit trail.
 // Never logs secret values — only the operation and key name.
+// Uses the shared process-wide logger to maintain hash chain integrity.
 func logVaultOp(op string, key string, status string) {
-	if os.Getenv("FACTORLY_NO_LOG") != "" {
-		return
+	log := sharedLogger
+	if log == nil {
+		// Fallback: vault commands can run before bootstrap (e.g., factorly vault set)
+		if os.Getenv("FACTORLY_NO_LOG") != "" {
+			return
+		}
+		fallback, err := logger.NewJSONL("")
+		if err != nil {
+			return
+		}
+		defer fallback.Close()
+		log = fallback
 	}
-	log, err := logger.NewJSONL("")
-	if err != nil {
-		return
-	}
-	defer log.Close()
 
 	entry := &logger.Entry{
 		Timestamp: time.Now(),

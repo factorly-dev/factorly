@@ -37,6 +37,10 @@ var verbose bool
 var wrapMode bool
 var serveMode string // "stdio" or "http" — controls built-in tool registration
 
+// sharedLogger is the process-wide logger instance, set during bootstrap.
+// Used by logVaultOp to avoid creating a second logger (which would break hash chains).
+var sharedLogger logger.Logger
+
 func vlog(format string, args ...any) {
 	if verbose {
 		fmt.Fprintf(os.Stderr, "[factorly] "+format+"\n", args...)
@@ -673,6 +677,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			logIface = log
 		}
 	}
+	sharedLogger = logIface
 
 	// Build shadow policy from config
 	var proxyOpts []proxy.Option
