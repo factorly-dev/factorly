@@ -4,9 +4,14 @@
 package output
 
 import (
+	"bytes"
+	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Filter defines a per-tool output filtering pipeline.
@@ -19,7 +24,20 @@ type Filter struct {
 	HeadLines   int
 	TailLines   int
 	MaxLines    int
+	Pipe        *PipeCommand // CLI pipe (executed directly)
+	PipeFn      PipeFunc     // injected pipe (for REST/MCP, set by proxy)
 }
+
+// PipeCommand defines a CLI command to pipe output through.
+type PipeCommand struct {
+	Command string
+	Args    []string
+	Timeout time.Duration
+}
+
+// PipeFunc is a function that pipes output through an external tool.
+// Used for REST/MCP pipes where the proxy injects the execution logic.
+type PipeFunc func(input string) (string, error)
 
 // MatchRule short-circuits the entire output if Pattern matches.
 type MatchRule struct {
@@ -78,7 +96,24 @@ func (f *Filter) Apply(s string) string {
 		lines = append(lines, fmt.Sprintf("... truncated to %d lines", f.MaxLines))
 	}
 
-	return strings.Join(lines, "\n")
+	result := strings.Join(lines, "\n")
+
+	// Stage f: pipe through external tool
+	if f.PipeFn != nil {
+		if piped, err := f.PipeFn(result); err == nil {
+			result = piped
+		} else {
+			fmt.Fprintf(os.Stderr, "warning: filter pipe failed: %v\n", err)
+		}
+	} else if f.Pipe != nil {
+		if piped, err := runPipe(f.Pipe, result); err == nil {
+			result = piped
+		} else {
+			fmt.Fprintf(os.Stderr, "warning: filter pipe failed: %v\n", err)
+		}
+	}
+
+	return result
 }
 
 func stripMatching(lines []string, patterns []*regexp.Regexp) []string {
@@ -109,6 +144,28 @@ func matchesAny(s string, patterns []*regexp.Regexp) bool {
 		}
 	}
 	return false
+}
+
+func runPipe(pipe *PipeCommand, input string) (string, error) {
+	timeout := pipe.Timeout
+	if timeout == 0 {
+		timeout = 5 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, pipe.Command, pipe.Args...)
+	cmd.Stdin = strings.NewReader(input)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%s: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	return stdout.String(), nil
 }
 
 func headTail(lines []string, head, tail int) []string {

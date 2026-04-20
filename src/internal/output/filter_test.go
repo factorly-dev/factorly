@@ -4,9 +4,11 @@
 package output
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFilterNil(t *testing.T) {
@@ -209,6 +211,272 @@ func TestFilterCombined(t *testing.T) {
 	}
 	if result[3] != "0 warnings" {
 		t.Errorf("expected '0 warnings' at index 3, got %q", result[3])
+	}
+}
+
+// --- Pipe tests ---
+
+func TestFilterPipe(t *testing.T) {
+	f := &Filter{
+		Pipe: &PipeCommand{
+			Command: "head",
+			Args:    []string{"-2"},
+		},
+	}
+	input := "line1\nline2\nline3\nline4\nline5"
+	got := f.Apply(input)
+	if got != "line1\nline2\n" {
+		t.Errorf("expected first 2 lines, got %q", got)
+	}
+}
+
+func TestFilterPipeWithGrep(t *testing.T) {
+	f := &Filter{
+		Pipe: &PipeCommand{
+			Command: "grep",
+			Args:    []string{"ERROR"},
+		},
+	}
+	input := "INFO: starting\nERROR: failed\nINFO: done\nERROR: timeout"
+	got := f.Apply(input)
+	expected := "ERROR: failed\nERROR: timeout\n"
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestFilterPipeFailsFallback(t *testing.T) {
+	f := &Filter{
+		Pipe: &PipeCommand{
+			Command: "/nonexistent/command",
+		},
+	}
+	input := "original output"
+	got := f.Apply(input)
+	if got != "original output" {
+		t.Errorf("expected fallback to original output, got %q", got)
+	}
+}
+
+func TestFilterPipeTimeout(t *testing.T) {
+	f := &Filter{
+		Pipe: &PipeCommand{
+			Command: "sleep",
+			Args:    []string{"10"},
+			Timeout: 100 * time.Millisecond,
+		},
+	}
+	input := "test"
+	got := f.Apply(input)
+	// Should fall back to original on timeout
+	if got != "test" {
+		t.Errorf("expected fallback on timeout, got %q", got)
+	}
+}
+
+func TestFilterPipeAfterOtherStages(t *testing.T) {
+	f := &Filter{
+		StripLines: []*regexp.Regexp{regexp.MustCompile(`^DEBUG`)},
+		Pipe: &PipeCommand{
+			Command: "wc",
+			Args:    []string{"-l"},
+		},
+	}
+	input := "DEBUG: skip\nINFO: keep\nDEBUG: skip\nINFO: also keep\n"
+	got := strings.TrimSpace(f.Apply(input))
+	// After strip: "INFO: keep\nINFO: also keep\n" (2 lines + trailing newline) → wc -l → "2"
+	if got != "2" {
+		t.Errorf("expected '2' lines after strip+pipe, got %q", got)
+	}
+}
+
+func TestCompileFilterPipe(t *testing.T) {
+	cfg := &FilterConfig{
+		Pipe: &PipeConfig{
+			Command: "jq",
+			Args:    []string{".items[:10]"},
+			Timeout: "10s",
+		},
+	}
+	f := CompileFilter(cfg)
+	if f == nil {
+		t.Fatal("expected non-nil filter with pipe")
+	}
+	if f.Pipe == nil {
+		t.Fatal("expected pipe to be compiled")
+	}
+	if f.Pipe.Command != "jq" {
+		t.Errorf("expected command=jq, got %q", f.Pipe.Command)
+	}
+	if f.Pipe.Timeout != 10*time.Second {
+		t.Errorf("expected timeout=10s, got %v", f.Pipe.Timeout)
+	}
+}
+
+func TestFilterPipeEmptyInput(t *testing.T) {
+	f := &Filter{
+		Pipe: &PipeCommand{
+			Command: "cat",
+		},
+	}
+	got := f.Apply("")
+	if got != "" {
+		t.Errorf("expected empty output for empty input, got %q", got)
+	}
+}
+
+func TestFilterPipeEmptyOutput(t *testing.T) {
+	f := &Filter{
+		Pipe: &PipeCommand{
+			Command: "grep",
+			Args:    []string{"NOTFOUND"},
+		},
+	}
+	// grep returns exit code 1 when no match — should fallback
+	input := "line1\nline2\nline3"
+	got := f.Apply(input)
+	// grep with no matches exits non-zero → fallback to original
+	if got != input {
+		t.Errorf("expected fallback when grep finds nothing, got %q", got)
+	}
+}
+
+func TestFilterPipeOnly(t *testing.T) {
+	// Filter with only pipe configured (no regex stages)
+	f := &Filter{
+		Pipe: &PipeCommand{
+			Command: "sort",
+		},
+	}
+	input := "cherry\napple\nbanana"
+	got := strings.TrimRight(f.Apply(input), "\n")
+	if got != "apple\nbanana\ncherry" {
+		t.Errorf("expected sorted output, got %q", got)
+	}
+}
+
+func TestFilterMatchOutputSkipsPipe(t *testing.T) {
+	// When match_output short-circuits, pipe should NOT run
+	f := &Filter{
+		MatchOutput: []MatchRule{
+			{Pattern: regexp.MustCompile(`success`), Message: "ok"},
+		},
+		Pipe: &PipeCommand{
+			Command: "this-should-not-run",
+		},
+	}
+	got := f.Apply("command completed with success")
+	if got != "ok" {
+		t.Errorf("expected match_output short-circuit before pipe, got %q", got)
+	}
+}
+
+func TestFilterPipeWithSed(t *testing.T) {
+	f := &Filter{
+		Pipe: &PipeCommand{
+			Command: "sed",
+			Args:    []string{"s/foo/bar/g"},
+		},
+	}
+	input := "foo is foo"
+	got := strings.TrimRight(f.Apply(input), "\n")
+	if got != "bar is bar" {
+		t.Errorf("expected sed substitution, got %q", got)
+	}
+}
+
+func TestFilterPipeDefaultTimeout(t *testing.T) {
+	// Pipe with no timeout specified should use 5s default (not hang forever)
+	f := &Filter{
+		Pipe: &PipeCommand{
+			Command: "cat",
+		},
+	}
+	got := f.Apply("quick input")
+	if !strings.Contains(got, "quick input") {
+		t.Errorf("expected cat to echo input, got %q", got)
+	}
+}
+
+func TestCompileFilterPipeNoTimeout(t *testing.T) {
+	cfg := &FilterConfig{
+		Pipe: &PipeConfig{
+			Command: "cat",
+		},
+	}
+	f := CompileFilter(cfg)
+	if f == nil || f.Pipe == nil {
+		t.Fatal("expected compiled pipe")
+	}
+	if f.Pipe.Timeout != 0 {
+		t.Errorf("expected zero timeout (will use default at runtime), got %v", f.Pipe.Timeout)
+	}
+}
+
+func TestCompileFilterPipeInvalidTimeout(t *testing.T) {
+	cfg := &FilterConfig{
+		Pipe: &PipeConfig{
+			Command: "cat",
+			Timeout: "not-a-duration",
+		},
+	}
+	f := CompileFilter(cfg)
+	if f == nil || f.Pipe == nil {
+		t.Fatal("expected compiled pipe despite invalid timeout")
+	}
+	if f.Pipe.Timeout != 0 {
+		t.Errorf("expected zero timeout for invalid duration, got %v", f.Pipe.Timeout)
+	}
+}
+
+func TestFilterPipeFn(t *testing.T) {
+	f := &Filter{
+		PipeFn: func(input string) (string, error) {
+			return "transformed: " + input, nil
+		},
+	}
+	got := f.Apply("hello")
+	if got != "transformed: hello" {
+		t.Errorf("expected PipeFn result, got %q", got)
+	}
+}
+
+func TestFilterPipeFnError(t *testing.T) {
+	f := &Filter{
+		PipeFn: func(input string) (string, error) {
+			return "", fmt.Errorf("pipe error")
+		},
+	}
+	got := f.Apply("original")
+	if got != "original" {
+		t.Errorf("expected fallback on PipeFn error, got %q", got)
+	}
+}
+
+func TestFilterPipeFnTakesPrecedence(t *testing.T) {
+	f := &Filter{
+		Pipe: &PipeCommand{
+			Command: "cat", // this should NOT run
+		},
+		PipeFn: func(input string) (string, error) {
+			return "from-pipefn", nil
+		},
+	}
+	got := f.Apply("input")
+	if got != "from-pipefn" {
+		t.Errorf("expected PipeFn to take precedence, got %q", got)
+	}
+}
+
+func TestCompileFilterPipeEmptyCommand(t *testing.T) {
+	cfg := &FilterConfig{
+		Pipe: &PipeConfig{
+			Command: "",
+		},
+	}
+	f := CompileFilter(cfg)
+	if f != nil {
+		t.Error("expected nil filter when pipe command is empty")
 	}
 }
 

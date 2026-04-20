@@ -180,6 +180,58 @@ Factorly ships with built-in filters for common commands. These apply automatica
 
 Built-in filters are overridden by any user-defined `filter:` on the tool.
 
+### pipe
+
+Pipe output through an external tool. The previous stages' output becomes the input, and the tool's response replaces it. Pipe supports all tool types — CLI, REST, and MCP — using the same config shape as any other tool definition.
+
+If the tool fails or times out (default 5s), the output passes through unfiltered.
+
+**CLI pipe** — output piped to stdin, stdout becomes the new output:
+
+```yaml
+filter:
+  pipe:
+    command: jq
+    args: [".items[:10]"]
+    timeout: 5s
+```
+
+```yaml
+# Custom filter script
+filter:
+  pipe:
+    command: ./scripts/filter-output.sh
+    args: ["--format", "compact"]
+    timeout: 10s
+```
+
+**REST pipe** — output POSTed to an API endpoint:
+
+```yaml
+filter:
+  pipe:
+    type: rest
+    base_url: https://api.example.com
+    method: POST
+    path: /summarize
+    auth:
+      type: bearer
+      token: "{{vault:API_KEY}}"
+    timeout: 10s
+```
+
+**MCP pipe** — output passed to a tool on an MCP server:
+
+```yaml
+filter:
+  pipe:
+    type: mcp
+    tool: summarize
+    timeout: 10s
+```
+
+Pipe runs after all other filter stages, so the tool receives clean (ANSI-stripped, line-filtered) input.
+
 ## Full schema
 
 ```yaml
@@ -202,9 +254,19 @@ filter:
   head_lines: 10                 # int, keep first N lines
   tail_lines: 5                  # int, keep last N lines
   max_lines: 50                  # int, absolute cap
+
+  pipe:                          # external tool filter (cli, rest, or mcp)
+    type: "cli"                  # "cli" (default), "rest", or "mcp"
+    command: "executable"        # CLI: command to run
+    args: ["arg1", "arg2"]       # CLI: arguments
+    base_url: "https://..."      # REST: endpoint
+    method: "POST"               # REST: HTTP method
+    path: "/filter"              # REST: path
+    tool: "tool_name"            # MCP: tool to call
+    timeout: "5s"                # optional, default 5s
 ```
 
-All regex patterns use Go's [regexp syntax](https://pkg.go.dev/regexp/syntax). Invalid patterns are logged as warnings and skipped — they won't break your config or block tool execution.
+All regex patterns use Go's [regexp syntax](https://pkg.go.dev/regexp/syntax). Invalid patterns are logged as warnings and skipped. Pipe tools that fail or timeout fall back to unfiltered output.
 
 ---
 

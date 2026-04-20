@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"time"
 )
 
 // FilterConfig is the raw YAML/config representation of a filter.
@@ -18,6 +19,26 @@ type FilterConfig struct {
 	HeadLines   int                 `yaml:"head_lines,omitempty"`
 	TailLines   int                 `yaml:"tail_lines,omitempty"`
 	MaxLines    int                 `yaml:"max_lines,omitempty"`
+	Pipe        *PipeConfig         `yaml:"pipe,omitempty"`
+}
+
+// PipeConfig is the YAML representation of a pipe tool.
+// For CLI pipes, command/args are used directly.
+// For REST/MCP pipes, the proxy resolves execution at runtime.
+type PipeConfig struct {
+	Type    string   `yaml:"type,omitempty"`    // "cli" (default), "rest", "mcp"
+	Command string   `yaml:"command,omitempty"` // CLI: executable
+	Args    []string `yaml:"args,omitempty"`    // CLI: arguments
+	Timeout string   `yaml:"timeout,omitempty"` // e.g. "5s", "10s"
+
+	// REST fields
+	BaseURL string            `yaml:"base_url,omitempty"`
+	Method  string            `yaml:"method,omitempty"`
+	Path    string            `yaml:"path,omitempty"`
+	Headers map[string]string `yaml:"headers,omitempty"`
+
+	// MCP fields
+	Tool string `yaml:"tool,omitempty"` // MCP tool name to call
 }
 
 // MatchOutputConfig is the YAML representation of a match_output rule.
@@ -78,9 +99,34 @@ func CompileFilter(cfg *FilterConfig) *Filter {
 		f.Replace = append(f.Replace, ReplaceRule{Pattern: p, Replacement: r.Replacement})
 	}
 
+	if cfg.Pipe != nil {
+		pipeType := cfg.Pipe.Type
+		if pipeType == "" && cfg.Pipe.Command != "" {
+			pipeType = "cli"
+		}
+		if pipeType == "cli" && cfg.Pipe.Command != "" {
+			pipe := &PipeCommand{
+				Command: cfg.Pipe.Command,
+				Args:    cfg.Pipe.Args,
+			}
+			if cfg.Pipe.Timeout != "" {
+				if d, err := time.ParseDuration(cfg.Pipe.Timeout); err == nil {
+					pipe.Timeout = d
+				} else {
+					fmt.Fprintf(os.Stderr, "warning: invalid pipe timeout %q: %v\n", cfg.Pipe.Timeout, err)
+				}
+			}
+			f.Pipe = pipe
+		}
+		// REST/MCP pipes: the proxy sets f.PipeFn at runtime after reading PipeConfig
+		// from the tool's FilterConfig. Nothing to compile here.
+	}
+
 	// Return nil if nothing was configured (avoids empty filter overhead)
+	hasPipe := f.Pipe != nil || (cfg.Pipe != nil && (cfg.Pipe.Type == "rest" || cfg.Pipe.Type == "mcp"))
 	if len(f.MatchOutput) == 0 && len(f.StripLines) == 0 && len(f.KeepLines) == 0 &&
-		len(f.Replace) == 0 && f.HeadLines == 0 && f.TailLines == 0 && f.MaxLines == 0 {
+		len(f.Replace) == 0 && f.HeadLines == 0 && f.TailLines == 0 && f.MaxLines == 0 &&
+		!hasPipe {
 		return nil
 	}
 

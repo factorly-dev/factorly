@@ -110,6 +110,11 @@ tools:
       head_lines: 10                 # keep first N lines
       tail_lines: 5                  # keep last N lines (inserts omission marker)
       max_lines: 50                  # absolute line count cap
+      pipe:                          # pipe output through external tool (cli, rest, mcp)
+        type: cli                  # cli (default), rest, or mcp
+        command: jq
+        args: [".items[:10]"]
+        timeout: 5s
 
 ```
 
