@@ -35,7 +35,7 @@
 ### Agent harness
 - [ ] **`factorly agent`** — lightweight agent loop with tool calling, governance, and run summary ([spec](agent-spec.md))
 - [ ] **PreToolUse hooks** — `factorly hooks install` to intercept agent Bash calls, rewriting them to `factorly exec` for compression and logging without MCP ([spec](hooks-spec.md))
-- [ ] **Command-specific compression** — pattern-based output reduction for git, npm, cargo, test runners (70-90% savings vs generic compression)
+- [x] **Command-specific filtering** — per-tool output filter engine with strip/keep lines, match_output short-circuit, regex replace, head/tail, max_lines + 10 built-in filters for git, make, npm, go test, cargo, pip
 - [ ] **Response caching** — return cached results for identical tool calls within a configurable window, reducing API quota usage and latency
 
 ### AARM conformance

@@ -93,6 +93,24 @@ tools:
       allow_paths: []                # override denied file paths (built-in tools)
       allow_urls: []                 # override denied URLs (built-in tools)
 
+    filter:                          # optional, command-aware output filtering
+      match_output:                  # short-circuit: replace output with message
+        - pattern: "Build complete"
+          message: "ok (build succeeded)"
+          unless: "error|Error|FAIL"
+      strip_lines:                   # drop lines matching any regex
+        - "^\\s*$"
+        - "^\\[INFO\\]"
+      keep_lines:                    # keep only matching lines (mutually exclusive with strip_lines)
+        - "^FAIL"
+        - "^PASS"
+      replace:                       # regex substitutions (applied in order)
+        - pattern: "/home/\\w+"
+          replacement: "~"
+      head_lines: 10                 # keep first N lines
+      tail_lines: 5                  # keep last N lines (inserts omission marker)
+      max_lines: 50                  # absolute line count cap
+
 ```
 
 ## Secret references
@@ -160,7 +178,7 @@ Interactive tools connect stdin/stdout/stderr directly to your terminal. Output 
 
 ## Output Processing
 
-Control how tool output is compressed and truncated before it reaches the agent.
+Control how tool output is compressed, filtered, and truncated before it reaches the agent.
 
 ### Per-tool config
 
@@ -174,17 +192,22 @@ tools:
     compress: ["json", "logs"] # or "all" for everything
 ```
 
-### Compression pipeline
+### Processing pipeline
 
-When any `compress` hint is set, ANSI escape stripping and whitespace normalization run automatically. Additional stages:
+Output passes through these stages in order:
 
-- **json** — compact JSON (strip pretty-print whitespace)
-- **logs** — deduplicate repeated log lines
-- **all** — enable both json and logs
+1. **ANSI strip** — always on, removes color/formatting escape codes
+2. **Whitespace normalize** — always on, collapses 3+ blank lines to 2
+3. **Filter** — per-tool, command-aware filtering (see below)
+4. **JSON compact** — when `compress` includes `json` or `all`
+5. **Log dedup** — when `compress` includes `logs` or `all`
+6. **Byte truncation** — when `max_output` is set, 60% head + 40% tail
 
-### Truncation
+### Filters
 
-Output exceeding `max_output` is truncated to **60% head + 40% tail** with a `[truncated]` marker in between.
+Per-tool output filters for command-aware compression — strip noise lines, short-circuit verbose output to summaries, regex replace, and line-based truncation. Factorly ships with 10 built-in filters for common commands (git, make, npm, go test, cargo, pip) that apply automatically.
+
+See [Output Filters](filters.md) for the full filter schema, stages, and built-in filter list.
 
 ### Global fallback
 

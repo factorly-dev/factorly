@@ -117,9 +117,12 @@ factorly exec --env-isolation strict --env GITHUB_TOKEN={{vault:GITHUB_TOKEN}} -
 
 1. Resolves `{{env:VAR}}` and `{{vault:KEY}}` references in arguments
 2. Runs the command through the CLI provider (same as config-based tools)
-3. Applies compression and truncation (unless `-i` interactive mode)
-4. Logs to the JSONL audit trail (interface: `exec`)
-5. Prints processed output and preserves the command's exit code
+3. Applies built-in output filters for recognized commands (git, make, npm, go test, cargo, pip)
+4. Applies compression and truncation (unless `-i` interactive mode)
+5. Logs to the JSONL audit trail (interface: `exec`)
+6. Prints processed output and preserves the command's exit code
+
+Built-in filters automatically reduce noise for common commands — for example, `factorly exec -- go test ./...` will short-circuit to `"ok (all tests passed)"` on success, or show only PASS/FAIL lines on failure. See [Output Filters](filters.md) for the full list and how to define custom filters.
 
 ## `factorly wrap` — zero-config MCP proxy
 
