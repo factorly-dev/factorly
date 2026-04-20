@@ -6,6 +6,8 @@ package registry
 import (
 	"fmt"
 	"sort"
+
+	"github.com/factorly-dev/factorly/internal/output"
 )
 
 type Parameter struct {
@@ -22,7 +24,8 @@ type Tool struct {
 	ProviderKey    string
 	MaxOutput      int
 	Compress       []string
-	AllowOverrides []string // allow overrides for built-in tool guards
+	AllowOverrides []string       // allow overrides for built-in tool guards
+	Filter         *output.Filter // per-tool output filter
 }
 
 type Registry struct {

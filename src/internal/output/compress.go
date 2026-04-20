@@ -26,8 +26,8 @@ var blankLinePattern = regexp.MustCompile(`\n{3,}`)
 
 // Compress applies output compression filters to reduce token usage.
 // Always-on: ANSI stripping, whitespace normalization.
-// Optional (via hints): JSON compaction, log deduplication.
-func Compress(s string, hints ...Hint) string {
+// Optional: per-tool filter, JSON compaction, log deduplication.
+func Compress(s string, filter *Filter, hints ...Hint) string {
 	if s == "" {
 		return s
 	}
@@ -44,12 +44,15 @@ func Compress(s string, hints ...Hint) string {
 	// 2. Whitespace normalize (always on)
 	s = normalizeWhitespace(s)
 
-	// 3. JSON compact (when json hint)
+	// 3. Per-tool filter (when configured)
+	s = filter.Apply(s)
+
+	// 4. JSON compact (when json hint)
 	if all || hintSet[HintJSON] {
 		s = compactJSON(s)
 	}
 
-	// 4. Log dedup (when logs hint)
+	// 5. Log dedup (when logs hint)
 	if all || hintSet[HintLogs] {
 		s = deduplicateLines(s)
 	}
@@ -59,8 +62,8 @@ func Compress(s string, hints ...Hint) string {
 
 // Process applies compression then truncation in one call.
 // This is the main entry point used by the proxy.
-func Process(s string, maxBytes int, hints ...Hint) string {
-	s = Compress(s, hints...)
+func Process(s string, maxBytes int, filter *Filter, hints ...Hint) string {
+	s = Compress(s, filter, hints...)
 	return Truncate(s, maxBytes)
 }
 

@@ -21,6 +21,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/factorly-dev/factorly/internal/oauth"
 	"github.com/factorly-dev/factorly/internal/openapi"
+	"github.com/factorly-dev/factorly/internal/output"
 	"github.com/factorly-dev/factorly/internal/provider"
 	"github.com/factorly-dev/factorly/internal/proxy"
 	"github.com/factorly-dev/factorly/internal/registry"
@@ -483,6 +484,7 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 			ProviderKey: toolCfg.Type,
 			MaxOutput:   toolCfg.MaxOutput,
 			Compress:    toolCfg.Compress,
+			Filter:      output.CompileFilter(toolCfg.Filter),
 		}
 		// Pass allow overrides from shadow config to registry for built-in guards
 		if toolCfg.Shadow != nil {

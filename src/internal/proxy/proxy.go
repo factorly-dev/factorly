@@ -147,9 +147,9 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		}
 
 		// Apply compression + truncation
-		if len(hints) > 0 || maxOutput > 0 {
+		if len(hints) > 0 || maxOutput > 0 || tool.Filter != nil {
 			originalBytes = len(result.Output)
-			result.Output = output.Process(result.Output, maxOutput, hints...)
+			result.Output = output.Process(result.Output, maxOutput, tool.Filter, hints...)
 			processedBytes = len(result.Output)
 		}
 	}

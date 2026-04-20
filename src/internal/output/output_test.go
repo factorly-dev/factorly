@@ -86,7 +86,7 @@ func TestTruncateExactLimit(t *testing.T) {
 
 func TestCompressStripANSI(t *testing.T) {
 	input := "\x1b[31mred\x1b[0m"
-	got := Compress(input)
+	got := Compress(input, nil)
 	if got != "red" {
 		t.Errorf("expected %q, got %q", "red", got)
 	}
@@ -94,7 +94,7 @@ func TestCompressStripANSI(t *testing.T) {
 
 func TestCompressNormalizeWhitespace(t *testing.T) {
 	input := "a\n\n\n\n\nb"
-	got := Compress(input)
+	got := Compress(input, nil)
 	if got != "a\n\nb" {
 		t.Errorf("expected %q, got %q", "a\n\nb", got)
 	}
@@ -102,7 +102,7 @@ func TestCompressNormalizeWhitespace(t *testing.T) {
 
 func TestCompressJSONCompact(t *testing.T) {
 	input := "{\n  \"key\": \"value\",\n  \"num\": 42\n}"
-	got := Compress(input, HintJSON)
+	got := Compress(input, nil, HintJSON)
 	expected := `{"key":"value","num":42}`
 	if got != expected {
 		t.Errorf("expected %q, got %q", expected, got)
@@ -111,7 +111,7 @@ func TestCompressJSONCompact(t *testing.T) {
 
 func TestCompressJSONNoHint(t *testing.T) {
 	input := "{\n  \"key\": \"value\"\n}"
-	got := Compress(input)
+	got := Compress(input, nil)
 	if got != input {
 		t.Errorf("expected JSON left alone without hint, got %q", got)
 	}
@@ -123,7 +123,7 @@ func TestCompressLogDedup(t *testing.T) {
 		lines[i] = "same line"
 	}
 	input := strings.Join(lines, "\n")
-	got := Compress(input, HintLogs)
+	got := Compress(input, nil, HintLogs)
 	expected := "same line [repeated 5 times]"
 	if got != expected {
 		t.Errorf("expected %q, got %q", expected, got)
@@ -132,7 +132,7 @@ func TestCompressLogDedup(t *testing.T) {
 
 func TestCompressLogDedupMixed(t *testing.T) {
 	input := "a\nb\na\nb\na"
-	got := Compress(input, HintLogs)
+	got := Compress(input, nil, HintLogs)
 	if got != input {
 		t.Errorf("expected alternating lines unchanged, got %q", got)
 	}
@@ -140,7 +140,7 @@ func TestCompressLogDedupMixed(t *testing.T) {
 
 func TestCompressAll(t *testing.T) {
 	input := "\x1b[32m{\n  \"key\": \"value\"\n}\x1b[0m"
-	got := Compress(input, HintAll)
+	got := Compress(input, nil, HintAll)
 	expected := `{"key":"value"}`
 	if got != expected {
 		t.Errorf("expected %q, got %q", expected, got)
@@ -148,7 +148,7 @@ func TestCompressAll(t *testing.T) {
 }
 
 func TestCompressEmpty(t *testing.T) {
-	got := Compress("")
+	got := Compress("", nil)
 	if got != "" {
 		t.Errorf("expected empty string, got %q", got)
 	}
@@ -168,7 +168,7 @@ func TestProcessCompressThenTruncate(t *testing.T) {
 	sb.WriteString("  \"last\": true\n}")
 	input := sb.String()
 
-	got := Process(input, 500, HintJSON)
+	got := Process(input, 500, nil, HintJSON)
 
 	// Should be compacted first (no pretty whitespace), then truncated.
 	if len(got) > 500 {

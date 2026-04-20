@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/factorly-dev/factorly/internal/output"
 	"github.com/factorly-dev/factorly/internal/vault"
 	"gopkg.in/yaml.v3"
 )
@@ -67,6 +68,9 @@ type ToolConfig struct {
 
 	// Shadow (governance)
 	Shadow *ShadowConfig `yaml:"shadow,omitempty"`
+
+	// Output filter
+	Filter *output.FilterConfig `yaml:"filter,omitempty"`
 }
 
 type AuthConfig struct {
