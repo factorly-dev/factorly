@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-integration test-coverage clean vet lint fix fmt tidy ci release version check-version run init license
+.PHONY: build test test-unit test-integration test-coverage clean vet lint fix fmt tidy ci release version check-version run init license changelog
 
 BINARY  := factorly
 OUTDIR  := build
@@ -109,15 +109,16 @@ version:
 	git tag "v$$NEW"; \
 	echo "Tagged v$$NEW"
 
-# Generate release notes from commit messages since last tag
-release-notes:
-	@CUR_TAG="v$(VERSION)"; \
-	PREV_TAG=$$(git tag --sort=-v:refname | grep -A1 "^$$CUR_TAG$$" | tail -1); \
-	if [ "$$PREV_TAG" = "$$CUR_TAG" ]; then PREV_TAG=""; fi; \
-	if [ -z "$$PREV_TAG" ]; then \
-		RANGE="$$CUR_TAG"; \
-	else \
-		RANGE="$$PREV_TAG..$$CUR_TAG"; \
+# Generate changelog from commit messages in a range
+# Usage: make changelog RANGE=v0.5.5..v0.6.0
+#        make changelog RANGE=v0.6.0..HEAD
+RANGE ?=
+changelog:
+	@RANGE="$(RANGE)"; \
+	if [ -z "$$RANGE" ]; then \
+		printf "Range (e.g. v0.5.5..v0.6.0): "; \
+		read RANGE; \
+		if [ -z "$$RANGE" ]; then echo "Aborted."; exit 1; fi; \
 	fi; \
 	git log $$RANGE --no-merges --format="%s%n%b%n---%n" | sed '/^Bump version/,/^---$$/d' | sed 's/^---$$/\n---/'
 
