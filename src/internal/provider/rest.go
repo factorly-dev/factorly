@@ -127,10 +127,24 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 	// Build body content
 	var bodyContent string
 	if def.Body != "" {
-		// Body template: substitute {{param}} placeholders
+		// Body template: substitute {{param}} placeholders.
+		// String values are JSON-escaped (newlines, quotes, etc.) since they're
+		// inserted inside JSON string literals. Values with type "json" or numeric
+		// types are inserted as-is.
 		bodyContent = def.Body
 		for k, v := range params {
-			bodyContent = strings.ReplaceAll(bodyContent, "{{"+k+"}}", v)
+			escaped := v
+			switch paramType[k] {
+			case "json", "integer", "number", "boolean":
+				// Pass through as-is
+			default:
+				// JSON-escape: marshal produces "quoted string", strip the quotes
+				b, err := json.Marshal(v)
+				if err == nil {
+					escaped = string(b[1 : len(b)-1]) // strip surrounding quotes
+				}
+			}
+			bodyContent = strings.ReplaceAll(bodyContent, "{{"+k+"}}", escaped)
 		}
 	} else if len(bodyParams) == 1 {
 		for _, v := range bodyParams {
