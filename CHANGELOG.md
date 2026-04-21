@@ -1,78 +1,44 @@
-# [v0.6.1] - 2026-04-21
+## [v0.6.2] - 2026-04-21
 
-## Major New Features
+### Added
+- Script to generate changelog using factorly anthropic tooling
+- Stdin and file reading for CLI parameter values
+- Support for reading from stdin using "-" syntax
+- Support for reading from files using "@filename" syntax
+- Escape syntax "@@" for literal "@" characters
+- 10 tests in cmd/factorly/args_test.go for parameter parsing
+- CLI reference documentation for "factorly call" command
 
-### 1. Parameter Types & REST Body Serialization
-- **New `type` field** on parameters: `string` (default), `integer`, `number`, `boolean`, `json`
-- Controls serialization when multiple body params merge into JSON
-- **Multiple body parameters** now merge into single JSON object instead of last-one-wins
-- Proper type handling: integers/numbers unquoted, JSON passed raw, strings quoted
+### Fixed
+- Control characters now properly escaped for JSON in parameter submission
+- Password bytes handling in vault operations
 
-### 2. REST Body Templates
-- **New `body` field** on REST tool definitions
-- JSON template strings with `{{param}}` placeholder substitution
-- Enables complex request bodies without raw JSON construction
-- Used in new simplified tools: `anthropic.ask` and `chatgpt.ask`
+### Changed
+- Optimized vault lookups to search both project and global vaults efficiently
 
-### 3. Parameter Defaults
-- **New `default` field** on parameters
-- Applied in proxy before execution (works for CLI, REST, MCP providers)
-- Parameters with defaults become optional
-- Template reference defaults with `|` syntax: `{{param|fallback}}`
+## [v0.6.1] - 2026-04-21
 
-### 4. Template Variable Defaults
-Enhanced template system with fallback values:
-```yaml
-# Vault keys, env vars, external backends, and params all support defaults
-vault_key: "{{api_key|sk-fallback}}"
-temp_dir: "{{TMPDIR|/tmp}}"
-limit: "{{max_limit|100}}"
-```
+### Added
+- Parameter types for REST body serialization: string (default), integer, number, boolean, json
+- Body templates with {{param}} placeholders for complex request bodies
+- Parameter defaults field - applied before execution for all provider types
+- Default values syntax (|default) for template references in vault keys, env vars, and params
+- Early parameter validation before vault access
+- Tool.ValidateParams() helper method
+- anthropic.ask and chatgpt.ask simplified tools with body templates
+- --check flag to version command for cache refresh
 
-### 5. Early Parameter Validation
-- Required parameters validated **before** vault access
-- Prevents unnecessary password prompts for missing params
-- New `Tool.ValidateParams()` helper method
+### Changed
+- Multiple body parameters now merge into single JSON object instead of last one winning
+- Parameters with defaults are no longer required
+- Template references use defaults when keys/vars are missing instead of erroring
+- Updated anthropic.yaml and chatgpt.yaml with explicit parameter types
+- Tools list now sorted by name
+- CI tooling no longer caches test results
+- Rewrote hooks-spec.md with implementation-ready specification
 
-## Template Updates
-
-### New Simplified Tools
-- **`anthropic.ask`**: Simple `--prompt` interface with model/max_tokens defaults
-- **`chatgpt.ask`**: Simple `--prompt` interface with model default
-- Both `.messages` tools now have explicit parameter types
-
-## Developer Experience Improvements
-
-### 1. Enhanced CLI Features
-- **Escape hatch**: `\{{var}}` for literal `{{var}}` output
-- **Version checking**: `factorly version --check` for cache refresh
-- **Better error handling**: Tools list no longer requires vault for bootstrap provider
-
-### 2. Template Management
-- Templates sorted by name for better organization
-- New anthropic and chatgpt templates added
-- Updated template documentation
-
-### 3. Build & CI Improvements
-- Updated Makefile for changelog generation
-- CI tooling improvements with better caching strategy
-
-## Documentation Updates
-
-### Enhanced Reference Documentation
-- **config-reference.md**: Parameter type table, body template examples, YAML schema updates
-- **templates.md**: Updated template list with new additions
-- **cli-reference.md**: Default value syntax and examples
-- **hooks-spec.md**: Complete rewrite with implementation-ready specs for Claude Code, Cursor, Codex, and Gemini
-
-## Technical Implementation Details
-
-### Template Resolution Layers
-1. **Vault resolver** (`resolver.go`): Handles defaults for missing backend keys
-2. **CLI param substitution** (`cli.go`): Manages parameter defaults and substitution
-3. **Validation flow**: Early validation → vault access → execution
-
-### Error Handling Improvements
-- Graceful fallback with default values
-- Better error messages for missing required parameters
-- Reduced unnecessary vault access attempts
+### Fixed
+- Required parameter validation now occurs before vault opening
+- Factorly tools no longer require vault access when listing sub-tools
+- Unresolved placeholder check allows defaults to pass through
+- Added backslash escape hatch for {{var}} template variables

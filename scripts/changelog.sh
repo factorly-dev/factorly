@@ -40,7 +40,7 @@ if [ ! -s "$TMPDIR/changes.txt" ]; then
 fi
 
 # Summarize with LLM
-factorly call anthropic.ask \
+factorly -v call anthropic.ask \
     --system 'You convert git commit messages into a Keep a Changelog formatted entry.
 
 Rules:
