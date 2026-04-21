@@ -17,7 +17,7 @@ run:
 test: test-unit test-integration
 
 test-unit:
-	cd $(SRCDIR) && $(GOTESTSUM) --format testname -- -cover ./...
+	cd $(SRCDIR) && $(GOTESTSUM) --format testname -- -count=1 -cover ./...
 
 test-coverage:
 	@mkdir -p $(OUTDIR)
@@ -26,7 +26,7 @@ test-coverage:
 	@echo "Full report: go tool cover -html=$(OUTDIR)/coverage.out"
 
 test-integration: build
-	cd $(SRCDIR) && $(GOTESTSUM) --format testname -- -tags integration ./test/...
+	cd $(SRCDIR) && $(GOTESTSUM) --format testname -- -count=1 -tags integration ./test/...
 
 vet:
 	cd $(SRCDIR) && go vet ./...
