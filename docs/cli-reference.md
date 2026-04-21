@@ -90,10 +90,11 @@ factorly exec --env-isolation strict -- ./deploy.sh
 factorly exec -i -- psql -h localhost mydb
 ```
 
-Supports `{{vault:KEY}}` and `{{env:VAR}}` references in arguments — secrets stay out of shell history:
+Supports `{{vault:KEY}}` and `{{env:VAR}}` references in arguments — secrets stay out of shell history. Add `|default` for fallbacks:
 
 ```bash
 factorly exec -- curl -H "Authorization: Bearer {{vault:GITHUB_TOKEN}}" https://api.github.com/user
+factorly exec -- curl "{{env:API_URL|https://api.example.com}}/users"
 ```
 
 ### Flags

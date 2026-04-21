@@ -46,16 +46,27 @@ func (p *CLIProvider) Execute(toolName string, params map[string]string) (*Resul
 	}
 
 	// Check for unresolved placeholders in templates before substitution.
+	// Placeholders with defaults ({{name|default}}) are allowed — applyDefaults resolves them.
 	for _, tmpl := range def.Args {
 		remaining := tmpl
 		for k := range params {
 			remaining = strings.ReplaceAll(remaining, "{{"+k+"}}", "")
+			// Also strip {{param|default}} variants for known params
+			if idx := strings.Index(remaining, "{{"+k+"|"); idx >= 0 {
+				end := strings.Index(remaining[idx:], "}}")
+				if end >= 0 {
+					remaining = remaining[:idx] + remaining[idx+end+2:]
+				}
+			}
 		}
 		if idx := strings.Index(remaining, "{{"); idx != -1 {
 			end := strings.Index(remaining[idx:], "}}")
 			if end != -1 {
 				placeholder := remaining[idx+2 : idx+end]
-				return nil, fmt.Errorf("cli provider: unresolved parameter {{%s}} in tool %q", placeholder, toolName)
+				// Allow placeholders with defaults
+				if !strings.Contains(placeholder, "|") {
+					return nil, fmt.Errorf("cli provider: unresolved parameter {{%s}} in tool %q", placeholder, toolName)
+				}
 			}
 		}
 	}
@@ -133,18 +144,48 @@ func substituteString(tmpl string, params map[string]string) string {
 	result := tmpl
 	for k, v := range params {
 		result = strings.ReplaceAll(result, "{{"+k+"}}", v)
+		// Also handle {{param|default}} — replace with value, ignoring the default
+		if idx := strings.Index(result, "{{"+k+"|"); idx >= 0 {
+			end := strings.Index(result[idx:], "}}")
+			if end >= 0 {
+				result = result[:idx] + v + result[idx+end+2:]
+			}
+		}
 	}
+	// Resolve remaining {{param|default}} with the default value
+	result = applyDefaults(result)
 	return result
 }
 
 func substituteArgs(templates []string, params map[string]string) []string {
 	args := make([]string, len(templates))
 	for i, tmpl := range templates {
-		result := tmpl
-		for k, v := range params {
-			result = strings.ReplaceAll(result, "{{"+k+"}}", v)
-		}
-		args[i] = result
+		args[i] = substituteString(tmpl, params)
 	}
 	return args
+}
+
+// applyDefaults replaces any remaining {{name|default}} with the default value.
+func applyDefaults(s string) string {
+	for {
+		start := strings.Index(s, "{{")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(s[start:], "}}")
+		if end < 0 {
+			break
+		}
+		inner := s[start+2 : start+end]
+		pipe := strings.Index(inner, "|")
+		if pipe < 0 {
+			// No default — skip past this placeholder
+			s = s[:start] + "\x00\x00" + s[start+2:] // temp mark to avoid infinite loop
+			continue
+		}
+		defaultVal := inner[pipe+1:]
+		s = s[:start] + defaultVal + s[start+end+2:]
+	}
+	s = strings.ReplaceAll(s, "\x00\x00", "{{") // restore temp marks
+	return s
 }

@@ -122,6 +122,40 @@ tools:
 
 Use `{{env:ENV_VAR}}` for environment variables or `{{vault:KEY}}` for encrypted vault secrets. Both are resolved at startup before the agent sees anything.
 
+### Default values
+
+Add a `|` after the key to specify a fallback if the value is not found:
+
+```yaml
+tools:
+  api.call:
+    type: rest
+    base_url: "{{env:API_URL|https://api.example.com}}"
+    method: GET
+    path: /items
+    auth:
+      type: bearer
+      token: "{{vault:API_KEY|sk-default-dev-key}}"
+```
+
+Defaults work with all reference types:
+
+```yaml
+# Vault — use fallback if key not in vault
+token: "{{vault:TOKEN|default-value}}"
+
+# Environment — use fallback if env var not set
+home: "{{env:HOME|/tmp}}"
+
+# External backends — use fallback if key not found
+secret: "{{op:vault/item|fallback}}"
+
+# Parameters — use fallback if param not provided by caller
+args: ["--limit", "{{limit|100}}", "--host", "{{host|localhost}}"]
+```
+
+If no default is specified and the value is missing, Factorly returns an error.
+
 ## Parameter routing
 
 Parameters are routed by their `in` field. When `in` is omitted, defaults to `query` for GET/DELETE or `body` for POST/PUT/PATCH.

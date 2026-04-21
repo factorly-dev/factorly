@@ -169,3 +169,96 @@ func TestHasVaultRefs(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveWithDefault(t *testing.T) {
+	r := NewResolver()
+	r.Register("vault", &mapBackend{data: map[string]string{"EXISTS": "real-value"}})
+
+	// Key exists — use real value, ignore default
+	got, err := r.Resolve("{{vault:EXISTS|fallback}}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "real-value" {
+		t.Errorf("expected real-value, got %q", got)
+	}
+
+	// Key missing — use default
+	got, err = r.Resolve("{{vault:MISSING|my-default}}")
+	if err != nil {
+		t.Errorf("expected no error with default, got %v", err)
+	}
+	if got != "my-default" {
+		t.Errorf("expected my-default, got %q", got)
+	}
+
+	// Backend missing — use default
+	got, err = r.Resolve("{{unknown:KEY|fallback}}")
+	if err != nil {
+		t.Errorf("expected no error with default, got %v", err)
+	}
+	if got != "fallback" {
+		t.Errorf("expected fallback, got %q", got)
+	}
+
+	// No default, key missing — error
+	_, err = r.Resolve("{{vault:MISSING}}")
+	if err == nil {
+		t.Error("expected error for missing key without default")
+	}
+}
+
+func TestResolveDefaultInContext(t *testing.T) {
+	r := NewResolver()
+	r.Register("vault", &mapBackend{data: map[string]string{}})
+
+	// Default in middle of string
+	got, err := r.Resolve("prefix-{{vault:KEY|default}}-suffix")
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+	if got != "prefix-default-suffix" {
+		t.Errorf("expected prefix-default-suffix, got %q", got)
+	}
+
+	// Multiple refs with defaults
+	got, err = r.Resolve("{{vault:A|alpha}} and {{vault:B|beta}}")
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+	if got != "alpha and beta" {
+		t.Errorf("expected 'alpha and beta', got %q", got)
+	}
+}
+
+func TestHasVaultRefsWithDefault(t *testing.T) {
+	if !HasVaultRefs("{{vault:TOKEN|default}}") {
+		t.Error("expected HasVaultRefs to detect ref with default")
+	}
+}
+
+// mapBackend is a simple in-memory backend for testing.
+type mapBackend struct {
+	data map[string]string
+}
+
+func (m *mapBackend) Get(key string) (string, error) {
+	v, ok := m.data[key]
+	if !ok {
+		return "", ErrNotFound
+	}
+	return v, nil
+}
+
+func (m *mapBackend) Set(key, value string) error { m.data[key] = value; return nil }
+func (m *mapBackend) Delete(key string) error     { delete(m.data, key); return nil }
+
+func (m *mapBackend) List() ([]string, error) {
+	keys := make([]string, 0, len(m.data))
+	for k := range m.data {
+		keys = append(keys, k)
+	}
+	return keys, nil
+}
+
+func (m *mapBackend) Close() error { return nil }

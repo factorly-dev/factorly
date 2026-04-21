@@ -436,3 +436,69 @@ func TestSubstituteArgs(t *testing.T) {
 		})
 	}
 }
+
+func TestSubstituteStringWithDefault(t *testing.T) {
+	tests := []struct {
+		name   string
+		tmpl   string
+		params map[string]string
+		want   string
+	}{
+		{
+			name:   "param provided, default ignored",
+			tmpl:   "--limit={{limit|100}}",
+			params: map[string]string{"limit": "50"},
+			want:   "--limit=50",
+		},
+		{
+			name:   "param missing, default used",
+			tmpl:   "--limit={{limit|100}}",
+			params: map[string]string{},
+			want:   "--limit=100",
+		},
+		{
+			name:   "no default, param provided",
+			tmpl:   "--limit={{limit}}",
+			params: map[string]string{"limit": "50"},
+			want:   "--limit=50",
+		},
+		{
+			name:   "multiple defaults",
+			tmpl:   "{{host|localhost}}:{{port|8080}}",
+			params: map[string]string{},
+			want:   "localhost:8080",
+		},
+		{
+			name:   "mixed provided and default",
+			tmpl:   "{{host|localhost}}:{{port|8080}}",
+			params: map[string]string{"host": "example.com"},
+			want:   "example.com:8080",
+		},
+		{
+			name:   "empty default",
+			tmpl:   "{{opt|}}",
+			params: map[string]string{},
+			want:   "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := substituteString(tt.tmpl, tt.params)
+			if got != tt.want {
+				t.Errorf("substituteString(%q, %v) = %q, want %q", tt.tmpl, tt.params, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSubstituteArgsWithDefault(t *testing.T) {
+	templates := []string{"--host={{host|localhost}}", "--port={{port|8080}}", "{{path}}"}
+	params := map[string]string{"path": "/api"}
+	got := substituteArgs(templates, params)
+	expected := []string{"--host=localhost", "--port=8080", "/api"}
+	for i, v := range got {
+		if v != expected[i] {
+			t.Errorf("arg[%d]: expected %q, got %q", i, expected[i], v)
+		}
+	}
+}
