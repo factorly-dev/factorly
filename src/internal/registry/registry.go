@@ -14,6 +14,8 @@ type Parameter struct {
 	Name        string
 	Description string
 	Required    bool
+	Type        string // "string" (default), "integer", "number", "boolean", "json"
+	Default     string
 }
 
 type Tool struct {
@@ -26,6 +28,18 @@ type Tool struct {
 	Compress       []string
 	AllowOverrides []string       // allow overrides for built-in tool guards
 	Filter         *output.Filter // per-tool output filter
+}
+
+// ValidateParams checks that all required parameters (without defaults) are present.
+func (t *Tool) ValidateParams(params map[string]string) error {
+	for _, pd := range t.Parameters {
+		if pd.Required && pd.Default == "" {
+			if _, ok := params[pd.Name]; !ok {
+				return fmt.Errorf("required parameter %q missing for tool %q", pd.Name, t.Name)
+			}
+		}
+	}
+	return nil
 }
 
 type Registry struct {

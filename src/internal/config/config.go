@@ -63,6 +63,7 @@ type ToolConfig struct {
 	BaseURL string            `yaml:"base_url,omitempty"`
 	Method  string            `yaml:"method,omitempty"`
 	Path    string            `yaml:"path,omitempty"`
+	Body    string            `yaml:"body,omitempty"` // JSON body template with {{param}} placeholders
 	Headers map[string]string `yaml:"headers,omitempty"`
 	Auth    *AuthConfig       `yaml:"auth,omitempty"`
 
@@ -95,7 +96,9 @@ type ParamConfig struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description,omitempty"`
 	Required    bool   `yaml:"required,omitempty"`
-	In          string `yaml:"in,omitempty"` // "query", "path", "header", "body"
+	In          string `yaml:"in,omitempty"`      // "query", "path", "header", "body"
+	Type        string `yaml:"type,omitempty"`    // "string" (default), "integer", "number", "boolean", "json"
+	Default     string `yaml:"default,omitempty"` // default value if not provided by caller
 }
 
 type ShadowConfig struct {

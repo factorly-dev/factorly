@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,7 @@ type RESTParamDef struct {
 	Name     string
 	In       string // "query", "path", "header", "body"
 	Required bool
+	Type     string // "string" (default), "integer", "number", "boolean", "json"
 }
 
 // TokenStore reads and writes OAuth token bundles from the vault.
@@ -44,6 +46,7 @@ type RESTToolDef struct {
 	Method  string
 	BaseURL string
 	Path    string
+	Body    string // JSON body template with {{param}} placeholders
 	Headers map[string]string
 	Auth    *AuthDef
 	Params  []RESTParamDef
@@ -88,17 +91,19 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 		}
 	}
 
-	// Build param index for routing
+	// Build param index for routing and types
 	paramIndex := make(map[string]string)
+	paramType := make(map[string]string)
 	for _, pd := range def.Params {
 		paramIndex[pd.Name] = pd.In
+		paramType[pd.Name] = pd.Type
 	}
 
 	// Route parameters
 	pathParams := make(map[string]string)
 	queryParams := make(map[string]string)
 	headerParams := make(map[string]string)
-	var bodyContent string
+	bodyParams := make(map[string]string)
 
 	for name, value := range params {
 		in := paramIndex[name]
@@ -113,10 +118,54 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 		case "header":
 			headerParams[name] = value
 		case "body":
-			bodyContent = value
+			bodyParams[name] = value
 		default:
 			queryParams[name] = value
 		}
+	}
+
+	// Build body content
+	var bodyContent string
+	if def.Body != "" {
+		// Body template: substitute {{param}} placeholders
+		bodyContent = def.Body
+		for k, v := range params {
+			bodyContent = strings.ReplaceAll(bodyContent, "{{"+k+"}}", v)
+		}
+	} else if len(bodyParams) == 1 {
+		for _, v := range bodyParams {
+			bodyContent = v
+		}
+	} else if len(bodyParams) > 1 {
+		obj := make(map[string]json.RawMessage, len(bodyParams))
+		for k, v := range bodyParams {
+			switch paramType[k] {
+			case "integer", "number":
+				// Pass numeric values unquoted
+				obj[k] = json.RawMessage(v)
+			case "boolean":
+				// Pass boolean values unquoted
+				obj[k] = json.RawMessage(v)
+			case "json":
+				// Pass raw JSON through (arrays, objects)
+				obj[k] = json.RawMessage(v)
+			default:
+				// "string" or unspecified — auto-detect:
+				// if valid JSON (array, object, number, bool), pass through;
+				// otherwise quote as string
+				if json.Valid([]byte(v)) && (v[0] == '[' || v[0] == '{') {
+					obj[k] = json.RawMessage(v)
+				} else {
+					quoted, _ := json.Marshal(v)
+					obj[k] = json.RawMessage(quoted)
+				}
+			}
+		}
+		data, err := json.Marshal(obj)
+		if err != nil {
+			return nil, fmt.Errorf("rest provider: building request body for tool %q: %w", toolName, err)
+		}
+		bodyContent = string(data)
 	}
 
 	// Substitute path parameters

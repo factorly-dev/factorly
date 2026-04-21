@@ -55,6 +55,8 @@ tools:
     base_url: https://api.example.com
     method: GET                  # GET, POST, PUT, PATCH, DELETE
     path: /items/{{id}}          # {{param}} placeholders in path
+    body: |                      # optional, JSON body template with {{param}} placeholders
+      {"model":"{{model}}","messages":[{"role":"user","content":"{{prompt}}"}]}
     headers:                     # static headers (optional)
       Accept: application/json
     auth:                        # optional
@@ -83,6 +85,8 @@ tools:
         required: true
       - name: limit
         in: query
+        type: integer                # string (default), integer, number, boolean, json
+        default: "100"               # default value if not provided by caller
 
     shadow:                          # optional, governance rules
       deny: [dangerous_action]
@@ -161,6 +165,49 @@ To pass a literal `{{...}}` without resolution, escape with a backslash: `\{{vau
 ## Parameter routing
 
 Parameters are routed by their `in` field. When `in` is omitted, defaults to `query` for GET/DELETE or `body` for POST/PUT/PATCH.
+
+### Parameter types
+
+The `type` field controls how body parameters are serialized in JSON:
+
+| Type | JSON output | Example |
+|------|------------|---------|
+| `string` (default) | Quoted | `"claude-sonnet-4-20250514"` |
+| `integer` | Unquoted number | `1024` |
+| `number` | Unquoted number | `0.95` |
+| `boolean` | Unquoted | `true` |
+| `json` | Raw passthrough | `[{"role":"user","content":"hello"}]` |
+
+When multiple parameters have `in: body`, they are merged into a single JSON object using their types for serialization.
+
+### Body template
+
+For REST tools with complex JSON bodies, use the `body` field instead of individual body parameters. Placeholders are substituted directly:
+
+```yaml
+tools:
+  anthropic.ask:
+    type: rest
+    base_url: "https://api.anthropic.com"
+    method: POST
+    path: /v1/messages
+    body: |
+      {"model":"{{model}}","max_tokens":{{max_tokens}},"messages":[{"role":"user","content":"{{prompt}}"}]}
+    parameters:
+      - name: prompt
+        description: The question for Claude
+        required: true
+      - name: model
+        default: claude-sonnet-4-20250514
+      - name: max_tokens
+        default: "1024"
+```
+
+```bash
+factorly call anthropic.ask --prompt "What is the capital of France?"
+```
+
+When `body` is set, parameter `in` fields are ignored for body routing — all substitution happens in the template.
 
 ## Stdin
 

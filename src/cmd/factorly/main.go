@@ -193,8 +193,12 @@ var callCmd = &cobra.Command{
 		}
 		// Skip early validation for MCP tools — sub-tools are discovered
 		// during bootstrapProviders, not loadConfig
-		if _, err := reg.Get(toolName); err != nil && !hasMCPTools(cfg) {
+		if tool, err := reg.Get(toolName); err != nil && !hasMCPTools(cfg) {
 			return err
+		} else if tool != nil {
+			if err := tool.ValidateParams(params); err != nil {
+				return err
+			}
 		}
 
 		p, err := bootstrapProviders(cfg, reg)
@@ -486,6 +490,8 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 				Name:        p.Name,
 				Description: p.Description,
 				Required:    p.Required,
+				Type:        p.Type,
+				Default:     p.Default,
 			}
 		}
 		tool := &registry.Tool{
@@ -560,6 +566,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 				Method:  toolCfg.Method,
 				BaseURL: resolveVaultRef(resolver, toolCfg.BaseURL),
 				Path:    toolCfg.Path,
+				Body:    toolCfg.Body,
 				Headers: resolveVaultMap(resolver, toolCfg.Headers),
 			}
 			if toolCfg.Auth != nil {
@@ -588,6 +595,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 					Name:     p.Name,
 					In:       p.In,
 					Required: p.Required,
+					Type:     p.Type,
 				})
 			}
 			restTools[name] = restDef

@@ -24,6 +24,8 @@ factorly tools import templates linear --api-key "$LINEAR_API_KEY" --all
 
 | Template | Auth | Tools | Description |
 |----------|------|-------|-------------|
+| `anthropic` | API key | 2 | Claude API — messages endpoint + simple ask interface |
+| `chatgpt` | API key | 2 | OpenAI API — chat completions + simple ask interface |
 | `linear` | API key | 6 | Issue tracking and project management |
 | `github` | Token (PAT) | 8 | Code hosting, issues, PRs, repositories |
 | `slack` | Bot token | 6 | Team messaging, channels, notifications |

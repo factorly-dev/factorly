@@ -1,6 +1,6 @@
 anthropic.messages:
   type: rest
-  description: Create a message using the Claude API
+  description: Create a message using the Claude API (full control)
   base_url: "https://api.anthropic.com"
   method: POST
   path: /v1/messages
@@ -13,13 +13,41 @@ anthropic.messages:
   parameters:
     - name: model
       description: Model to use (e.g., claude-sonnet-4-20250514)
+      type: string
       required: true
       in: body
     - name: max_tokens
       description: Maximum tokens to generate
+      type: integer
       required: true
       in: body
     - name: messages
       description: Array of message objects with role and content
+      type: json
       required: true
       in: body
+
+anthropic.ask:
+  type: rest
+  description: Ask Claude a question (simple interface)
+  base_url: "https://api.anthropic.com"
+  method: POST
+  path: /v1/messages
+  headers:
+    anthropic-version: "2023-06-01"
+  auth:
+    type: header
+    header: x-api-key
+    value: "{{vault:ANTHROPIC_API_KEY}}"
+  body: |
+    {"model":"{{model}}","max_tokens":{{max_tokens}},"messages":[{"role":"user","content":"{{prompt}}"}]}
+  parameters:
+    - name: prompt
+      description: The question or instruction for Claude
+      required: true
+    - name: model
+      description: Model to use
+      default: claude-sonnet-4-20250514
+    - name: max_tokens
+      description: Maximum tokens to generate
+      default: "1024"

@@ -68,6 +68,18 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		return nil, err
 	}
 
+	// Apply parameter defaults for any missing params
+	for _, pd := range tool.Parameters {
+		if pd.Default != "" {
+			if _, ok := params[pd.Name]; !ok {
+				if params == nil {
+					params = make(map[string]string)
+				}
+				params[pd.Name] = pd.Default
+			}
+		}
+	}
+
 	agentID := agent.AgentID(ctx)
 
 	// Shadow policy check
