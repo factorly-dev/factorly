@@ -231,6 +231,38 @@ func TestResolveDefaultInContext(t *testing.T) {
 	}
 }
 
+func TestResolveEscaped(t *testing.T) {
+	r := NewResolver()
+	r.Register("vault", &mapBackend{data: map[string]string{"TOKEN": "secret"}})
+
+	// Escaped reference passes through as literal {{vault:TOKEN}}
+	got, err := r.Resolve(`\{{vault:TOKEN}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "{{vault:TOKEN}}" {
+		t.Errorf("expected literal {{vault:TOKEN}}, got %q", got)
+	}
+
+	// Mixed: one escaped, one resolved
+	got, err = r.Resolve(`\{{literal}} and {{vault:TOKEN}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "{{literal}} and secret" {
+		t.Errorf("expected mixed result, got %q", got)
+	}
+
+	// No escape — normal resolution
+	got, err = r.Resolve("{{vault:TOKEN}}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "secret" {
+		t.Errorf("expected secret, got %q", got)
+	}
+}
+
 func TestHasVaultRefsWithDefault(t *testing.T) {
 	if !HasVaultRefs("{{vault:TOKEN|default}}") {
 		t.Error("expected HasVaultRefs to detect ref with default")

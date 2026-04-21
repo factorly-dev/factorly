@@ -156,6 +156,8 @@ args: ["--limit", "{{limit|100}}", "--host", "{{host|localhost}}"]
 
 If no default is specified and the value is missing, Factorly returns an error.
 
+To pass a literal `{{...}}` without resolution, escape with a backslash: `\{{vault:TOKEN}}` passes through as `{{vault:TOKEN}}`.
+
 ## Parameter routing
 
 Parameters are routed by their `in` field. When `in` is omitted, defaults to `query` for GET/DELETE or `body` for POST/PUT/PATCH.

@@ -6,6 +6,7 @@ package vault
 import (
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 var refPattern = regexp.MustCompile(`\{\{([A-Za-z0-9_][A-Za-z0-9_-]*):([A-Za-z0-9_./-]+)(?:\|([^}]*))?\}\}`)
@@ -31,7 +32,12 @@ func (r *Resolver) Backend(name string) Backend {
 // Resolve replaces all {{backend:key}} and {{backend:key|default}} references
 // in s with their secret values. If a key is not found and a default is provided,
 // the default is used instead of returning an error.
+// Use \{{ to escape literal braces (e.g., \{{vault:TOKEN}} passes through as {{vault:TOKEN}}).
 func (r *Resolver) Resolve(s string) (string, error) {
+	// Protect escaped references before resolution
+	const placeholder = "\x00ESCAPED_BRACE\x00"
+	s = strings.ReplaceAll(s, "\\{{", placeholder)
+
 	var resolveErr error
 	result := refPattern.ReplaceAllStringFunc(s, func(match string) string {
 		parts := refPattern.FindStringSubmatch(match)
@@ -61,6 +67,8 @@ func (r *Resolver) Resolve(s string) (string, error) {
 		}
 		return val
 	})
+	// Restore escaped references
+	result = strings.ReplaceAll(result, placeholder, "{{")
 	return result, resolveErr
 }
 
