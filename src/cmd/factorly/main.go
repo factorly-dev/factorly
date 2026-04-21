@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1017,12 +1018,36 @@ func hasMCPTools(cfg *config.Config) bool {
 
 func parseToolArgs(args []string) map[string]string {
 	params := make(map[string]string)
+	stdinUsed := false
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if strings.HasPrefix(arg, "--") {
 			key := strings.TrimPrefix(arg, "--")
 			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
-				params[key] = args[i+1]
+				value := args[i+1]
+				if value == "-" && !stdinUsed {
+					// Read from stdin
+					data, err := io.ReadAll(os.Stdin)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "warning: reading stdin for --%s: %v\n", key, err)
+					} else {
+						value = strings.TrimRight(string(data), "\n")
+					}
+					stdinUsed = true
+				} else if value == "@@" || strings.HasPrefix(value, "@@") {
+					// Escaped @@ → literal @
+					value = value[1:]
+				} else if strings.HasPrefix(value, "@") {
+					// Read from file (like curl's @filename)
+					filePath := value[1:]
+					data, err := os.ReadFile(filePath)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "warning: reading file for --%s: %v\n", key, err)
+					} else {
+						value = strings.TrimRight(string(data), "\n")
+					}
+				}
+				params[key] = value
 				i++
 			} else {
 				params[key] = "true"

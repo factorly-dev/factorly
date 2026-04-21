@@ -79,6 +79,44 @@ FACTORLY_MAX_OUTPUT       # global max output bytes (fallback for per-tool max_o
 FACTORLY_DISABLED_TOOLS   # comma-separated tool names to disable (applies to call + tools listing)
 ```
 
+## `factorly call` — parameter passing
+
+Parameters are passed as `--name value` pairs:
+
+```bash
+factorly call api.users --limit 10 --status active
+```
+
+### Read from stdin
+
+Use `-` to read a parameter value from stdin. Only one parameter per call can use stdin.
+
+```bash
+# Pipe input
+echo "What is the capital of France?" | factorly call anthropic.ask --prompt -
+
+# Heredoc
+factorly call anthropic.ask --prompt - <<'EOF'
+Explain this code:
+func main() { fmt.Println("hello") }
+EOF
+```
+
+### Read from file
+
+Use `@filename` to read a parameter value from a file (like curl's `--data @file.json`):
+
+```bash
+factorly call anthropic.ask --prompt @prompt.txt
+factorly call api.upload --body @data.json
+```
+
+To pass a literal `@` prefix, escape with `@@`:
+
+```bash
+factorly call tool --email @@user    # sends @user
+```
+
 ## `factorly exec` — run a command with compression + logging
 
 Runs a single shell command through Factorly's full safety layer — the zero-config equivalent of a CLI tool definition. Uses the same code path as config-based CLI tools.
