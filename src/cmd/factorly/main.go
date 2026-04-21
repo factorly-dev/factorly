@@ -127,13 +127,6 @@ func runToolsList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Bootstrap providers to discover MCP sub-tools
-	if hasMCPTools(cfg) {
-		if _, err := bootstrapProviders(cfg, reg); err != nil {
-			return err
-		}
-	}
-
 	// Build shadow policy to filter denied tools from listing
 	rules := buildShadowRules(cfg)
 	mergeDisabledToolsFromEnv(rules)
