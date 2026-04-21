@@ -82,11 +82,18 @@ var rootCmd = &cobra.Command{
 	SilenceUsage: true,
 }
 
+var versionCheck bool
+
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version",
 	Run: func(cmd *cobra.Command, args []string) {
-		result := update.Check()
+		var result update.Result
+		if versionCheck {
+			result = update.CheckNow()
+		} else {
+			result = update.Check()
+		}
 		if result.UpToDate {
 			fmt.Printf("factorly %s (latest)\n", internal.Version)
 		} else if result.Message != "" {
@@ -96,6 +103,10 @@ var versionCmd = &cobra.Command{
 			fmt.Printf("factorly %s\n", internal.Version)
 		}
 	},
+}
+
+func init() {
+	versionCmd.Flags().BoolVar(&versionCheck, "check", false, "force version check (bypass cache)")
 }
 
 var toolsCmd = &cobra.Command{

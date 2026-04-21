@@ -48,7 +48,8 @@ factorly exec -- <command> [args]   # run a command with compression + logging
 factorly exec --compress json -- curl https://api.example.com  # with options
 factorly wrap -- <command> [args]   # zero-config MCP proxy for any server
 factorly wrap --url <url>          # proxy a remote MCP server
-factorly version                    # print version
+factorly version                    # print version (uses 24h cache)
+factorly version --check            # force version check (bypass cache)
 ```
 
 ## Global flags

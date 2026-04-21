@@ -34,7 +34,7 @@ type Result struct {
 	Message  string // update message (non-empty only if update available)
 }
 
-// Check returns the version check result.
+// Check returns the version check result, using the 24-hour cache.
 func Check() Result {
 	cache := loadCache()
 
@@ -42,6 +42,15 @@ func Check() Result {
 		return makeResult(cache.LatestVersion)
 	}
 
+	return checkAndCache()
+}
+
+// CheckNow returns the version check result, bypassing the cache.
+func CheckNow() Result {
+	return checkAndCache()
+}
+
+func checkAndCache() Result {
 	latest, err := fetchLatestVersion()
 	if err != nil {
 		return Result{} // network failure — unknown state
