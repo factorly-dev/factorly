@@ -40,11 +40,14 @@ anthropic.ask:
     header: x-api-key
     value: "{{vault:ANTHROPIC_API_KEY}}"
   body: |
-    {"model":"{{model}}","max_tokens":{{max_tokens}},"messages":[{"role":"user","content":"{{prompt}}"}]}
+    {"model":"{{model}}","max_tokens":{{max_tokens}},"system":"{{system}}","messages":[{"role":"user","content":"{{prompt}}"}]}
   parameters:
     - name: prompt
       description: The question or instruction for Claude
       required: true
+    - name: system
+      description: System prompt to guide Claude's behavior
+      default: "You are a helpful assistant."
     - name: model
       description: Model to use
       default: claude-sonnet-4-20250514

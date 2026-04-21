@@ -127,7 +127,7 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 	// Build body content
 	var bodyContent string
 	if def.Body != "" {
-		// Body template: substitute {{param}} placeholders.
+		// Body template: substitute {{param}} and {{param|default}} placeholders.
 		// String values are JSON-escaped (newlines, quotes, etc.) since they're
 		// inserted inside JSON string literals. Values with type "json" or numeric
 		// types are inserted as-is.
@@ -145,7 +145,23 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 				}
 			}
 			bodyContent = strings.ReplaceAll(bodyContent, "{{"+k+"}}", escaped)
+			// Also replace {{param|default}} variants
+			for {
+				prefix := "{{" + k + "|"
+				idx := strings.Index(bodyContent, prefix)
+				if idx < 0 {
+					break
+				}
+				end := strings.Index(bodyContent[idx:], "}}")
+				if end < 0 {
+					break
+				}
+				bodyContent = bodyContent[:idx] + escaped + bodyContent[idx+end+2:]
+			}
 		}
+		// Apply remaining defaults for unmatched {{param|default}} placeholders
+		bodyContent = applyBodyDefaults(bodyContent)
+
 	} else if len(bodyParams) == 1 {
 		for _, v := range bodyParams {
 			bodyContent = v
@@ -340,6 +356,36 @@ func (p *RESTProvider) ensureValidToken(auth *AuthDef) (string, error) {
 	}
 
 	return newBundle.AccessToken, nil
+}
+
+// applyBodyDefaults resolves remaining {{name|default}} placeholders in a body template.
+func applyBodyDefaults(s string) string {
+	for {
+		start := strings.Index(s, "{{")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(s[start:], "}}")
+		if end < 0 {
+			break
+		}
+		inner := s[start+2 : start+end]
+		pipe := strings.Index(inner, "|")
+		if pipe < 0 {
+			// No default — skip past this placeholder
+			s = s[:start] + "\x00\x00" + s[start+2:]
+			continue
+		}
+		defaultVal := inner[pipe+1:]
+		// JSON-escape the default value
+		b, err := json.Marshal(defaultVal)
+		if err == nil {
+			defaultVal = string(b[1 : len(b)-1])
+		}
+		s = s[:start] + defaultVal + s[start+end+2:]
+	}
+	s = strings.ReplaceAll(s, "\x00\x00", "{{")
+	return s
 }
 
 func defaultParamLocation(method string) string {
