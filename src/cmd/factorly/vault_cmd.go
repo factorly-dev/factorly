@@ -5,6 +5,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -82,7 +83,8 @@ var vaultSetCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			value = v
+			value = string(v)
+			zeroBytes(v)
 		}
 
 		if backend.Has(key) {
@@ -218,7 +220,7 @@ func openVault() (*vault.LocalBackend, error) {
 	if err != nil {
 		return nil, err
 	}
-	return vault.OpenLocalAt(path, []byte(password))
+	return vault.OpenLocalAt(path, password)
 }
 
 // openSmartVault returns a vault backend that searches project vault first,
@@ -257,7 +259,7 @@ func openFallbackVault() (vault.Backend, error) {
 		if err != nil {
 			return nil, fmt.Errorf("global vault: %w", err)
 		}
-		return vault.OpenLocalAt(globalPath, []byte(pw))
+		return vault.OpenLocalAt(globalPath, pw)
 	}
 
 	// Open project vault
@@ -265,55 +267,70 @@ func openFallbackVault() (vault.Backend, error) {
 	if err != nil {
 		return nil, fmt.Errorf("project vault: %w", err)
 	}
-	project, err := vault.OpenLocalAt(projectPath, []byte(pw))
+	// Copy password before OpenLocalAt zeroes it — needed for trying on global vault
+	pwForGlobal := make([]byte, len(pw))
+	copy(pwForGlobal, pw)
+	project, err := vault.OpenLocalAt(projectPath, pw)
 	if err != nil {
+		zeroBytes(pwForGlobal)
 		return nil, fmt.Errorf("opening project vault: %w", err)
 	}
 
 	// Only project exists
 	if globalExists != nil {
+		zeroBytes(pwForGlobal)
 		return project, nil
 	}
 
-	// Both exist — return fallback with lazy global opening
+	// Both exist — return fallback with lazy global opening.
+	// Try the project password first to avoid a second prompt when
+	// both vaults share the same password (common case).
 	return &vault.FallbackBackend{
 		Primary: project,
 		SecondaryOpen: func() (vault.Backend, error) {
 			vlog("falling back to global vault")
+			// Try project password on global vault first
+			global, err := vault.OpenLocalAt(globalPath, pwForGlobal)
+			if err == nil {
+				vlog("global vault opened with project password")
+				return global, nil
+			}
+			// pwForGlobal is now zeroed by OpenLocalAt (even on failure via deriveKey)
+			// Different password — prompt for global
+			vlog("project password didn't work for global vault, prompting")
 			gpw, err := resolveVaultPassword(globalPath)
 			if err != nil {
 				return nil, err
 			}
-			return vault.OpenLocalAt(globalPath, []byte(gpw))
+			return vault.OpenLocalAt(globalPath, gpw)
 		},
 	}, nil
 }
 
 // resolveVaultPassword resolves the password for a vault at the given path.
-// Project vaults use FACTORLY_PROJECT_VAULT_PASSWORD and .factorly/vault.key.
-// Global vaults use FACTORLY_VAULT_PASSWORD and ~/.config/factorly/vault.key.
-func resolveVaultPassword(path string) (string, error) {
+// Returns []byte so the caller can zero it after use.
+func resolveVaultPassword(path string) ([]byte, error) {
 	if isProjectVault(path) {
 		return resolveProjectVaultPassword()
 	}
 	return resolveGlobalVaultPassword()
 }
 
-func resolveProjectVaultPassword() (string, error) {
+func resolveProjectVaultPassword() ([]byte, error) {
 	// 1. Project-specific env var
 	if pw, ok := os.LookupEnv("FACTORLY_PROJECT_VAULT_PASSWORD"); ok {
 		if pw == "" {
-			return "", fmt.Errorf("FACTORLY_PROJECT_VAULT_PASSWORD is set but empty")
+			return nil, fmt.Errorf("FACTORLY_PROJECT_VAULT_PASSWORD is set but empty")
 		}
 		vlog("project vault password from FACTORLY_PROJECT_VAULT_PASSWORD")
-		return pw, nil
+		return []byte(pw), nil
 	}
 
 	// 2. Shared env var (convenience — one password for both)
 	if pw, ok := os.LookupEnv("FACTORLY_VAULT_PASSWORD"); ok {
 		if pw != "" {
 			vlog("project vault password from FACTORLY_VAULT_PASSWORD")
-			return pw, nil
+			return []byte(pw), nil
 		}
 	}
 
@@ -327,22 +344,22 @@ func resolveProjectVaultPassword() (string, error) {
 	// 4. Interactive prompt
 	pw, err := promptSecret("Vault password (project): ")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	if pw == "" {
-		return "", fmt.Errorf("vault password cannot be empty")
+	if len(pw) == 0 {
+		return nil, fmt.Errorf("vault password cannot be empty")
 	}
 	return pw, nil
 }
 
-func resolveGlobalVaultPassword() (string, error) {
+func resolveGlobalVaultPassword() ([]byte, error) {
 	// 1. Environment variable
 	if pw, ok := os.LookupEnv("FACTORLY_VAULT_PASSWORD"); ok {
 		if pw == "" {
-			return "", fmt.Errorf("FACTORLY_VAULT_PASSWORD is set but empty")
+			return nil, fmt.Errorf("FACTORLY_VAULT_PASSWORD is set but empty")
 		}
 		vlog("vault password from FACTORLY_VAULT_PASSWORD")
-		return pw, nil
+		return []byte(pw), nil
 	}
 
 	// 2. Global key file
@@ -358,35 +375,35 @@ func resolveGlobalVaultPassword() (string, error) {
 	// 3. Interactive prompt
 	pw, err := promptSecret("Vault password (global): ")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	if pw == "" {
-		return "", fmt.Errorf("vault password cannot be empty")
+	if len(pw) == 0 {
+		return nil, fmt.Errorf("vault password cannot be empty")
 	}
 	return pw, nil
 }
 
-func readKeyFile(path string) (string, error) {
+func readKeyFile(path string) ([]byte, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	perm := info.Mode().Perm()
 	if perm != 0o600 {
-		return "", fmt.Errorf("vault key file %s has insecure permissions %04o (must be 0600)", path, perm)
+		return nil, fmt.Errorf("vault key file %s has insecure permissions %04o (must be 0600)", path, perm)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("reading vault key file: %w", err)
+		return nil, fmt.Errorf("reading vault key file: %w", err)
 	}
-	pw := strings.TrimSpace(string(data))
-	if pw == "" {
-		return "", fmt.Errorf("vault key file %s is empty", path)
+	pw := bytes.TrimSpace(data)
+	if len(pw) == 0 {
+		return nil, fmt.Errorf("vault key file %s is empty", path)
 	}
 	return pw, nil
 }
 
-func promptSecret(label string) (string, error) {
+func promptSecret(label string) ([]byte, error) {
 	fmt.Fprint(os.Stderr, label)
 
 	// Try to read without echo from terminal
@@ -395,17 +412,23 @@ func promptSecret(label string) (string, error) {
 		pw, err := term.ReadPassword(fd)
 		fmt.Fprintln(os.Stderr) // newline after hidden input
 		if err != nil {
-			return "", fmt.Errorf("reading password: %w", err)
+			return nil, fmt.Errorf("reading password: %w", err)
 		}
-		return string(pw), nil
+		return pw, nil
 	}
 
 	// Fallback: read from stdin (piped input)
 	scanner := bufio.NewScanner(os.Stdin)
 	if scanner.Scan() {
-		return strings.TrimSpace(scanner.Text()), nil
+		return []byte(strings.TrimSpace(scanner.Text())), nil
 	}
-	return "", fmt.Errorf("no input received")
+	return nil, fmt.Errorf("no input received")
+}
+
+func zeroBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
 }
 
 func getFromExternalBackend(name, key string) error {
