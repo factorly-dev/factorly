@@ -1,0 +1,25 @@
+anthropic.messages:
+  type: rest
+  description: Create a message using the Claude API
+  base_url: "https://api.anthropic.com"
+  method: POST
+  path: /v1/messages
+  headers:
+    anthropic-version: "2023-06-01"
+  auth:
+    type: header
+    header: x-api-key
+    value: "{{vault:ANTHROPIC_API_KEY}}"
+  parameters:
+    - name: model
+      description: Model to use (e.g., claude-sonnet-4-20250514)
+      required: true
+      in: body
+    - name: max_tokens
+      description: Maximum tokens to generate
+      required: true
+      in: body
+    - name: messages
+      description: Array of message objects with role and content
+      required: true
+      in: body

@@ -1,0 +1,21 @@
+chatgpt.completions:
+  type: rest
+  description: Create a chat completion using the OpenAI API
+  base_url: "https://api.openai.com"
+  method: POST
+  path: /v1/chat/completions
+  auth:
+    type: bearer
+    token: "{{vault:OPENAI_API_KEY}}"
+  parameters:
+    - name: model
+      description: Model to use (e.g., gpt-4o, o4-mini)
+      required: true
+      in: body
+    - name: messages
+      description: Array of message objects with role and content
+      required: true
+      in: body
+    - name: max_tokens
+      description: Maximum tokens to generate
+      in: body

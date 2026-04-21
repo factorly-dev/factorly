@@ -31,46 +31,52 @@ type OAuthConfig struct {
 	Scopes   []string
 }
 
-// All returns all registered templates.
+// All returns all registered templates sorted by name.
 func All() []*Template {
-	return []*Template{
-		Linear(),
+	all := []*Template{
+		Airtable(),
+		Anthropic(),
+		Apollo(),
+		Asana(),
+		Attio(),
+		BigQuery(),
+		Calendly(),
+		ChatGPT(),
+		ClickUp(),
+		Coda(),
+		Discord(),
+		DocuSign(),
+		Dropbox(),
+		Freshdesk(),
 		GitHub(),
+		Gmail(),
+		GoogleCalendar(),
+		GoogleDocs(),
+		GoogleDrive(),
+		GoogleSheets(),
+		HubSpot(),
+		Intercom(),
+		Jira(),
+		Linear(),
+		MicrosoftOutlook(),
+		MicrosoftTeams(),
+		Monday(),
+		Notion(),
+		OneDrive(),
+		Salesforce(),
+		SendGrid(),
+		SharePoint(),
+		Shopify(),
 		Slack(),
 		Stripe(),
-		Notion(),
-		GoogleSheets(),
-		GoogleCalendar(),
-		Gmail(),
-		GoogleDrive(),
-		GoogleDocs(),
-		Airtable(),
-		Discord(),
-		Jira(),
-		BigQuery(),
-		Coda(),
-		HubSpot(),
-		Salesforce(),
-		Calendly(),
-		Intercom(),
-		Zendesk(),
-		Freshdesk(),
-		Shopify(),
-		SendGrid(),
-		Asana(),
-		ClickUp(),
-		Trello(),
-		Monday(),
-		Dropbox(),
-		DocuSign(),
-		Apollo(),
-		Attio(),
-		MicrosoftTeams(),
-		MicrosoftOutlook(),
-		OneDrive(),
-		SharePoint(),
 		Telegram(),
+		Trello(),
+		Zendesk(),
 	}
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].Name < all[j].Name
+	})
+	return all
 }
 
 // Get returns a template by name, or nil if not found.
