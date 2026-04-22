@@ -4,6 +4,7 @@ go 1.24.1
 
 require (
 	github.com/mark3labs/mcp-go v0.47.0
+	github.com/ohler55/ojg v1.28.1
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/crypto v0.31.0
 	golang.org/x/term v0.27.0

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ohler55/ojg/jp"
 )
 
 func TestFilterNil(t *testing.T) {
@@ -477,6 +479,140 @@ func TestCompileFilterPipeEmptyCommand(t *testing.T) {
 	f := CompileFilter(cfg)
 	if f != nil {
 		t.Error("expected nil filter when pipe command is empty")
+	}
+}
+
+// --- JSONPath tests ---
+
+func mustParseJP(t *testing.T, path string) jp.Expr {
+	t.Helper()
+	expr, err := jp.ParseString(path)
+	if err != nil {
+		t.Fatalf("invalid jsonpath %q: %v", path, err)
+	}
+	return expr
+}
+
+func TestJSONPathSimpleField(t *testing.T) {
+	f := &Filter{JSONPath: mustParseJP(t, "$.name")}
+	got := f.Apply(`{"name":"alice","age":30}`)
+	if got != "alice" {
+		t.Errorf("expected 'alice', got %q", got)
+	}
+}
+
+func TestJSONPathNested(t *testing.T) {
+	f := &Filter{JSONPath: mustParseJP(t, "$.a.b")}
+	got := f.Apply(`{"a":{"b":"nested"}}`)
+	if got != "nested" {
+		t.Errorf("expected 'nested', got %q", got)
+	}
+}
+
+func TestJSONPathArrayIndex(t *testing.T) {
+	f := &Filter{JSONPath: mustParseJP(t, "$.items[0]")}
+	got := f.Apply(`{"items":[10,20,30]}`)
+	if got != "10" {
+		t.Errorf("expected '10', got %q", got)
+	}
+}
+
+func TestJSONPathArrayWildcard(t *testing.T) {
+	f := &Filter{JSONPath: mustParseJP(t, "$.items[*].n")}
+	got := f.Apply(`{"items":[{"n":"a"},{"n":"b"},{"n":"c"}]}`)
+	if got != `["a","b","c"]` {
+		t.Errorf("expected array, got %q", got)
+	}
+}
+
+func TestJSONPathAnthropicUseCase(t *testing.T) {
+	input := `{"id":"msg_123","content":[{"type":"text","text":"Hello world"}],"model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":5}}`
+	f := &Filter{JSONPath: mustParseJP(t, "$.content[0].text")}
+	got := f.Apply(input)
+	if got != "Hello world" {
+		t.Errorf("expected 'Hello world', got %q", got)
+	}
+}
+
+func TestJSONPathNonJSON(t *testing.T) {
+	f := &Filter{JSONPath: mustParseJP(t, "$.name")}
+	input := "not json at all"
+	got := f.Apply(input)
+	if got != input {
+		t.Errorf("expected passthrough for non-JSON, got %q", got)
+	}
+}
+
+func TestJSONPathNoMatch(t *testing.T) {
+	f := &Filter{JSONPath: mustParseJP(t, "$.missing")}
+	input := `{"name":"alice"}`
+	got := f.Apply(input)
+	if got != input {
+		t.Errorf("expected passthrough for no match, got %q", got)
+	}
+}
+
+func TestJSONPathObjectResult(t *testing.T) {
+	f := &Filter{JSONPath: mustParseJP(t, "$.user")}
+	got := f.Apply(`{"user":{"name":"alice","age":30}}`)
+	if got != `{"age":30,"name":"alice"}` && got != `{"name":"alice","age":30}` {
+		t.Errorf("expected JSON object, got %q", got)
+	}
+}
+
+func TestJSONPathNumber(t *testing.T) {
+	f := &Filter{JSONPath: mustParseJP(t, "$.count")}
+	got := f.Apply(`{"count":42}`)
+	if got != "42" {
+		t.Errorf("expected '42', got %q", got)
+	}
+}
+
+func TestJSONPathBoolean(t *testing.T) {
+	f := &Filter{JSONPath: mustParseJP(t, "$.active")}
+	got := f.Apply(`{"active":true}`)
+	if got != "true" {
+		t.Errorf("expected 'true', got %q", got)
+	}
+}
+
+func TestJSONPathWithOtherStages(t *testing.T) {
+	f := &Filter{
+		StripLines: []*regexp.Regexp{regexp.MustCompile(`^DEBUG`)},
+		JSONPath:   mustParseJP(t, "$.name"),
+	}
+	// strip_lines runs on text first, then json_path on the result
+	// Since the input is JSON, strip_lines won't match and json_path extracts
+	got := f.Apply(`{"name":"alice","debug":"info"}`)
+	if got != "alice" {
+		t.Errorf("expected 'alice', got %q", got)
+	}
+}
+
+func TestCompileFilterJSONPath(t *testing.T) {
+	cfg := &FilterConfig{
+		JSONPath: "$.content[0].text",
+	}
+	f := CompileFilter(cfg)
+	if f == nil {
+		t.Fatal("expected non-nil filter with json_path")
+	}
+	if len(f.JSONPath) == 0 {
+		t.Error("expected compiled JSONPath expression")
+	}
+}
+
+func TestCompileFilterJSONPathInvalid(t *testing.T) {
+	cfg := &FilterConfig{
+		JSONPath: "$[invalid",
+		MaxLines: 10, // ensure filter isn't nil due to only invalid json_path
+	}
+	f := CompileFilter(cfg)
+	if f == nil {
+		t.Fatal("expected non-nil filter despite invalid json_path")
+	}
+	if len(f.JSONPath) != 0 {
+		t.Error("expected empty JSONPath for invalid expression")
 	}
 }
 

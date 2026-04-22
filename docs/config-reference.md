@@ -114,6 +114,7 @@ tools:
       head_lines: 10                 # keep first N lines
       tail_lines: 5                  # keep last N lines (inserts omission marker)
       max_lines: 50                  # absolute line count cap
+      json_path: "$.content[0].text" # JSONPath extraction (full spec)
       pipe:                          # pipe output through external tool (cli, rest, mcp)
         type: cli                  # cli (default), rest, or mcp
         command: jq

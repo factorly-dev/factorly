@@ -6,12 +6,16 @@ package output
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/ohler55/ojg/jp"
+	"github.com/ohler55/ojg/oj"
 )
 
 // Filter defines a per-tool output filtering pipeline.
@@ -24,6 +28,7 @@ type Filter struct {
 	HeadLines   int
 	TailLines   int
 	MaxLines    int
+	JSONPath    jp.Expr      // compiled JSONPath expression
 	Pipe        *PipeCommand // CLI pipe (executed directly)
 	PipeFn      PipeFunc     // injected pipe (for REST/MCP, set by proxy)
 }
@@ -98,7 +103,14 @@ func (f *Filter) Apply(s string) string {
 
 	result := strings.Join(lines, "\n")
 
-	// Stage f: pipe through external tool
+	// Stage f: json_path extraction
+	if len(f.JSONPath) > 0 {
+		if extracted, err := extractJSONPath(result, f.JSONPath); err == nil {
+			result = extracted
+		}
+	}
+
+	// Stage g: pipe through external tool
 	if f.PipeFn != nil {
 		if piped, err := f.PipeFn(result); err == nil {
 			result = piped
@@ -144,6 +156,44 @@ func matchesAny(s string, patterns []*regexp.Regexp) bool {
 		}
 	}
 	return false
+}
+
+func extractJSONPath(input string, expr jp.Expr) (string, error) {
+	obj, err := oj.ParseString(input)
+	if err != nil {
+		return "", err
+	}
+
+	results := expr.Get(obj)
+	if len(results) == 0 {
+		return "", fmt.Errorf("no match")
+	}
+
+	if len(results) == 1 {
+		return formatJSONValue(results[0]), nil
+	}
+
+	// Multiple results → JSON array
+	data, err := json.Marshal(results)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func formatJSONValue(v any) string {
+	switch val := v.(type) {
+	case string:
+		return val // raw, no quotes
+	case nil:
+		return "null"
+	default:
+		data, err := json.Marshal(val)
+		if err != nil {
+			return fmt.Sprintf("%v", val)
+		}
+		return string(data)
+	}
 }
 
 func runPipe(pipe *PipeCommand, input string) (string, error) {

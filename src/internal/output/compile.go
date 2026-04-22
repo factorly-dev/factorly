@@ -8,6 +8,8 @@ import (
 	"os"
 	"regexp"
 	"time"
+
+	"github.com/ohler55/ojg/jp"
 )
 
 // FilterConfig is the raw YAML/config representation of a filter.
@@ -19,6 +21,7 @@ type FilterConfig struct {
 	HeadLines   int                 `yaml:"head_lines,omitempty"`
 	TailLines   int                 `yaml:"tail_lines,omitempty"`
 	MaxLines    int                 `yaml:"max_lines,omitempty"`
+	JSONPath    string              `yaml:"json_path,omitempty"`
 	Pipe        *PipeConfig         `yaml:"pipe,omitempty"`
 }
 
@@ -99,6 +102,15 @@ func CompileFilter(cfg *FilterConfig) *Filter {
 		f.Replace = append(f.Replace, ReplaceRule{Pattern: p, Replacement: r.Replacement})
 	}
 
+	if cfg.JSONPath != "" {
+		expr, err := jp.ParseString(cfg.JSONPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: invalid json_path %q: %v\n", cfg.JSONPath, err)
+		} else {
+			f.JSONPath = expr
+		}
+	}
+
 	if cfg.Pipe != nil {
 		pipeType := cfg.Pipe.Type
 		if pipeType == "" && cfg.Pipe.Command != "" {
@@ -126,7 +138,7 @@ func CompileFilter(cfg *FilterConfig) *Filter {
 	hasPipe := f.Pipe != nil || (cfg.Pipe != nil && (cfg.Pipe.Type == "rest" || cfg.Pipe.Type == "mcp"))
 	if len(f.MatchOutput) == 0 && len(f.StripLines) == 0 && len(f.KeepLines) == 0 &&
 		len(f.Replace) == 0 && f.HeadLines == 0 && f.TailLines == 0 && f.MaxLines == 0 &&
-		!hasPipe {
+		len(f.JSONPath) == 0 && !hasPipe {
 		return nil
 	}
 

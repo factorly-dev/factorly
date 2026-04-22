@@ -122,6 +122,40 @@ filter:
   max_lines: 50
 ```
 
+### json_path
+
+Extract values from JSON output using [JSONPath](https://goessner.net/articles/JsonPath/) syntax. Runs after line-based stages, before pipe.
+
+```yaml
+# Extract a single field
+filter:
+  json_path: "$.content[0].text"
+
+# Array wildcard
+filter:
+  json_path: "$.items[*].name"
+
+# Select multiple fields
+filter:
+  json_path: "$..['model', 'text', 'output_tokens']"
+```
+
+String results are returned raw (no quotes). Objects and arrays are returned as compact JSON. If the path doesn't match or the input isn't JSON, output passes through unfiltered.
+
+Replaces `jq` for most extraction tasks — no external dependency needed:
+
+```yaml
+# Instead of:
+filter:
+  pipe:
+    command: jq
+    args: ["-r", ".content[0].text"]
+
+# Use:
+filter:
+  json_path: "$.content[0].text"
+```
+
 ## Built-in filters
 
 Factorly ships with built-in filters for common commands. These apply automatically when `factorly.shell` or `factorly exec` runs a recognized command and no user-defined filter is configured.
@@ -254,6 +288,8 @@ filter:
   head_lines: 10                 # int, keep first N lines
   tail_lines: 5                  # int, keep last N lines
   max_lines: 50                  # int, absolute cap
+
+  json_path: "$.field[0].name"   # JSONPath extraction (full spec)
 
   pipe:                          # external tool filter (cli, rest, or mcp)
     type: "cli"                  # "cli" (default), "rest", or "mcp"
