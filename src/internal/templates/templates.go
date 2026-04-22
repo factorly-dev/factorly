@@ -48,6 +48,7 @@ func All() []*Template {
 		DocuSign(),
 		Dropbox(),
 		Freshdesk(),
+		Git(),
 		GitHub(),
 		Gmail(),
 		GoogleCalendar(),

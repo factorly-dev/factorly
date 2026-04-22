@@ -1,0 +1,53 @@
+git.status:
+  type: cli
+  description: Show working tree status
+  command: git
+  args: ["status"]
+  filter:
+    strip_lines:
+      - "^\\s+\\(use \"git "
+    max_lines: 30
+
+git.diff:
+  type: cli
+  description: Show changes in the working directory
+  command: git
+  args: ["diff", "{{path}}"]
+  parameters:
+    - name: path
+      description: File or directory to diff (optional)
+      default: ""
+  filter:
+    max_lines: 200
+
+git.log:
+  type: cli
+  description: Show recent commit history
+  command: git
+  args: ["log", "--oneline", "-{{count}}"]
+  parameters:
+    - name: count
+      description: Number of commits to show
+      default: "10"
+  filter:
+    max_lines: 50
+
+git.commit:
+  type: cli
+  description: Create a new commit with a message
+  command: git
+  args: ["commit", "-m", "{{message}}"]
+  parameters:
+    - name: message
+      description: Commit message
+      required: true
+  shadow:
+    confirm: true
+
+git.push:
+  type: cli
+  description: Push commits to remote
+  command: git
+  args: ["push"]
+  shadow:
+    confirm: true

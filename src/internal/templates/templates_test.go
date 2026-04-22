@@ -25,7 +25,7 @@ func TestAllTemplatesHaveRequiredFields(t *testing.T) {
 		if tmpl.AuthType == "" {
 			t.Errorf("template %q has empty auth type", tmpl.Name)
 		}
-		if tmpl.AuthType != "oauth" && tmpl.VaultKey == "" {
+		if tmpl.AuthType != "oauth" && tmpl.AuthType != "none" && tmpl.VaultKey == "" {
 			t.Errorf("template %q has empty vault key", tmpl.Name)
 		}
 		if tmpl.AuthType == "oauth" && tmpl.OAuthConfig == nil {
@@ -53,17 +53,23 @@ func TestAllTemplatesYAMLValid(t *testing.T) {
 			continue
 		}
 		for name, tc := range tools {
-			if tc.Type != "rest" {
-				t.Errorf("template %q tool %s: type=%q, expected rest", tmpl.Name, name, tc.Type)
-			}
-			if tc.BaseURL == "" {
-				t.Errorf("template %q tool %s: empty base_url", tmpl.Name, name)
-			}
-			if tc.Method == "" {
-				t.Errorf("template %q tool %s: empty method", tmpl.Name, name)
-			}
-			if tc.Auth == nil {
-				t.Errorf("template %q tool %s: missing auth", tmpl.Name, name)
+			switch tc.Type {
+			case "rest":
+				if tc.BaseURL == "" {
+					t.Errorf("template %q tool %s: empty base_url", tmpl.Name, name)
+				}
+				if tc.Method == "" {
+					t.Errorf("template %q tool %s: empty method", tmpl.Name, name)
+				}
+				if tc.Auth == nil {
+					t.Errorf("template %q tool %s: missing auth", tmpl.Name, name)
+				}
+			case "cli":
+				if tc.Command == "" {
+					t.Errorf("template %q tool %s: empty command", tmpl.Name, name)
+				}
+			default:
+				t.Errorf("template %q tool %s: unexpected type %q", tmpl.Name, name, tc.Type)
 			}
 		}
 	}
@@ -139,8 +145,8 @@ func TestToolNames(t *testing.T) {
 
 func TestTemplateCount(t *testing.T) {
 	all := All()
-	if len(all) != 38 {
-		t.Errorf("expected 38 templates, got %d", len(all))
+	if len(all) != 39 {
+		t.Errorf("expected 39 templates, got %d", len(all))
 	}
 }
 
