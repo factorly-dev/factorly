@@ -1,3 +1,20 @@
+## [v0.6.3] - 2026-04-22
+
+### Added
+- JSONPath filter stage with full JSONPath specification support
+- Built-in JSON field extraction without external dependencies
+- Support for dot notation, bracket notation, array indexing, wildcards, and recursive descent
+- JSONPath expression compilation at config load time
+- 13 tests covering various JSONPath scenarios
+
+### Changed
+- Release workflows now post changelog links
+- Updated filter documentation with JSONPath section
+
+### Fixed
+- Parameter substitution when using CLI defaults
+- Changelog script functionality
+
 ## [v0.6.2] - 2026-04-21
 
 ### Added
