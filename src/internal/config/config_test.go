@@ -834,3 +834,68 @@ tools:
 		t.Errorf("expected compress [json, logs], got %v", tool.Compress)
 	}
 }
+
+func TestWorkflowConfigValid(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  pipeline:
+    type: workflow
+    description: Test pipeline
+    steps:
+      - tool: step1
+        params:
+          key: value
+        store: result
+      - tool: step2
+        params:
+          input: "{{result}}"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool := cfg.Tools["pipeline"]
+	if tool.Type != "workflow" {
+		t.Errorf("expected type workflow, got %s", tool.Type)
+	}
+	if len(tool.Steps) != 2 {
+		t.Fatalf("expected 2 steps, got %d", len(tool.Steps))
+	}
+	if tool.Steps[0].Tool != "step1" {
+		t.Errorf("expected step1, got %s", tool.Steps[0].Tool)
+	}
+	if tool.Steps[0].Store != "result" {
+		t.Errorf("expected store=result, got %s", tool.Steps[0].Store)
+	}
+	if tool.Steps[1].Params["input"] != "{{result}}" {
+		t.Errorf("expected {{result}} param, got %s", tool.Steps[1].Params["input"])
+	}
+}
+
+func TestWorkflowConfigNoSteps(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  empty:
+    type: workflow
+    description: Empty workflow
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for workflow with no steps")
+	}
+}
+
+func TestWorkflowConfigStepMissingTool(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  bad:
+    type: workflow
+    steps:
+      - params:
+          key: value
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for step missing tool name")
+	}
+}

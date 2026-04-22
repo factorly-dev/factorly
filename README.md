@@ -168,6 +168,7 @@ Agent tools return too much data. Factorly compresses JSON, deduplicates log out
 - [Configuration](docs/config-reference.md)
 - [CLI Reference](docs/cli-reference.md)
 - [Output Filters](docs/filters.md)
+- [Workflows](docs/workflow-spec.md)
 - [OAuth Setup](docs/oauth.md)
 - [Audit Logging](docs/logging.md)
 - [Template Library](docs/templates.md)

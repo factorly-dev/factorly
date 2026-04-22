@@ -22,7 +22,7 @@ factorly tools import templates <name> --all --api-key <key>  # non-interactive
 factorly tools record                 # create a tool from a pasted curl command
 factorly tools record --curl '...'    # create from inline curl
 factorly tools record --dry-run       # preview YAML without writing
-factorly call <tool> [--param val]  # call a tool
+factorly call <tool> [--param val]  # call a tool (cli, rest, mcp, or workflow)
 factorly sync                       # push MCP config to AI clients
 factorly sync --global              # sync to user-level config (~/.claude/, etc.)
 factorly sync --http localhost:3000 # sync HTTP mode

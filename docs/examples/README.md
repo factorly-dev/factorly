@@ -65,6 +65,12 @@ Practical, copy-paste examples for every Factorly feature. Each is self-containe
 | 25 | [MCP over HTTP](25-mcp-http-remote.md) | Serve tools over HTTP for remote agents and containers |
 | 26 | [Built-in Tools](26-built-in-tools.md) | Governed shell, file, fetch, and clipboard tools out of the box |
 
+## Workflows
+
+| # | Example | Description |
+|---|---------|-------------|
+| 30 | [Workflows](30-workflows.md) | Chain tools into governed pipelines with variable passing |
+
 ## Compliance
 
 | # | Example | Description |

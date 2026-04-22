@@ -47,6 +47,11 @@ func New(reg *registry.Registry, providers map[string]provider.Provider, log log
 	return p
 }
 
+// RegisterProvider adds a provider after proxy creation.
+func (p *Proxy) RegisterProvider(key string, prov provider.Provider) {
+	p.providers[key] = prov
+}
+
 // Shadow returns the shadow policy, or nil if none is configured.
 func (p *Proxy) Shadow() *shadow.Policy {
 	return p.shadow

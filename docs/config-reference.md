@@ -29,8 +29,8 @@ oauth_providers: # shared across tools
 
 tools:
   <tool-name>:
-    type: cli | rest | mcp       # required
-    description: "..."           # optional, shown to agent
+    type: cli | rest | mcp | workflow  # required
+    description: "..."                 # optional, shown to agent
 
     # For CLI commands:
     command: curl                # executable to run
@@ -97,6 +97,15 @@ tools:
         pattern: "^[a-zA-Z0-9-]+$"  # reject values not matching regex
         min_length: 1                # reject strings shorter than this
         max_length: 39               # truncate strings longer than this
+
+    # For workflows (sequential tool pipelines):
+    steps:
+      - tool: github.list_repos       # tool to call (must exist in config)
+        params: { owner: "{{org}}" }  # {{var}} substituted from input + stored outputs
+        store: repos                   # save output as variable for later steps
+      - tool: anthropic.ask
+        params:
+          prompt: "Summarize: {{repos}}"
 
     shadow:                          # optional, oversight rules
       deny: [dangerous_action]

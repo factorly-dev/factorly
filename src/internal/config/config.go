@@ -67,6 +67,9 @@ type ToolConfig struct {
 	Headers map[string]string `yaml:"headers,omitempty"`
 	Auth    *AuthConfig       `yaml:"auth,omitempty"`
 
+	// Workflow fields
+	Steps []StepConfig `yaml:"steps,omitempty"`
+
 	// Shadow (oversight)
 	Shadow *ShadowConfig `yaml:"shadow,omitempty"`
 
@@ -106,6 +109,12 @@ type ParamConfig struct {
 	MaxLength *int     `yaml:"max_length,omitempty"`
 	Pattern   string   `yaml:"pattern,omitempty"`
 	Enum      []string `yaml:"enum,omitempty"`
+}
+
+type StepConfig struct {
+	Tool   string            `yaml:"tool"`
+	Params map[string]string `yaml:"params,omitempty"`
+	Store  string            `yaml:"store,omitempty"`
 }
 
 type ShadowConfig struct {
@@ -462,7 +471,7 @@ func validate(cfg *Config) error {
 	if len(cfg.Tools) == 0 {
 		return nil
 	}
-	validTypes := map[string]bool{"cli": true, "mcp": true, "rest": true}
+	validTypes := map[string]bool{"cli": true, "mcp": true, "rest": true, "workflow": true}
 	for name, tool := range cfg.Tools {
 		if tool.Type == "" {
 			return fmt.Errorf("config: tool %q missing type", name)
@@ -484,6 +493,16 @@ func validate(cfg *Config) error {
 			}
 			if tool.Method == "" {
 				return fmt.Errorf("config: rest tool %q missing method", name)
+			}
+		}
+		if tool.Type == "workflow" {
+			if len(tool.Steps) == 0 {
+				return fmt.Errorf("config: workflow tool %q has no steps", name)
+			}
+			for i, step := range tool.Steps {
+				if step.Tool == "" {
+					return fmt.Errorf("config: workflow tool %q step %d missing tool name", name, i+1)
+				}
 			}
 		}
 		if tool.Auth != nil && tool.Auth.Type == "oauth" {

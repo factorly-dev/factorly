@@ -102,7 +102,7 @@ func validateTool(t *testing.T, name string, tc config.ToolConfig, filename stri
 		return
 	}
 
-	validTypes := map[string]bool{"cli": true, "rest": true, "mcp": true}
+	validTypes := map[string]bool{"cli": true, "rest": true, "mcp": true, "workflow": true}
 	if !validTypes[tc.Type] {
 		t.Errorf("[%s] tool %q has invalid type %q", filename, name, tc.Type)
 	}
@@ -122,6 +122,10 @@ func validateTool(t *testing.T, name string, tc config.ToolConfig, filename stri
 	case "mcp":
 		if tc.Command == "" && tc.URL == "" {
 			t.Errorf("[%s] mcp tool %q needs either command or url", filename, name)
+		}
+	case "workflow":
+		if len(tc.Steps) == 0 {
+			t.Errorf("[%s] workflow tool %q has no steps", filename, name)
 		}
 	}
 }

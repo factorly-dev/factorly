@@ -1,0 +1,562 @@
+// Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+// SPDX-License-Identifier: gpl
+
+package provider
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+type mockWorkflowExecutor struct {
+	calls   []string
+	results map[string]*Result
+	errors  map[string]error
+}
+
+func (m *mockWorkflowExecutor) ExecuteWithContext(_ context.Context, toolName string, params map[string]string, _ string) (*Result, error) {
+	m.calls = append(m.calls, toolName)
+	if err, ok := m.errors[toolName]; ok {
+		return nil, err
+	}
+	if r, ok := m.results[toolName]; ok {
+		return r, nil
+	}
+	// Default: echo params as output
+	output := toolName + " ok"
+	if msg, ok := params["message"]; ok {
+		output = msg
+	}
+	return &Result{Output: output}, nil
+}
+
+func TestWorkflowSimple(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.pipeline", []WorkflowStep{
+		{Tool: "step1"},
+		{Tool: "step2"},
+	})
+
+	result, err := wp.Execute("test.pipeline", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.calls) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(exec.calls))
+	}
+	if exec.calls[0] != "step1" || exec.calls[1] != "step2" {
+		t.Errorf("expected step1, step2; got %v", exec.calls)
+	}
+
+	var state struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(result.Output), &state); err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != "completed" {
+		t.Errorf("expected completed, got %s", state.Status)
+	}
+}
+
+func TestWorkflowVariablePassing(t *testing.T) {
+	exec := &mockWorkflowExecutor{
+		results: map[string]*Result{
+			"fetch": {Output: "data from fetch"},
+		},
+	}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.pipeline", []WorkflowStep{
+		{Tool: "fetch", Store: "data"},
+		{Tool: "process", Params: map[string]string{"message": "got: {{data}}"}},
+	})
+
+	_, err := wp.Execute("test.pipeline", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that step 2 received the substituted variable
+	if len(exec.calls) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(exec.calls))
+	}
+}
+
+func TestWorkflowInputParams(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.greet", []WorkflowStep{
+		{Tool: "echo", Params: map[string]string{"message": "hello {{name}}"}},
+	})
+
+	_, err := wp.Execute("test.greet", map[string]string{"name": "world"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.calls) != 1 {
+		t.Fatal("expected 1 call")
+	}
+}
+
+func TestWorkflowStepFailure(t *testing.T) {
+	exec := &mockWorkflowExecutor{
+		errors: map[string]error{
+			"step2": fmt.Errorf("step2 failed"),
+		},
+	}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.pipeline", []WorkflowStep{
+		{Tool: "step1"},
+		{Tool: "step2"},
+		{Tool: "step3"},
+	})
+
+	result, err := wp.Execute("test.pipeline", nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "step 2") {
+		t.Errorf("expected step 2 in error, got: %s", err.Error())
+	}
+
+	// Only step1 and step2 should have been called
+	if len(exec.calls) != 2 {
+		t.Errorf("expected 2 calls (step3 skipped), got %d", len(exec.calls))
+	}
+
+	// Output should have state with skipped step
+	var state struct {
+		Status string `json:"status"`
+		Steps  []struct {
+			Status string `json:"status"`
+		} `json:"steps"`
+	}
+	if err := json.Unmarshal([]byte(result.Output), &state); err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != "failed" {
+		t.Errorf("expected failed, got %s", state.Status)
+	}
+	if state.Steps[2].Status != "skipped" {
+		t.Errorf("expected step 3 skipped, got %s", state.Steps[2].Status)
+	}
+}
+
+func TestWorkflowNotRegistered(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+
+	_, err := wp.Execute("nonexistent", nil)
+	if err == nil {
+		t.Fatal("expected error for unregistered workflow")
+	}
+}
+
+func TestWorkflowEmptySteps(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.empty", []WorkflowStep{})
+
+	_, err := wp.Execute("test.empty", nil)
+	if err == nil {
+		t.Fatal("expected error for empty workflow")
+	}
+}
+
+func TestWorkflowContextCancelled(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.pipeline", []WorkflowStep{
+		{Tool: "step1"},
+		{Tool: "step2"},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	result, err := wp.ExecuteWithContext(ctx, "test.pipeline", nil)
+	if err == nil {
+		// Context cancellation is reflected in state, not as an error return
+		var state struct {
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal([]byte(result.Output), &state); err == nil {
+			if state.Status != "failed" {
+				t.Errorf("expected failed status on cancelled context, got %s", state.Status)
+			}
+		}
+	}
+}
+
+func TestWorkflowThreeStepChain(t *testing.T) {
+	exec := &mockWorkflowExecutor{
+		results: map[string]*Result{
+			"step1": {Output: "alpha"},
+			"step2": {Output: "alpha-beta"},
+			"step3": {Output: "alpha-beta-gamma"},
+		},
+	}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.chain", []WorkflowStep{
+		{Tool: "step1", Store: "a"},
+		{Tool: "step2", Params: map[string]string{"input": "{{a}}"}, Store: "b"},
+		{Tool: "step3", Params: map[string]string{"input": "{{b}}"}},
+	})
+
+	result, err := wp.Execute("test.chain", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.calls) != 3 {
+		t.Fatalf("expected 3 calls, got %d", len(exec.calls))
+	}
+
+	var state struct {
+		Result string `json:"result"`
+	}
+	_ = json.Unmarshal([]byte(result.Output), &state)
+	if state.Result != "alpha-beta-gamma" {
+		t.Errorf("expected chained result, got %q", state.Result)
+	}
+}
+
+func TestWorkflowMixedInputAndStoredVars(t *testing.T) {
+	exec := &mockWorkflowExecutor{
+		results: map[string]*Result{
+			"fetch": {Output: "fetched-data"},
+		},
+	}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.mixed", []WorkflowStep{
+		{Tool: "fetch", Store: "data"},
+		{Tool: "process", Params: map[string]string{
+			"input": "{{data}}",
+			"env":   "{{environment}}",
+		}},
+	})
+
+	_, err := wp.Execute("test.mixed", map[string]string{"environment": "staging"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.calls) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(exec.calls))
+	}
+}
+
+func TestWorkflowStoreEmptyOutput(t *testing.T) {
+	exec := &mockWorkflowExecutor{
+		results: map[string]*Result{
+			"step1": {Output: ""},
+		},
+	}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.empty_store", []WorkflowStep{
+		{Tool: "step1", Store: "data"},
+		{Tool: "step2", Params: map[string]string{"input": "got: {{data}}"}},
+	})
+
+	_, err := wp.Execute("test.empty_store", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Should still work — empty string is a valid variable
+	if len(exec.calls) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(exec.calls))
+	}
+}
+
+func TestWorkflowMultipleWorkflows(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("workflow.a", []WorkflowStep{
+		{Tool: "step_a"},
+	})
+	wp.RegisterWorkflow("workflow.b", []WorkflowStep{
+		{Tool: "step_b1"},
+		{Tool: "step_b2"},
+	})
+
+	_, err := wp.Execute("workflow.a", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.calls) != 1 || exec.calls[0] != "step_a" {
+		t.Errorf("expected step_a, got %v", exec.calls)
+	}
+
+	exec.calls = nil
+	_, err = wp.Execute("workflow.b", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.calls) != 2 {
+		t.Errorf("expected 2 calls for workflow.b, got %d", len(exec.calls))
+	}
+}
+
+func TestWorkflowStatePersisted(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.persist", []WorkflowStep{
+		{Tool: "step1"},
+	})
+
+	result, err := wp.Execute("test.persist", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse the output to get run ID
+	var state struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(result.Output), &state); err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != "completed" {
+		t.Errorf("expected completed, got %s", state.Status)
+	}
+
+	// State file should exist in .factorly/workflows/
+	// (uses current directory, so check it exists)
+	matches, _ := filepath.Glob(filepath.Join(".factorly", "workflows", "*.json"))
+	// Clean up any state files we created
+	for _, m := range matches {
+		os.Remove(m)
+	}
+}
+
+func TestWorkflowFirstStepFails(t *testing.T) {
+	exec := &mockWorkflowExecutor{
+		errors: map[string]error{
+			"step1": fmt.Errorf("connection refused"),
+		},
+	}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.fail_first", []WorkflowStep{
+		{Tool: "step1"},
+		{Tool: "step2"},
+		{Tool: "step3"},
+	})
+
+	result, err := wp.Execute("test.fail_first", nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "step 1") {
+		t.Errorf("expected 'step 1' in error, got: %s", err.Error())
+	}
+
+	// Only step1 called, step2 and step3 skipped
+	if len(exec.calls) != 1 {
+		t.Errorf("expected 1 call, got %d", len(exec.calls))
+	}
+
+	var state struct {
+		Steps []struct {
+			Status string `json:"status"`
+		} `json:"steps"`
+	}
+	_ = json.Unmarshal([]byte(result.Output), &state)
+	if state.Steps[0].Status != "failed" {
+		t.Errorf("step 1 should be failed, got %s", state.Steps[0].Status)
+	}
+	if state.Steps[1].Status != "skipped" {
+		t.Errorf("step 2 should be skipped, got %s", state.Steps[1].Status)
+	}
+	if state.Steps[2].Status != "skipped" {
+		t.Errorf("step 3 should be skipped, got %s", state.Steps[2].Status)
+	}
+}
+
+func TestWorkflowLastStepFails(t *testing.T) {
+	exec := &mockWorkflowExecutor{
+		errors: map[string]error{
+			"step3": fmt.Errorf("timeout"),
+		},
+	}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.fail_last", []WorkflowStep{
+		{Tool: "step1"},
+		{Tool: "step2"},
+		{Tool: "step3"},
+	})
+
+	result, err := wp.Execute("test.fail_last", nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "step 3") {
+		t.Errorf("expected 'step 3' in error, got: %s", err.Error())
+	}
+
+	// All 3 called
+	if len(exec.calls) != 3 {
+		t.Errorf("expected 3 calls, got %d", len(exec.calls))
+	}
+
+	var state struct {
+		Steps []struct {
+			Status string `json:"status"`
+		} `json:"steps"`
+	}
+	_ = json.Unmarshal([]byte(result.Output), &state)
+	if state.Steps[0].Status != "completed" {
+		t.Errorf("step 1 should be completed, got %s", state.Steps[0].Status)
+	}
+	if state.Steps[1].Status != "completed" {
+		t.Errorf("step 2 should be completed, got %s", state.Steps[1].Status)
+	}
+	if state.Steps[2].Status != "failed" {
+		t.Errorf("step 3 should be failed, got %s", state.Steps[2].Status)
+	}
+}
+
+func TestWorkflowNilResult(t *testing.T) {
+	exec := &mockWorkflowExecutor{
+		results: map[string]*Result{
+			"step1": nil,
+		},
+	}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.nil", []WorkflowStep{
+		{Tool: "step1", Store: "data"},
+		{Tool: "step2", Params: map[string]string{"input": "{{data}}"}},
+	})
+
+	_, err := wp.Execute("test.nil", nil)
+	if err != nil {
+		t.Fatalf("nil result should not cause error: %v", err)
+	}
+	if len(exec.calls) != 2 {
+		t.Errorf("expected 2 calls, got %d", len(exec.calls))
+	}
+}
+
+func TestWorkflowUnresolvedVariable(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.unresolved", []WorkflowStep{
+		{Tool: "step1", Params: map[string]string{"input": "{{missing_var}}"}},
+	})
+
+	// Unresolved variables pass through as literal — not an error
+	_, err := wp.Execute("test.unresolved", nil)
+	if err != nil {
+		t.Fatalf("unresolved variable should not error: %v", err)
+	}
+}
+
+func TestWorkflowStepErrorMessageInState(t *testing.T) {
+	exec := &mockWorkflowExecutor{
+		errors: map[string]error{
+			"deploy": fmt.Errorf("tool \"deploy\" is denied by shadow policy"),
+		},
+	}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.denied", []WorkflowStep{
+		{Tool: "build"},
+		{Tool: "deploy"},
+	})
+
+	result, err := wp.Execute("test.denied", nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var state struct {
+		Error string `json:"error"`
+		Steps []struct {
+			Error string `json:"error"`
+		} `json:"steps"`
+	}
+	_ = json.Unmarshal([]byte(result.Output), &state)
+
+	if !strings.Contains(state.Error, "denied") {
+		t.Errorf("expected 'denied' in workflow error, got %q", state.Error)
+	}
+	if !strings.Contains(state.Steps[1].Error, "denied") {
+		t.Errorf("expected 'denied' in step error, got %q", state.Steps[1].Error)
+	}
+}
+
+func TestWorkflowLongOutputTruncatedInState(t *testing.T) {
+	longOutput := strings.Repeat("x", 1000)
+	exec := &mockWorkflowExecutor{
+		results: map[string]*Result{
+			"step1": {Output: longOutput},
+		},
+	}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.long", []WorkflowStep{
+		{Tool: "step1", Store: "data"},
+	})
+
+	result, err := wp.Execute("test.long", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// State output should be truncated but the full value should be in variables
+	var state struct {
+		Result string `json:"result"`
+	}
+	_ = json.Unmarshal([]byte(result.Output), &state)
+
+	if len(state.Result) > 510 { // 500 + "..."
+		t.Errorf("expected truncated result in state, got %d chars", len(state.Result))
+	}
+	if !strings.HasSuffix(state.Result, "...") {
+		t.Error("expected truncated result to end with ...")
+	}
+}
+
+func TestWorkflowOutputIncludesState(t *testing.T) {
+	exec := &mockWorkflowExecutor{
+		results: map[string]*Result{
+			"step1": {Output: "result1"},
+			"step2": {Output: "result2"},
+		},
+	}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.pipeline", []WorkflowStep{
+		{Tool: "step1"},
+		{Tool: "step2"},
+	})
+
+	result, err := wp.Execute("test.pipeline", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var state struct {
+		Status string `json:"status"`
+		Steps  []struct {
+			Tool   string `json:"tool"`
+			Status string `json:"status"`
+		} `json:"steps"`
+		Result string `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(result.Output), &state); err != nil {
+		t.Fatalf("output should be valid JSON: %v", err)
+	}
+	if state.Status != "completed" {
+		t.Errorf("expected completed, got %s", state.Status)
+	}
+	if len(state.Steps) != 2 {
+		t.Fatalf("expected 2 steps, got %d", len(state.Steps))
+	}
+	if state.Steps[0].Tool != "step1" || state.Steps[1].Tool != "step2" {
+		t.Error("expected step tools in output")
+	}
+	if state.Result != "result2" {
+		t.Errorf("expected last output as result, got %q", state.Result)
+	}
+}

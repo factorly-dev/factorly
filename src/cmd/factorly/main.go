@@ -580,6 +580,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	cliTools := make(map[string]provider.CLIToolDef)
 	restTools := make(map[string]provider.RESTToolDef)
 	mcpServers := make(map[string]provider.MCPServerDef)
+	workflowDefs := make(map[string][]provider.WorkflowStep)
 	hasOAuth := false
 
 	for name, toolCfg := range cfg.Tools {
@@ -670,6 +671,17 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			}
 			mcpServers[name] = def
 			vlog("  registered mcp server: %s", name)
+		case "workflow":
+			steps := make([]provider.WorkflowStep, len(toolCfg.Steps))
+			for i, s := range toolCfg.Steps {
+				steps[i] = provider.WorkflowStep{
+					Tool:   s.Tool,
+					Params: s.Params,
+					Store:  s.Store,
+				}
+			}
+			workflowDefs[name] = steps
+			vlog("  registered workflow: %s (%d steps)", name, len(steps))
 		}
 	}
 
@@ -780,6 +792,17 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	}
 
 	p := proxy.New(reg, providers, logIface, proxyOpts...)
+
+	// Wire workflow provider after proxy creation (needs proxy reference for step execution)
+	if len(workflowDefs) > 0 {
+		wp := provider.NewWorkflowProvider(p, verbose)
+		for name, steps := range workflowDefs {
+			wp.RegisterWorkflow(name, steps)
+		}
+		p.RegisterProvider("workflow", wp)
+		vlog("initialized workflow provider (%d workflows)", len(workflowDefs))
+	}
+
 	return p, nil
 }
 

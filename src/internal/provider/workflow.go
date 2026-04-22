@@ -1,0 +1,274 @@
+// Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+// SPDX-License-Identifier: gpl
+
+package provider
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// WorkflowExecutor executes a tool call through the proxy.
+// Defined as an interface to avoid import cycle with proxy.
+type WorkflowExecutor interface {
+	ExecuteWithContext(ctx context.Context, toolName string, params map[string]string, iface string) (*Result, error)
+}
+
+// WorkflowStep defines a single step in a workflow.
+type WorkflowStep struct {
+	Tool   string
+	Params map[string]string
+	Store  string
+}
+
+// WorkflowState tracks the full state of a workflow run.
+type WorkflowState struct {
+	WorkflowName string            `json:"workflow"`
+	RunID        string            `json:"run_id"`
+	Status       string            `json:"status"`
+	Steps        []StepState       `json:"steps"`
+	Variables    map[string]string `json:"variables"`
+	StartedAt    time.Time         `json:"started_at"`
+	CompletedAt  time.Time         `json:"completed_at,omitempty"`
+	Error        string            `json:"error,omitempty"`
+	Result       string            `json:"result,omitempty"`
+}
+
+// StepState tracks the state of a single step.
+type StepState struct {
+	Index      int    `json:"index"`
+	Tool       string `json:"tool"`
+	Status     string `json:"status"`
+	DurationMs int64  `json:"duration_ms,omitempty"`
+	Output     string `json:"output,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+// WorkflowProvider executes workflow tool types.
+type WorkflowProvider struct {
+	executor WorkflowExecutor
+	steps    map[string][]WorkflowStep
+	verbose  bool
+}
+
+// NewWorkflowProvider creates a workflow provider.
+func NewWorkflowProvider(exec WorkflowExecutor, verbose bool) *WorkflowProvider {
+	return &WorkflowProvider{
+		executor: exec,
+		steps:    make(map[string][]WorkflowStep),
+		verbose:  verbose,
+	}
+}
+
+// RegisterWorkflow adds a workflow's steps.
+func (p *WorkflowProvider) RegisterWorkflow(toolName string, steps []WorkflowStep) {
+	p.steps[toolName] = steps
+}
+
+func (p *WorkflowProvider) Setup() error    { return nil }
+func (p *WorkflowProvider) Teardown() error { return nil }
+
+// Execute runs a workflow's steps sequentially.
+func (p *WorkflowProvider) Execute(toolName string, params map[string]string) (*Result, error) {
+	return p.ExecuteWithContext(context.Background(), toolName, params)
+}
+
+// ExecuteWithContext runs a workflow with context for cancellation/timeout.
+func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName string, params map[string]string) (*Result, error) {
+	steps, ok := p.steps[toolName]
+	if !ok {
+		return nil, fmt.Errorf("workflow %q not registered", toolName)
+	}
+	if len(steps) == 0 {
+		return nil, fmt.Errorf("workflow %q has no steps", toolName)
+	}
+
+	runID := uuid.New().String()[:8]
+	state := &WorkflowState{
+		WorkflowName: toolName,
+		RunID:        runID,
+		Status:       "running",
+		Variables:    make(map[string]string),
+		StartedAt:    time.Now(),
+	}
+
+	// Initialize variables from input params
+	for k, v := range params {
+		state.Variables[k] = v
+	}
+
+	// Initialize step states
+	for i, step := range steps {
+		state.Steps = append(state.Steps, StepState{
+			Index:  i + 1,
+			Tool:   step.Tool,
+			Status: "pending",
+		})
+	}
+
+	if p.verbose {
+		fmt.Fprintf(os.Stderr, "[workflow] %s started (run: %s)\n", toolName, runID)
+	}
+
+	var lastOutput string
+
+	for i, step := range steps {
+		// Check context
+		if ctx.Err() != nil {
+			state.Status = "failed"
+			state.Error = "context cancelled"
+			for j := i; j < len(steps); j++ {
+				state.Steps[j].Status = "skipped"
+			}
+			break
+		}
+
+		state.Steps[i].Status = "running"
+
+		if p.verbose {
+			fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s running...\n", i+1, len(steps), step.Tool)
+		}
+
+		// Substitute variables in step params
+		resolvedParams := make(map[string]string, len(step.Params))
+		for k, v := range step.Params {
+			resolvedParams[k] = substituteVars(v, state.Variables)
+		}
+
+		stepStart := time.Now()
+		result, err := p.executor.ExecuteWithContext(ctx, step.Tool, resolvedParams, "workflow")
+		duration := time.Since(stepStart)
+
+		state.Steps[i].DurationMs = duration.Milliseconds()
+
+		if err != nil {
+			state.Steps[i].Status = "failed"
+			state.Steps[i].Error = err.Error()
+			state.Status = "failed"
+			state.Error = fmt.Sprintf("step %d (%s): %s", i+1, step.Tool, err)
+
+			// Mark remaining steps as skipped
+			for j := i + 1; j < len(steps); j++ {
+				state.Steps[j].Status = "skipped"
+			}
+
+			if p.verbose {
+				fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s failed     %s\n", i+1, len(steps), step.Tool, err)
+			}
+
+			p.saveState(state)
+			return &Result{
+				Output: marshalState(state),
+				Error:  state.Error,
+			}, fmt.Errorf("workflow %q failed at step %d (%s): %w", toolName, i+1, step.Tool, err)
+		}
+
+		output := ""
+		if result != nil {
+			output = result.Output
+		}
+
+		state.Steps[i].Status = "completed"
+		state.Steps[i].Output = truncateForState(output)
+		lastOutput = output
+
+		// Store output as variable
+		if step.Store != "" {
+			state.Variables[step.Store] = output
+		}
+
+		if p.verbose {
+			fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s completed  %s\n", i+1, len(steps), step.Tool, duration.Truncate(time.Millisecond))
+		}
+
+		p.saveState(state)
+	}
+
+	if state.Status == "running" {
+		state.Status = "completed"
+	}
+	state.CompletedAt = time.Now()
+	state.Result = truncateForState(lastOutput)
+
+	if p.verbose {
+		totalDuration := time.Since(state.StartedAt).Truncate(time.Millisecond)
+		fmt.Fprintf(os.Stderr, "[workflow] %s %s (%d steps, %s)\n", toolName, state.Status, len(steps), totalDuration)
+	}
+
+	p.saveState(state)
+
+	return &Result{
+		Output: marshalState(state),
+	}, nil
+}
+
+func substituteVars(tmpl string, vars map[string]string) string {
+	result := tmpl
+	for k, v := range vars {
+		result = strings.ReplaceAll(result, "{{"+k+"}}", v)
+	}
+	return result
+}
+
+func marshalState(state *WorkflowState) string {
+	// Return a compact summary for the tool output
+	type stepSummary struct {
+		Tool       string `json:"tool"`
+		Status     string `json:"status"`
+		DurationMs int64  `json:"duration_ms,omitempty"`
+		Error      string `json:"error,omitempty"`
+	}
+	summary := struct {
+		Status string        `json:"status"`
+		Steps  []stepSummary `json:"steps"`
+		Result string        `json:"result,omitempty"`
+		Error  string        `json:"error,omitempty"`
+	}{
+		Status: state.Status,
+		Result: state.Result,
+		Error:  state.Error,
+	}
+	for _, s := range state.Steps {
+		summary.Steps = append(summary.Steps, stepSummary{
+			Tool:       s.Tool,
+			Status:     s.Status,
+			DurationMs: s.DurationMs,
+			Error:      s.Error,
+		})
+	}
+	data, _ := json.Marshal(summary)
+	return string(data)
+}
+
+func truncateForState(s string) string {
+	if len(s) > 500 {
+		return s[:500] + "..."
+	}
+	return s
+}
+
+func (p *WorkflowProvider) saveState(state *WorkflowState) {
+	dir := filepath.Join(".factorly", "workflows")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return
+	}
+
+	tmp := filepath.Join(dir, state.RunID+".json.tmp")
+	path := filepath.Join(dir, state.RunID+".json")
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, path)
+}
