@@ -383,17 +383,16 @@ func TestHashChainInterleavedInterfaces(t *testing.T) {
 	}
 }
 
-func TestHashChainBrokenByDualLoggers(t *testing.T) {
+func TestHashChainSurvivesDualLoggers(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.jsonl")
 
-	// Logger 1: long-lived (simulates proxy logger)
+	// Logger 1: long-lived (simulates proxy logger / MCP server)
 	l1, err := NewJSONL(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer l1.Close()
 
-	// Write first entry via logger 1
 	if err := l1.Log(&Entry{
 		Timestamp: time.Now(), Interface: "cli", Tool: "shell",
 		Params: map[string]string{}, Status: "success",
@@ -401,7 +400,7 @@ func TestHashChainBrokenByDualLoggers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Logger 2: short-lived (simulates the old logVaultOp bug)
+	// Logger 2: short-lived (simulates a separate CLI process)
 	l2, err := NewJSONL(path)
 	if err != nil {
 		t.Fatal(err)
@@ -414,7 +413,7 @@ func TestHashChainBrokenByDualLoggers(t *testing.T) {
 	}
 	l2.Close()
 
-	// Logger 1 writes again — its prevHash is stale (doesn't know about l2's entry)
+	// Logger 1 writes again — re-reads last hash from file, chain stays intact
 	if err := l1.Log(&Entry{
 		Timestamp: time.Now(), Interface: "cli", Tool: "shell",
 		Params: map[string]string{}, Status: "success",
@@ -422,10 +421,13 @@ func TestHashChainBrokenByDualLoggers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Chain should be broken — this is the bug we fixed by unifying loggers
-	_, _, err = VerifyChain(path)
-	if err == nil {
-		t.Fatal("expected chain to be broken when two loggers write to the same file")
+	// Chain should be intact — Log() re-reads last hash before writing
+	verified, _, err := VerifyChain(path)
+	if err != nil {
+		t.Fatalf("chain should survive dual loggers: %v", err)
+	}
+	if verified != 3 {
+		t.Errorf("expected 3 verified entries, got %d", verified)
 	}
 }
 
@@ -636,37 +638,30 @@ func TestVerifyChainPreUpgradeEntries(t *testing.T) {
 func TestRepairChainFixesBreak(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.jsonl")
 
-	// Create a broken chain using dual loggers
-	l1, err := NewJSONL(path)
+	// Write a valid entry
+	l, err := NewJSONL(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := l1.Log(&Entry{
+	if err := l.Log(&Entry{
 		Timestamp: time.Now(), Interface: "cli", Tool: "shell",
 		Params: map[string]string{}, Status: "success",
 	}); err != nil {
 		t.Fatal(err)
 	}
+	l.Close()
 
-	l2, err := NewJSONL(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := l2.Log(&Entry{
-		Timestamp: time.Now(), Interface: "vault", Tool: "vault.set",
-		Params: map[string]string{"key": "X"}, Status: "success",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	l2.Close()
-
-	if err := l1.Log(&Entry{
+	// Tamper with the file to break the chain — append an entry with wrong prev_hash
+	tampered := &Entry{
 		Timestamp: time.Now(), Interface: "cli", Tool: "shell",
 		Params: map[string]string{}, Status: "success",
-	}); err != nil {
-		t.Fatal(err)
+		PrevHash: "0000000000000000000000000000000000000000000000000000000000000000",
+		Hash:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	}
-	l1.Close()
+	line, _ := json.Marshal(tampered)
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	_, _ = f.Write(append(line, '\n'))
+	f.Close()
 
 	// Verify it's broken
 	_, _, err = VerifyChain(path)
@@ -684,21 +679,18 @@ func TestRepairChainFixesBreak(t *testing.T) {
 	}
 
 	// New entries after reset should chain from the marker
-	l3, err := NewJSONL(path)
+	l2, err := NewJSONL(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := l3.Log(&Entry{
+	if err := l2.Log(&Entry{
 		Timestamp: time.Now(), Interface: "cli", Tool: "test",
 		Params: map[string]string{}, Status: "success",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	l3.Close()
+	l2.Close()
 
-	// Verify: entries before the break are still broken, but the reset
-	// marker + new entries form a valid chain from the marker onward.
-	// VerifyChain accepts reset markers as valid chain restart points.
 	verified, _, err := VerifyChain(path)
 	if err != nil {
 		t.Fatalf("chain should verify after repair + new entry: %v", err)
@@ -736,37 +728,29 @@ func TestRepairChainNoBreaks(t *testing.T) {
 func TestRepairChainMarkerHasFileHash(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.jsonl")
 
-	// Create a broken chain
-	l1, err := NewJSONL(path)
+	// Write a valid entry then tamper to break chain
+	l, err := NewJSONL(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := l1.Log(&Entry{
+	if err := l.Log(&Entry{
 		Timestamp: time.Now(), Interface: "cli", Tool: "test",
 		Params: map[string]string{}, Status: "success",
 	}); err != nil {
 		t.Fatal(err)
 	}
+	l.Close()
 
-	l2, err := NewJSONL(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := l2.Log(&Entry{
+	// Tamper: append entry with wrong hash
+	tampered := &Entry{
 		Timestamp: time.Now(), Interface: "cli", Tool: "test",
 		Params: map[string]string{}, Status: "success",
-	}); err != nil {
-		t.Fatal(err)
+		PrevHash: ZeroHash, Hash: "bad",
 	}
-	l2.Close()
-
-	if err := l1.Log(&Entry{
-		Timestamp: time.Now(), Interface: "cli", Tool: "test",
-		Params: map[string]string{}, Status: "success",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	l1.Close()
+	line, _ := json.Marshal(tampered)
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	_, _ = f.Write(append(line, '\n'))
+	f.Close()
 
 	// Snapshot file contents before repair
 	fileBeforeRepair, _ := os.ReadFile(path)

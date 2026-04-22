@@ -44,6 +44,7 @@ type Logger interface {
 }
 
 type JSONLLogger struct {
+	path     string
 	f        *os.File
 	mu       sync.Mutex
 	prevHash string
@@ -66,7 +67,7 @@ func NewJSONL(path string) (*JSONLLogger, error) {
 		return nil, err
 	}
 
-	return &JSONLLogger{f: f, prevHash: prevHash}, nil
+	return &JSONLLogger{path: path, f: f, prevHash: prevHash}, nil
 }
 
 func (l *JSONLLogger) Log(entry *Entry) error {
@@ -80,6 +81,13 @@ func (l *JSONLLogger) Log(entry *Entry) error {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
+	// Re-read last hash from file to handle multi-process writes.
+	// Another process (e.g., CLI while MCP server is running) may have
+	// appended entries since we last wrote.
+	if fileHash := ReadLastHash(l.path); fileHash != l.prevHash {
+		l.prevHash = fileHash
+	}
 
 	// Set prev_hash, clear hash for deterministic payload
 	entry.PrevHash = l.prevHash
