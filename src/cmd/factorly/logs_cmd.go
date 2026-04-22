@@ -467,7 +467,7 @@ func runLogsRepair() error {
 	if !repaired {
 		fmt.Println("No chain breaks found — nothing to repair.")
 	} else {
-		fmt.Println("Chain reset marker appended. Run --verify to confirm.")
+		fmt.Println("Chain reset marker appended. Run `factorly logs verify` to confirm.")
 	}
 	return nil
 }

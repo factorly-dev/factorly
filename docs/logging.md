@@ -170,7 +170,7 @@ If the chain is broken (e.g., from an upgrade or a bug), repair it:
 
 ```bash
 $ factorly logs repair
-Chain reset marker appended. Run --verify to confirm.
+Chain reset marker appended. Run `factorly logs verify` to confirm.
 
 $ factorly logs verify
 Chain verified: 5 entries OK (224 entries before chain reset skipped)
