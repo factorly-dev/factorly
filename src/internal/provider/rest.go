@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -58,6 +59,7 @@ type RESTProvider struct {
 	client     *http.Client
 	tokenStore TokenStore // nil when no OAuth tools exist
 	mu         sync.Mutex // protects concurrent token refresh
+	Verbose    bool
 }
 
 func NewREST(tools map[string]RESTToolDef, tokenStore TokenStore) *RESTProvider {
@@ -104,6 +106,7 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 	queryParams := make(map[string]string)
 	headerParams := make(map[string]string)
 	bodyParams := make(map[string]string)
+	var fileParam string // path to file for in:file
 
 	for name, value := range params {
 		in := paramIndex[name]
@@ -119,6 +122,8 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 			headerParams[name] = value
 		case "body":
 			bodyParams[name] = value
+		case "file":
+			fileParam = value
 		default:
 			queryParams[name] = value
 		}
@@ -232,7 +237,15 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 
 	// Build request body
 	var reqBody io.Reader
-	if bodyContent != "" {
+	if fileParam != "" {
+		// in:file — stream file as raw binary body
+		f, err := os.Open(fileParam)
+		if err != nil {
+			return nil, fmt.Errorf("rest provider: opening file %q for tool %q: %w", fileParam, toolName, err)
+		}
+		defer f.Close()
+		reqBody = f
+	} else if bodyContent != "" {
 		reqBody = strings.NewReader(bodyContent)
 	}
 
@@ -271,12 +284,27 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	// Verbose logging
+	if p.Verbose {
+		fmt.Fprintf(os.Stderr, "[rest] %s %s\n", req.Method, req.URL)
+		if fileParam != "" {
+			fi, _ := os.Stat(fileParam)
+			if fi != nil {
+				fmt.Fprintf(os.Stderr, "[rest]   file: %s (%d bytes)\n", fileParam, fi.Size())
+			}
+		}
+		fmt.Fprintf(os.Stderr, "[rest]   timeout: %s\n", timeout)
+	}
+
 	// Execute request
 	start := time.Now()
 	resp, err := p.client.Do(req)
 	duration := time.Since(start)
 
 	if err != nil {
+		if p.Verbose {
+			fmt.Fprintf(os.Stderr, "[rest]   error: %s (%s)\n", err, duration.Truncate(time.Millisecond))
+		}
 		return &Result{
 			Error:    err.Error(),
 			ExitCode: 1,
@@ -284,6 +312,10 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 		}, nil
 	}
 	defer resp.Body.Close()
+
+	if p.Verbose {
+		fmt.Fprintf(os.Stderr, "[rest]   %d %s (%s)\n", resp.StatusCode, resp.Status, duration.Truncate(time.Millisecond))
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

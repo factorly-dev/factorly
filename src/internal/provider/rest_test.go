@@ -4,11 +4,14 @@
 package provider
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -945,5 +948,78 @@ func TestRESTSetupTeardown(t *testing.T) {
 	}
 	if err := p.Teardown(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRESTFileParam(t *testing.T) {
+	// Create a test file
+	tmpFile := filepath.Join(t.TempDir(), "test.bin")
+	testData := []byte{0x00, 0x01, 0x02, 0xFF, 0xFE}
+	if err := os.WriteFile(tmpFile, testData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var receivedBody []byte
+	var receivedContentType string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedContentType = r.Header.Get("Content-Type")
+		body, _ := io.ReadAll(r.Body)
+		receivedBody = body
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"result":"ok"}`))
+	}))
+	defer srv.Close()
+
+	p := NewREST(map[string]RESTToolDef{
+		"upload": {
+			Method:  "POST",
+			BaseURL: srv.URL,
+			Path:    "/upload",
+			Headers: map[string]string{"Content-Type": "audio/wav"},
+			Params: []RESTParamDef{
+				{Name: "file", In: "file", Required: true},
+				{Name: "model", In: "query"},
+			},
+		},
+	}, nil)
+	_ = p.Setup()
+
+	result, err := p.Execute("upload", map[string]string{
+		"file":  tmpFile,
+		"model": "nova-3",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Output != `{"result":"ok"}` {
+		t.Errorf("unexpected output: %s", result.Output)
+	}
+	if receivedContentType != "audio/wav" {
+		t.Errorf("expected Content-Type audio/wav, got %s", receivedContentType)
+	}
+	if !bytes.Equal(receivedBody, testData) {
+		t.Errorf("expected binary body %v, got %v", testData, receivedBody)
+	}
+}
+
+func TestRESTFileParamMissing(t *testing.T) {
+	p := NewREST(map[string]RESTToolDef{
+		"upload": {
+			Method:  "POST",
+			BaseURL: "http://localhost",
+			Path:    "/upload",
+			Params:  []RESTParamDef{{Name: "file", In: "file", Required: true}},
+		},
+	}, nil)
+	_ = p.Setup()
+
+	_, err := p.Execute("upload", map[string]string{
+		"file": "/nonexistent/file.wav",
+	})
+	if err == nil {
+		t.Fatal("expected error for missing file")
+	}
+	if !strings.Contains(err.Error(), "opening file") {
+		t.Errorf("expected 'reading file' in error, got: %s", err.Error())
 	}
 }

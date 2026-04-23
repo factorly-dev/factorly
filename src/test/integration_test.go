@@ -3054,3 +3054,86 @@ func findPetstoreSpec(t *testing.T) string {
 	t.Skip("petstore.yaml example not found")
 	return ""
 }
+
+func TestCallRESTFileParam(t *testing.T) {
+	var capturedBody []byte
+	var capturedContentType string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedContentType = r.Header.Get("Content-Type")
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"transcript":"hello world"}`))
+	}))
+	defer srv.Close()
+
+	// Create a test file
+	testData := []byte{0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00} // RIFF header stub
+	testFile := filepath.Join(t.TempDir(), "test.wav")
+	if err := os.WriteFile(testFile, testData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  audio.transcribe:
+    type: rest
+    base_url: %s
+    method: POST
+    path: /v1/listen
+    headers:
+      Content-Type: audio/wav
+    parameters:
+      - name: file
+        in: file
+        required: true
+      - name: model
+        in: query
+        default: "nova-3"
+`, srv.URL),
+	})
+
+	stdout, stderr, code := run(t, dir, "call", "audio.transcribe", "--file", testFile)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", code, stderr)
+	}
+	if capturedContentType != "audio/wav" {
+		t.Errorf("expected Content-Type audio/wav, got %s", capturedContentType)
+	}
+	if len(capturedBody) != len(testData) {
+		t.Errorf("expected %d bytes in body, got %d", len(testData), len(capturedBody))
+	}
+	if !strings.Contains(stdout, "hello world") {
+		t.Errorf("expected transcript in output, got %q", stdout)
+	}
+}
+
+func TestCallRESTFileParamMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": fmt.Sprintf(`
+tools:
+  upload:
+    type: rest
+    base_url: %s
+    method: POST
+    path: /upload
+    parameters:
+      - name: data
+        in: file
+        required: true
+`, srv.URL),
+	})
+
+	_, stderr, code := run(t, dir, "call", "upload", "--data", "/nonexistent/file.bin")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for missing file")
+	}
+	if !strings.Contains(stderr, "opening file") {
+		t.Errorf("expected file error in stderr, got %q", stderr)
+	}
+}

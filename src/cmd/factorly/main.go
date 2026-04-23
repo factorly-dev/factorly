@@ -599,6 +599,13 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 					Type:     p.Type,
 				})
 			}
+			if toolCfg.Timeout != "" {
+				if d, err := time.ParseDuration(toolCfg.Timeout); err == nil {
+					restDef.Timeout = d
+				} else {
+					vlog("warning: invalid timeout %q for rest tool %s: %v", toolCfg.Timeout, name, err)
+				}
+			}
 			restTools[name] = restDef
 			vlog("  registered rest tool: %s", name)
 		case "mcp":
@@ -638,6 +645,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			}
 		}
 		restProvider := provider.NewREST(restTools, tokenStore)
+		restProvider.Verbose = verbose
 		if err := restProvider.Setup(); err != nil {
 			return nil, fmt.Errorf("rest provider setup: %w", err)
 		}
