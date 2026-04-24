@@ -1,3 +1,19 @@
+## v0.6.4 - 2026-04-24
+
+### Added
+- Parameter routing type `in: file` for binary file uploads in REST tools
+- File streaming directly as request body without loading into memory
+- Support for custom Content-Type headers with file uploads
+- REST verbose logging with -v flag showing request/response details
+- REST timeout configuration support from tool config
+- Git tool template
+- License to changelog script
+
+### Fixed
+- Race condition between CLI and MCP writing to JSONL
+- Clear error messages for missing files with path and tool name
+- Verify flag documentation and error messages
+
 ## [v0.6.3] - 2026-04-22
 
 ### Added
