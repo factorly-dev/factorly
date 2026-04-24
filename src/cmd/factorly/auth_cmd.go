@@ -42,11 +42,10 @@ var authLoginCmd = &cobra.Command{
 		}
 
 		// Open vault to resolve refs in client_id/secret and to store tokens
-		backend, err := openVault()
+		backend, err := getCachedLocalVault()
 		if err != nil {
 			return err
 		}
-		defer backend.Close()
 
 		resolver := vault.NewResolver()
 		resolver.Register("vault", backend)
@@ -96,11 +95,10 @@ var authStatusCmd = &cobra.Command{
 			return err
 		}
 
-		backend, err := openVault()
+		backend, err := getCachedLocalVault()
 		if err != nil {
 			return err
 		}
-		defer backend.Close()
 
 		// Collect all OAuth token keys from config
 		tokenKeys := collectOAuthTokenKeys(cfg)
@@ -160,11 +158,10 @@ var authLogoutCmd = &cobra.Command{
 			return err
 		}
 
-		backend, err := openVault()
+		backend, err := getCachedLocalVault()
 		if err != nil {
 			return err
 		}
-		defer backend.Close()
 
 		if err := backend.Delete(tokenKey); err != nil {
 			return fmt.Errorf("removing token: %w", err)

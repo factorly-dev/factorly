@@ -210,11 +210,10 @@ var callCmd = &cobra.Command{
 		// Resolve {{vault:KEY}} refs in parameter values
 		for _, v := range params {
 			if vault.HasVaultRefs(v) {
-				backend, err := openVault()
+				backend, err := getCachedVault()
 				if err != nil {
 					return fmt.Errorf("resolving vault refs in params: %w", err)
 				}
-				defer backend.Close()
 				resolver := vault.NewResolver()
 				resolver.Register("vault", backend)
 				for k, pv := range params {
@@ -844,22 +843,10 @@ func initResolver(cfg *config.Config) (*vault.Resolver, error) {
 	// project vault, and global vault — in that priority order.
 	resolvedPath := resolveVaultPath()
 	if _, err := os.Stat(resolvedPath); err == nil {
-		// Resolved vault exists — open it (may be fallback if both project+global exist)
-		projectPath := projectVaultPath()
-		globalPath := vault.DefaultVaultPath()
-		_, projectExists := os.Stat(projectPath)
-		_, globalExists := os.Stat(globalPath)
-
 		var backend vault.Backend
 		var openErr error
 
-		if projectExists == nil && globalExists == nil && vaultPath == "" && !vaultGlobal {
-			backend, openErr = openFallbackVault()
-		} else {
-			b, e := openVault()
-			backend = b
-			openErr = e
-		}
+		backend, openErr = getCachedVault()
 		if openErr != nil {
 			if len(cfg.VaultBackends) > 0 {
 				vlog("local vault failed to open: %v (external backends available)", openErr)

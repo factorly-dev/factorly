@@ -1,4 +1,4 @@
-## v0.6.4 - 2026-04-24
+## [v0.6.4] - 2026-04-24
 
 ### Added
 - Parameter routing type `in: file` for binary file uploads in REST tools

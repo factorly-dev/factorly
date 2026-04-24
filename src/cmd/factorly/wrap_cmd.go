@@ -114,11 +114,10 @@ func runWrap(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if hasVaultRefs {
-			backend, err := openVault()
+			backend, err := getCachedLocalVault()
 			if err != nil {
 				return fmt.Errorf("resolving vault refs in --env: %w", err)
 			}
-			defer backend.Close()
 			resolver.Register("vault", backend)
 		}
 

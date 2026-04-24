@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/factorly-dev/factorly/internal/logger"
@@ -17,6 +18,35 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
+
+// Process-wide vault cache — first open prompts for password;
+// subsequent opens within the same process reuse the backend.
+var (
+	cachedVaultOnce    sync.Once
+	cachedVaultBackend vault.Backend
+	cachedVaultErr     error
+	cachedLocalOnce    sync.Once
+	cachedLocalBackend *vault.LocalBackend
+	cachedLocalErr     error
+)
+
+// getCachedVault returns a cached Backend (may be FallbackBackend).
+// First call opens the vault normally; subsequent calls reuse it.
+func getCachedVault() (vault.Backend, error) {
+	cachedVaultOnce.Do(func() {
+		cachedVaultBackend, cachedVaultErr = openSmartVault()
+	})
+	return cachedVaultBackend, cachedVaultErr
+}
+
+// getCachedLocalVault returns a cached *LocalBackend.
+// For commands that need the concrete type (vault set with Has check).
+func getCachedLocalVault() (*vault.LocalBackend, error) {
+	cachedLocalOnce.Do(func() {
+		cachedLocalBackend, cachedLocalErr = openVault()
+	})
+	return cachedLocalBackend, cachedLocalErr
+}
 
 // logVaultOp logs a vault operation to the JSONL audit trail.
 // Never logs secret values — only the operation and key name.
@@ -68,11 +98,10 @@ var vaultSetCmd = &cobra.Command{
 		if vaultBackend != "" {
 			return fmt.Errorf("backend %q is read-only — manage secrets in %s directly", vaultBackend, vaultBackend)
 		}
-		backend, err := openVault()
+		backend, err := getCachedLocalVault()
 		if err != nil {
 			return err
 		}
-		defer backend.Close()
 
 		key := args[0]
 		var value string
@@ -115,11 +144,10 @@ var vaultGetCmd = &cobra.Command{
 		if vaultBackend != "" {
 			return getFromExternalBackend(vaultBackend, args[0])
 		}
-		backend, err := openSmartVault()
+		backend, err := getCachedVault()
 		if err != nil {
 			return err
 		}
-		defer backend.Close()
 
 		value, err := backend.Get(args[0])
 		if err != nil {
@@ -139,11 +167,10 @@ var vaultListCmd = &cobra.Command{
 		if vaultBackend != "" {
 			return listFromExternalBackend(vaultBackend)
 		}
-		backend, err := openVault()
+		backend, err := getCachedVault()
 		if err != nil {
 			return err
 		}
-		defer backend.Close()
 
 		keys, err := backend.List()
 		if err != nil {
@@ -166,11 +193,10 @@ var vaultDeleteCmd = &cobra.Command{
 		if vaultBackend != "" {
 			return fmt.Errorf("backend %q is read-only — manage secrets in %s directly", vaultBackend, vaultBackend)
 		}
-		backend, err := openVault()
+		backend, err := getCachedLocalVault()
 		if err != nil {
 			return err
 		}
-		defer backend.Close()
 
 		if err := backend.Delete(args[0]); err != nil {
 			logVaultOp("delete", args[0], "error")
@@ -248,9 +274,14 @@ func openFallbackVault() (vault.Backend, error) {
 	_, projectExists := os.Stat(projectPath)
 	_, globalExists := os.Stat(globalPath)
 
-	// Neither exists
+	// Neither exists — create at the best location
 	if projectExists != nil && globalExists != nil {
-		return nil, fmt.Errorf("no vault found (run 'factorly vault set' to create one)")
+		createPath := resolveVaultPath()
+		pw, err := resolveVaultPassword(createPath)
+		if err != nil {
+			return nil, err
+		}
+		return vault.OpenLocalAt(createPath, pw)
 	}
 
 	// Only global exists
@@ -292,7 +323,7 @@ func openFallbackVault() (vault.Backend, error) {
 			// Try project password on global vault first
 			global, err := vault.OpenLocalAt(globalPath, pwForGlobal)
 			if err == nil {
-				vlog("global vault opened with project password")
+				fmt.Fprintln(os.Stderr, "Global vault opened.")
 				return global, nil
 			}
 			// pwForGlobal is now zeroed by OpenLocalAt (even on failure via deriveKey)

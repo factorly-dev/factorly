@@ -65,11 +65,10 @@ By default, uses stdio transport. Use --http to start an HTTP server instead.`,
 				httpToken = os.Getenv("FACTORLY_HTTP_TOKEN")
 			}
 			if httpToken != "" && vault.HasVaultRefs(httpToken) {
-				backend, err := openVault()
+				backend, err := getCachedLocalVault()
 				if err != nil {
 					return fmt.Errorf("resolving http-token vault ref: %w", err)
 				}
-				defer backend.Close()
 				resolver := vault.NewResolver()
 				resolver.Register("vault", backend)
 				httpToken = resolveVaultRef(resolver, httpToken)

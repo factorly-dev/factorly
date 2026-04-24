@@ -129,11 +129,10 @@ func runExec(cmd *cobra.Command, args []string) error {
 	resolver := vault.NewResolver()
 	resolver.Register("env", vault.EnvBackend{})
 	if hasVaultRefs {
-		backend, err := openVault()
+		backend, err := getCachedLocalVault()
 		if err != nil {
 			return fmt.Errorf("resolving vault refs: %w", err)
 		}
-		defer backend.Close()
 		resolver.Register("vault", backend)
 	}
 
