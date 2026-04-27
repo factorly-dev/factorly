@@ -77,10 +77,49 @@ func main() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:          "factorly",
-	Short:        "One endpoint. All your tools.",
-	Long:         "Factorly wraps your existing agent tools — MCP servers, REST APIs, CLIs — into a single endpoint.",
-	SilenceUsage: true,
+	Use:                "factorly",
+	Short:              "One endpoint. All your tools.",
+	Long:               "Factorly wraps your existing agent tools — MCP servers, REST APIs, CLIs — into a single endpoint.",
+	SilenceUsage:       true,
+	CompletionOptions:  cobra.CompletionOptions{DisableDefaultCmd: true},
+}
+
+var utilsCmd = &cobra.Command{
+	Use:   "utils",
+	Short: "Utility commands",
+}
+
+var autocompleteCmd = &cobra.Command{
+	Use:   "autocomplete [bash|zsh|fish|powershell]",
+	Short: "Generate shell autocompletion script",
+	Long: `Generate an autocompletion script for the specified shell.
+
+Bash:
+  source <(factorly utils autocomplete bash)
+
+Zsh:
+  factorly utils autocomplete zsh > "${fpath[1]}/_factorly"
+
+Fish:
+  factorly utils autocomplete fish | source
+
+PowerShell:
+  factorly utils autocomplete powershell | Out-String | Invoke-Expression`,
+	ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
+	Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		switch args[0] {
+		case "bash":
+			return rootCmd.GenBashCompletion(os.Stdout)
+		case "zsh":
+			return rootCmd.GenZshCompletion(os.Stdout)
+		case "fish":
+			return rootCmd.GenFishCompletion(os.Stdout, true)
+		case "powershell":
+			return rootCmd.GenPowerShellCompletionWithDesc(os.Stdout)
+		}
+		return nil
+	},
 }
 
 var versionCheck bool
@@ -440,7 +479,8 @@ func init() {
 	importCmd.AddCommand(importOpenAPICmd, templatesCmd)
 
 	toolsCmd.AddCommand(toolsListCmd, addCmd, removeCmd, importCmd, recordCmd, statusCmd)
-	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, authCmd, serveCmd, wrapCmd, execCmd, logsCmd)
+	utilsCmd.AddCommand(autocompleteCmd)
+	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, authCmd, serveCmd, wrapCmd, execCmd, logsCmd, utilsCmd)
 }
 
 // loadConfig loads config and builds a registry. Does not open the vault
