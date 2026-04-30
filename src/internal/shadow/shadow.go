@@ -23,6 +23,8 @@ const (
 	ActionRateLimited Action = "rate_limited"
 	ActionLoopWarning Action = "loop_warning"
 	ActionLoopBlocked Action = "loop_blocked"
+	ActionInvalid     Action = "invalid"  // parameter validation failed
+	ActionModified    Action = "modified" // parameters were coerced to valid values
 )
 
 // ConfirmFunc prompts the user for confirmation. Returns true if approved.

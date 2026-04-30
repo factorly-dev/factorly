@@ -532,6 +532,12 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 				Required:    p.Required,
 				Type:        p.Type,
 				Default:     p.Default,
+				Min:         p.Min,
+				Max:         p.Max,
+				MinLength:   p.MinLength,
+				MaxLength:   p.MaxLength,
+				Pattern:     p.Pattern,
+				Enum:        p.Enum,
 			}
 		}
 		tool := &registry.Tool{

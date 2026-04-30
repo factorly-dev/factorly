@@ -86,7 +86,17 @@ tools:
       - name: limit
         in: query
         type: integer                # string (default), integer, number, boolean, json
-        default: "100"               # default value if not provided by caller
+        default: 100                 # default value if not provided by caller
+        min: 1                       # clamp to minimum (integers and numbers)
+        max: 100                     # clamp to maximum (integers and numbers)
+      - name: state
+        type: string
+        enum: [open, closed, all]    # reject values not in list
+      - name: owner
+        type: string
+        pattern: "^[a-zA-Z0-9-]+$"  # reject values not matching regex
+        min_length: 1                # reject strings shorter than this
+        max_length: 39               # truncate strings longer than this
 
     shadow:                          # optional, governance rules
       deny: [dangerous_action]
@@ -180,6 +190,48 @@ The `type` field controls how body parameters are serialized in JSON:
 | `json` | Raw passthrough | `[{"role":"user","content":"hello"}]` |
 
 When multiple parameters have `in: body`, they are merged into a single JSON object using their types for serialization.
+
+### Parameter validation
+
+Parameters can have validation rules that catch broken calls before execution. Where possible, values are coerced (fixed) rather than rejected — the audit log records what was changed.
+
+| Rule | Applies to | Behavior |
+|------|-----------|----------|
+| `min` / `max` | `integer`, `number` | Clamp to boundary (coerce) |
+| `min_length` | `string` | Reject if too short |
+| `max_length` | `string` | Truncate if too long (coerce) |
+| `pattern` | `string` | Reject if regex doesn't match |
+| `enum` | `string` | Reject if not in allowed list |
+
+**Type validation** is always active when `type` is set:
+- `integer` — must parse as int; floats like `"3.0"` are truncated to `3`
+- `number` — must parse as float
+- `boolean` — `"true"/"1"/"yes"` → `"true"`, `"false"/"0"/"no"` → `"false"`
+- `json` — must be valid JSON
+
+**Coercion vs rejection:** Min/max clamping, max_length truncation, and type normalization are coerced silently. Pattern, enum, min_length, and unparseable types are rejected with an error returned to the caller (the LLM gets the error and can retry).
+
+**Audit trail:** When parameters are coerced, the log entry includes `original_params` with pre-coercion values and `shadow_action: "modified"`. Rejected calls log `shadow_action: "invalid"`.
+
+```yaml
+parameters:
+  - name: temperature
+    type: number
+    min: 0
+    max: 2
+    default: 0.7
+  - name: max_tokens
+    type: integer
+    min: 1
+    max: 4096
+  - name: format
+    type: string
+    enum: [json, text, csv]
+  - name: query
+    type: string
+    pattern: "^[a-zA-Z0-9 ]+$"
+    max_length: 500
+```
 
 ### Body template
 

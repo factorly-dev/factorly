@@ -48,8 +48,8 @@ Working toward [AARM](https://aarm.dev) (Autonomous Action Runtime Management) C
 #### Near-term (local CLI)
 - [ ] **R5: Hash-chained audit logs** — append SHA-256 hash of (previous_hash + entry) to each JSONL log entry, creating a tamper-evident chain that detects retroactive modification
 - [ ] **R5: Signed receipts** — Ed25519 signatures on log entries for offline verification of audit trail integrity
-- [ ] **R4: MODIFY decision** — parameter transformation before execution (e.g., strip `--force` from git commands, cap SQL `LIMIT` clauses, redact PII from prompts)
-- [ ] **R3: Parameter validation** — type, range, pattern, and allowlist/blocklist checks on tool call arguments beyond current built-in guards
+- [x] **R4: MODIFY decision** — parameter coercion before execution: type casting, number clamping to min/max, string truncation to max_length, boolean normalization; original values preserved in audit log
+- [x] **R3: Parameter validation** — type checking (integer/number/boolean/json), min/max range, min_length/max_length, regex pattern, enum allowlists on tool parameters
 
 #### Requires agent harness
 - [ ] **R4: DEFER decision** — suspend actions when context is insufficient or ambiguous, resume when context is collected or timeout triggers denial

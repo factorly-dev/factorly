@@ -32,6 +32,7 @@ type Entry struct {
 	ShadowAction    string            `json:"shadow_action,omitempty"`
 	HighlightParams map[string]string `json:"highlight_params,omitempty"`
 	AgentID         string            `json:"agent_id,omitempty"`
+	OriginalParams  map[string]string `json:"original_params,omitempty"`
 	OriginalBytes   int               `json:"original_bytes,omitempty"`
 	ProcessedBytes  int               `json:"processed_bytes,omitempty"`
 	PrevHash        string            `json:"prev_hash,omitempty"`

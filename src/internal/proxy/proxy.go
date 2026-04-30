@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/factorly-dev/factorly/internal/agent"
@@ -81,6 +82,27 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 	}
 
 	agentID := agent.AgentID(ctx)
+
+	// Parameter validation and coercion
+	var validationResult *registry.ValidationResult
+	if len(tool.Parameters) > 0 {
+		validationResult = tool.ValidateAndCoerce(params)
+		if validationResult.HasErrors() {
+			entry := &logger.Entry{
+				Timestamp:    time.Now(),
+				Interface:    iface,
+				Tool:         toolName,
+				Params:       params,
+				Status:       "blocked",
+				ShadowAction: string(shadow.ActionInvalid),
+				Error:        strings.Join(validationResult.Errors, "; "),
+				AgentID:      agentID,
+			}
+			_ = p.logger.Log(entry)
+			return nil, fmt.Errorf("parameter validation failed for %q: %s",
+				toolName, strings.Join(validationResult.Errors, "; "))
+		}
+	}
 
 	// Shadow policy check
 	var shadowAction shadow.Action = shadow.ActionAllowed
@@ -185,6 +207,10 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		AgentID:        agentID,
 		OriginalBytes:  originalBytes,
 		ProcessedBytes: processedBytes,
+	}
+	if validationResult != nil && validationResult.WasModified() {
+		entry.ShadowAction = string(shadow.ActionModified)
+		entry.OriginalParams = validationResult.Modified
 	}
 	if p.shadow != nil {
 		if logParams := p.shadow.LogParamsFor(toolName); len(logParams) > 0 {

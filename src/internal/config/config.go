@@ -99,6 +99,13 @@ type ParamConfig struct {
 	In          string `yaml:"in,omitempty"`      // "query", "path", "header", "body"
 	Type        string `yaml:"type,omitempty"`    // "string" (default), "integer", "number", "boolean", "json"
 	Default     string `yaml:"default,omitempty"` // default value if not provided by caller
+	// Validation rules
+	Min       *float64 `yaml:"min,omitempty"`
+	Max       *float64 `yaml:"max,omitempty"`
+	MinLength *int     `yaml:"min_length,omitempty"`
+	MaxLength *int     `yaml:"max_length,omitempty"`
+	Pattern   string   `yaml:"pattern,omitempty"`
+	Enum      []string `yaml:"enum,omitempty"`
 }
 
 type ShadowConfig struct {

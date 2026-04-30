@@ -16,6 +16,13 @@ type Parameter struct {
 	Required    bool
 	Type        string // "string" (default), "integer", "number", "boolean", "json"
 	Default     string
+	// Validation rules
+	Min       *float64
+	Max       *float64
+	MinLength *int
+	MaxLength *int
+	Pattern   string
+	Enum      []string
 }
 
 type Tool struct {
