@@ -4,6 +4,6 @@
 package internal
 
 const (
-	Version = "0.6.4"
+	Version = "0.7.0"
 	AppName = "factorly"
 )
