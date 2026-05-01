@@ -132,7 +132,7 @@ func installTemplate(name string) error {
 		}
 	}
 	if hasShadow {
-		fmt.Println("\n  Shadow governance applied to write/delete operations")
+		fmt.Println("\n  Shadow oversight applied to write/delete operations")
 	}
 
 	fmt.Printf("\n  Written to %s\n", outPath)

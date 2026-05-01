@@ -18,7 +18,7 @@ Every tool call — whether through `factorly call` or `factorly serve` — is l
 | `duration_ms` | Execution time in milliseconds |
 | `output` | Truncated response (max 500 chars) |
 | `error` | Error message if failed (max 500 chars) |
-| `shadow_action` | Governance outcome: `allowed`, `denied`, `confirmed`, `rate_limited`, `loop_warning`, `loop_blocked` |
+| `shadow_action` | Oversight outcome: `allowed`, `denied`, `confirmed`, `rate_limited`, `loop_warning`, `loop_blocked` |
 | `highlight_params` | Selected params from `log_params` config (for audit filtering) |
 | `agent_id` | MCP session identifier (tracks per-agent activity) |
 | `original_bytes` | Output size before compression/truncation |
@@ -91,7 +91,7 @@ $ factorly logs stats
     3 total (3 denied)
 ```
 
-**Filter by status** — find all blocked calls to investigate governance triggers:
+**Filter by status** — find all blocked calls to investigate oversight triggers:
 
 ```
 $ factorly logs --status blocked

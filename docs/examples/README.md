@@ -21,7 +21,7 @@ Practical, copy-paste examples for every Factorly feature. Each is self-containe
 | 8 | [Basic Authentication](08-basic-auth.md) | HTTP Basic Auth for legacy APIs and self-hosted services |
 | 9 | [External Secrets with 1Password](09-external-secrets-1password.md) | Pull secrets from 1Password CLI instead of the built-in vault |
 
-## Governance
+## Oversight
 
 | # | Example | Description |
 |---|---------|-------------|

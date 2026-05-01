@@ -13,7 +13,7 @@ func Git() *Template {
 	return &Template{
 		Name:        "git",
 		DisplayName: "Git",
-		Description: "Common git operations with governance and output filtering",
+		Description: "Common git operations with oversight and output filtering",
 		Category:    "engineering",
 		AuthType:    "none",
 		VaultKey:    "",

@@ -98,7 +98,7 @@ tools:
         min_length: 1                # reject strings shorter than this
         max_length: 39               # truncate strings longer than this
 
-    shadow:                          # optional, governance rules
+    shadow:                          # optional, oversight rules
       deny: [dangerous_action]
       confirm: true                  # or ["specific_action"]
       rate_limit: 100/hour
@@ -396,7 +396,7 @@ Supported commands: `call`, `exec`, `wrap`, `serve`, `sync`, `logs`, `vault`, `a
 
 For CLI tools, parameters are automatically inferred from `{{placeholder}}` patterns in `args` and `stdin`.
 
-## Shadow (Governance)
+## Shadow (Oversight)
 
 Add a `shadow` block to any tool to control what agents can do:
 

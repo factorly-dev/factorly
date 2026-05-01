@@ -53,7 +53,7 @@ src/
 │   ├── logger/            # JSONL call logger
 │   ├── vault/             # Encrypted vault (AES-256-GCM + HKDF)
 │   ├── oauth/             # OAuth 2.0 flow (PKCE + refresh)
-│   ├── shadow/            # Governance: deny, confirm, rate limit, loop detection
+│   ├── shadow/            # Oversight: deny, confirm, rate limit, loop detection
 │   ├── output/            # Output compression + truncation
 │   ├── agent/             # Agent identity registry
 │   ├── naming/            # Name derivation utilities

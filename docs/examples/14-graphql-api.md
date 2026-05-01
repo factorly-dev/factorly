@@ -63,7 +63,7 @@ factorly call linear.create_issue \
 1. Factorly sends a `POST` to `https://api.linear.app/graphql` with the `query` (and optional `variables`) in the JSON body.
 2. The `Authorization: Bearer` header is injected from the vault — the agent never sees the API key.
 3. The tool type is `rest`, not a special GraphQL type. GraphQL APIs are just REST endpoints that accept a query string in the body.
-4. Each operation (list, create) is a separate Factorly tool, giving you independent governance — you could deny `linear.create_issue` while allowing reads.
+4. Each operation (list, create) is a separate Factorly tool, giving you independent oversight — you could deny `linear.create_issue` while allowing reads.
 
 ---
 

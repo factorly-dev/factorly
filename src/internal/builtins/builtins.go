@@ -15,7 +15,7 @@ type Options struct {
 	Mode string // "stdio" or "http" — local tools only register in stdio mode
 }
 
-// Register adds built-in tools to the config. Built-ins are governed
+// Register adds built-in tools to the config. Built-ins are overseen
 // alternatives to unsafe agent tools: shell, read, write, fetch, clipboard.
 // They use the existing CLI provider — no new provider needed.
 func Register(cfg *config.Config, opts Options) {
@@ -29,7 +29,7 @@ func Register(cfg *config.Config, opts Options) {
 	// Universal (all modes) — runs server-side where credentials live
 	cfg.Tools["factorly.fetch"] = config.ToolConfig{
 		Type:        "cli",
-		Description: "Fetch a URL (governed, logged, compressed)",
+		Description: "Fetch a URL (overseen, logged, compressed)",
 		Command:     "curl",
 		Args:        []string{"-sS", "{{url}}"},
 		Compress:    []string{"all"},
@@ -46,7 +46,7 @@ func Register(cfg *config.Config, opts Options) {
 
 	cfg.Tools["factorly.shell"] = config.ToolConfig{
 		Type:        "cli",
-		Description: "Run a shell command (governed, logged, compressed)",
+		Description: "Run a shell command (overseen, logged, compressed)",
 		Command:     "sh",
 		Args:        []string{"-c", "{{command}}"},
 		Compress:    []string{"all"},
@@ -59,7 +59,7 @@ func Register(cfg *config.Config, opts Options) {
 
 	cfg.Tools["factorly.read_file"] = config.ToolConfig{
 		Type:        "cli",
-		Description: "Read a local file (governed, logged, compressed)",
+		Description: "Read a local file (overseen, logged, compressed)",
 		Command:     "cat",
 		Args:        []string{"{{path}}"},
 		Compress:    []string{"all"},
@@ -71,7 +71,7 @@ func Register(cfg *config.Config, opts Options) {
 
 	cfg.Tools["factorly.write_file"] = config.ToolConfig{
 		Type:        "cli",
-		Description: "Write content to a local file (governed, logged, confirmable)",
+		Description: "Write content to a local file (overseen, logged, confirmable)",
 		Command:     "tee",
 		Args:        []string{"{{path}}"},
 		Stdin:       "{{content}}",
@@ -85,7 +85,7 @@ func Register(cfg *config.Config, opts Options) {
 	cmd, args := clipboardCommand()
 	cfg.Tools["factorly.clipboard"] = config.ToolConfig{
 		Type:        "cli",
-		Description: "Copy text to the system clipboard (governed, logged, confirmable)",
+		Description: "Copy text to the system clipboard (overseen, logged, confirmable)",
 		Command:     cmd,
 		Args:        args,
 		Stdin:       "{{text}}",

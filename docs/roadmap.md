@@ -23,7 +23,7 @@
 - [x] **Agent identity** — per-session tracking, per-agent rate limits, audit trail
 - [x] **Environment isolation** — opt-in strict mode for child processes
 - [x] **36 tool templates** — pre-built YAML configs for popular services
-- [x] **Call logging** — JSONL audit trail with savings, governance, and agent fields
+- [x] **Call logging** — JSONL audit trail with savings, oversight, and agent fields
 - [x] **Disabled commands** — `disabled_commands` config to restrict CLI access per project
 - [x] **Built-in tools** — governed shell, read, write, fetch, clipboard with default safety guards
 - [x] **Per-project vault** — `.factorly/vault.enc` with fallback to global, separate passwords, lazy opening
@@ -33,7 +33,7 @@
 ## Future?
 
 ### Agent harness
-- [ ] **`factorly agent`** — lightweight agent loop with tool calling, governance, and run summary ([spec](agent-spec.md))
+- [ ] **`factorly agent`** — lightweight agent loop with tool calling, oversight, and run summary ([spec](agent-spec.md))
 - [ ] **PreToolUse hooks** — `factorly hooks install` to intercept agent Bash calls, rewriting them to `factorly exec` for compression and logging without MCP ([spec](hooks-spec.md))
 - [x] **Command-specific filtering** — per-tool output filter engine with strip/keep lines, match_output short-circuit, regex replace, head/tail, max_lines + 10 built-in filters for git, make, npm, go test, cargo, pip
 - [ ] **Response caching** — return cached results for identical tool calls within a configurable window, reducing API quota usage and latency
@@ -65,7 +65,7 @@ Working toward [AARM](https://aarm.dev) (Autonomous Action Runtime Management) C
 ### Observability
 - [ ] **Dashboard** — localhost web UI showing live call feed, savings counter, agent activity, blocked call breakdown
 - [ ] **Webhook notifications** — alert on blocked calls, rate limits, errors via webhook (Slack, Telegram, HTTP)
-- [ ] **`factorly report`** — generate a shareable summary of tool usage, savings, and governance actions for a time period
+- [ ] **`factorly report`** — generate a shareable summary of tool usage, savings, and oversight actions for a time period
 
 ### Security & auth
 - [ ] **OAuth 2.1 server** — MCP-spec authorization server with PKCE, dynamic client registration, and token endpoints ([spec](oauth-server-spec.md))
@@ -74,7 +74,7 @@ Working toward [AARM](https://aarm.dev) (Autonomous Action Runtime Management) C
 - [ ] **Secret rotation helpers** — workflows for rotating vault keys with zero downtime
 
 ### Scale & collaboration
-- [ ] **Team configs** — shared tool definitions and governance policies across a team
+- [ ] **Team configs** — shared tool definitions and oversight policies across a team
 - [ ] **Shared credential vault** — team-scoped secrets with role-based access
 - [ ] **Cost attribution** — track estimated API call costs per agent per tool with budget enforcement
 

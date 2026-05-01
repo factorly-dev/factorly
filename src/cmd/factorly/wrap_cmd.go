@@ -131,7 +131,7 @@ func runWrap(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Apply shadow governance
+	// Apply shadow oversight
 	if wrapRateLimit != "" {
 		toolCfg.Shadow = &config.ShadowConfig{
 			RateLimit: wrapRateLimit,

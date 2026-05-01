@@ -200,7 +200,7 @@ factorly wrap --url http://localhost:3001/mcp
 
 Factorly ships with governed alternatives to common agent tools. These are available automatically — no YAML config needed. All prefixed `factorly.` to avoid collision with user-defined tools.
 
-| Tool | Description | Default governance |
+| Tool | Description | Default oversight |
 |------|-------------|-------------------|
 | `factorly.shell` | Run a shell command | Confirm required, destructive patterns blocked |
 | `factorly.read_file` | Read a local file | Sensitive paths blocked (.env, .ssh, credentials) |

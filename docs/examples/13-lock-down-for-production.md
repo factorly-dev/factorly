@@ -60,7 +60,7 @@ tools:
 ## Usage
 
 ```bash
-# Deploy and forget — governance is enforced at the config level
+# Deploy and forget — oversight is enforced at the config level
 factorly serve
 ```
 

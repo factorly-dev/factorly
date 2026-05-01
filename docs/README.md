@@ -15,7 +15,7 @@
 | **REST APIs** | Define base URL, method, path, auth, parameters. HTTP calls with routing. |
 | **MCP servers** | Spawn child servers (stdio) or connect to remote (HTTP). Tools discovered automatically. |
 | **Output processing** | Compression (JSON compact, log dedup, ANSI strip) + truncation with head/tail split. |
-| **Governance** | Deny, confirm, rate limit, loop detection. Per-tool shadow policy. |
+| **Oversight** | Deny, confirm, rate limit, loop detection. Per-tool shadow policy. |
 | **Built-in tools** | Governed shell, file read/write, fetch, clipboard — with default safety guards. |
 
 ## Getting Started
@@ -46,7 +46,7 @@
 
 | Topic | Description |
 |-------|-------------|
-| [Examples](examples/README.md) | 27 end-to-end examples: getting started, auth, governance, integrations, and more |
+| [Examples](examples/README.md) | 27 end-to-end examples: getting started, auth, oversight, integrations, and more |
 
 ## Contributing
 
@@ -59,6 +59,12 @@
 | Topic | Description |
 |-------|-------------|
 | [OAuth Server Spec](oauth-server-spec.md) | Planned: MCP-spec OAuth 2.1 authorization server design |
+
+## Positioning
+
+| Topic | Description |
+|-------|-------------|
+| [Competitive Positioning](competitive.md) | Factorly vs. Zapier, Composio, and direct MCP/REST — oversight layer, not integration platform |
 
 ## Philosophy
 

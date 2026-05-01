@@ -71,7 +71,7 @@ disable_builtins: true
 ## What happens
 
 1. Built-in tools are registered automatically when Factorly starts. They appear in `factorly tools` alongside your configured tools.
-2. Each built-in has default governance rules (confirm prompts, blocked patterns). These apply without any config.
+2. Each built-in has default oversight rules (confirm prompts, blocked patterns). These apply without any config.
 3. You can loosen restrictions using `allow_patterns`, `allow_paths`, or `allow_urls` in a `shadow` block — but only for specific values, not blanket overrides.
 4. In HTTP mode (`factorly serve --http`), local tools (`shell`, `read_file`, `write_file`, `clipboard`) are hidden. Only `factorly.fetch` is available since local filesystem operations don't apply to remote servers.
 

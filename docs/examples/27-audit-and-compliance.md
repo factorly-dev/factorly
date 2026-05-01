@@ -60,7 +60,7 @@ Blocked Calls:
 ```
 
 ```bash
-# Filter by status to find governance triggers
+# Filter by status to find oversight triggers
 factorly logs --status blocked
 ```
 
@@ -95,7 +95,7 @@ Each call produces one line in `~/.config/factorly/calls.jsonl`:
 
 1. `log_params: [customer_id, reason]` copies those parameter values into a `highlight_params` field in the audit log. This makes compliance-sensitive data easy to query without parsing the full `params` object.
 2. Vault operations (`set`, `get`, `delete`, `list`) are logged with `interface: "vault"`. The key name is recorded but the secret value is never logged.
-3. `factorly logs --status blocked` surfaces every denied call — useful for reviewing what agents attempted but governance rules prevented.
+3. `factorly logs --status blocked` surfaces every denied call — useful for reviewing what agents attempted but oversight rules prevented.
 4. `factorly logs --tool vault` shows all vault access, letting you audit who accessed which secrets and when.
 5. The log file is created with `0600` permissions (owner read/write only). Output and error fields are truncated to 500 characters to limit secret exposure.
 

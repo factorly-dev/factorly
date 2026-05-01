@@ -23,7 +23,7 @@ import (
 // Option configures a Proxy.
 type Option func(*Proxy)
 
-// WithShadow adds a shadow governance policy to the proxy.
+// WithShadow adds a shadow oversight policy to the proxy.
 func WithShadow(s *shadow.Policy) Option {
 	return func(p *Proxy) { p.shadow = s }
 }

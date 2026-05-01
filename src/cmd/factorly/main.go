@@ -77,11 +77,11 @@ func main() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:                "factorly",
-	Short:              "One endpoint. All your tools.",
-	Long:               "Factorly wraps your existing agent tools — MCP servers, REST APIs, CLIs — into a single endpoint.",
-	SilenceUsage:       true,
-	CompletionOptions:  cobra.CompletionOptions{DisableDefaultCmd: true},
+	Use:               "factorly",
+	Short:             "One endpoint. All your tools.",
+	Long:              "Factorly wraps your existing agent tools — MCP servers, REST APIs, CLIs — into a single endpoint.",
+	SilenceUsage:      true,
+	CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 }
 
 var utilsCmd = &cobra.Command{

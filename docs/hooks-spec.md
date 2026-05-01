@@ -4,7 +4,7 @@
 
 ## Problem
 
-Agents bypass Factorly when using Bash directly — `git diff`, `npm test`, `cargo build` all run outside the proxy. No compression, no governance, no audit logging. Only MCP tool calls go through Factorly.
+Agents bypass Factorly when using Bash directly — `git diff`, `npm test`, `cargo build` all run outside the proxy. No compression, no oversight, no audit logging. Only MCP tool calls go through Factorly.
 
 Hooks solve this by rewriting Bash commands to `factorly exec` *inside* the agent's own loop. No new protocol, no shell aliases, no agent modifications. The agent calls Bash normally; the hook intercepts and routes through Factorly.
 
@@ -312,7 +312,7 @@ After `factorly hooks install`:
 |---|---|
 | `git status` → raw output, no log | `git status` → filtered output, logged |
 | `npm test` → 200 lines, no compression | `npm test` → "ok (all tests passed)", compressed |
-| `make build` → noisy, no governance | `make build` → filtered, shadow policy applies |
+| `make build` → noisy, no oversight | `make build` → filtered, shadow policy applies |
 | `curl https://api.com` → raw JSON | `curl https://api.com` → compacted JSON |
 | No audit trail for Bash commands | Every Bash command in the audit log |
 

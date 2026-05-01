@@ -88,11 +88,11 @@ factorly tools import templates linear --api-key "$LINEAR_API_KEY" --all
 
 4. **OAuth** (if applicable) — Adds an `oauth_providers` entry to `.factorly/factorly.yaml` and tells you to run `factorly auth login <provider>`.
 
-## Governance
+## Oversight
 
 Write and delete actions include `shadow: confirm: true` by default — your agent must confirm before creating, updating, or deleting resources. Read and search actions have no restrictions.
 
-You can modify governance after install by editing the YAML:
+You can modify oversight rules after install by editing the YAML:
 
 ```yaml
 # .factorly/tools/linear.yaml
@@ -133,7 +133,7 @@ This opens your browser for the OAuth consent flow. Tokens are stored in the vau
 Templates are plain YAML — the same format as any Factorly tool config. You can:
 
 - **Copy manually** instead of using the command: grab a YAML file from the [templates directory](https://github.com/factorly-dev/factorly/tree/main/src/internal/templates/yaml) and drop it in `.factorly/tools/`
-- **Edit after install** — add parameters, change paths, adjust governance
+- **Edit after install** — add parameters, change paths, adjust oversight rules
 - **Use as examples** — reference the YAML when writing your own tool configs
 
 ## Flags

@@ -67,7 +67,7 @@ type ToolConfig struct {
 	Headers map[string]string `yaml:"headers,omitempty"`
 	Auth    *AuthConfig       `yaml:"auth,omitempty"`
 
-	// Shadow (governance)
+	// Shadow (oversight)
 	Shadow *ShadowConfig `yaml:"shadow,omitempty"`
 
 	// Output filter
