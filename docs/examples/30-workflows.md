@@ -111,7 +111,78 @@ Workflows stop on first error. Remaining steps are skipped:
 }
 ```
 
-## Governance
+## How agents use workflows
+
+Agents see workflows as a single tool — they don't see individual steps. The workflow appears in `factorly tools` and MCP `tools/list` like any other tool, with its own name, description, and parameters:
+
+```
+$ factorly tools
+  report.weekly     workflow   Generate weekly report and email it
+  echo.test         cli        Echo a message
+```
+
+When an agent calls a workflow, it passes the workflow's parameters. The steps are opaque — the agent gets back the JSON execution trace as the result. This means:
+
+- The agent doesn't need to know how the workflow works internally
+- Individual steps are governed independently (the agent can't bypass step-level deny/confirm)
+- The workflow is a single auditable unit in the log
+
+## What can be a step?
+
+Any tool registered in your config can be a step — CLI, REST, MCP, or even another workflow:
+
+```yaml
+tools:
+  fetch.data:
+    type: rest
+    base_url: https://api.example.com
+    method: GET
+    path: /data
+
+  summarize:
+    type: workflow
+    steps:
+      - tool: fetch.data           # REST tool as a step
+        store: raw
+      - tool: factorly.shell       # Built-in tool as a step
+        params: { command: "echo '{{raw}}' | jq '.items'" }
+        store: filtered
+      - tool: anthropic.ask        # Another REST tool
+        params: { prompt: "Summarize: {{filtered}}" }
+```
+
+## State persistence
+
+Each workflow run persists state to `.factorly/workflows/<run-id>.json`. State is updated after each step completes:
+
+```bash
+# View state of a completed or failed run
+cat .factorly/workflows/a1b2c3d4.json | jq
+```
+
+```json
+{
+  "workflow": "report.weekly",
+  "run_id": "a1b2c3d4",
+  "status": "completed",
+  "started_at": "2026-05-01T10:00:00Z",
+  "completed_at": "2026-05-01T10:00:04Z",
+  "steps": [
+    {"index": 0, "tool": "github.list_prs", "status": "completed", "duration_ms": 215},
+    {"index": 1, "tool": "anthropic.ask", "status": "completed", "duration_ms": 3200},
+    {"index": 2, "tool": "gmail.send_message", "status": "completed", "duration_ms": 342}
+  ],
+  "variables": {
+    "team": "platform",
+    "prs": "[{\"title\": \"Add workflows\", ...}]",
+    "report": "This week the platform team merged 3 PRs..."
+  }
+}
+```
+
+This is useful for debugging failed workflows — you can see exactly which step failed, what data was available, and what the error was.
+
+## Oversight
 
 Each step goes through the proxy individually — shadow policy, rate limiting, and loop detection apply per step:
 
@@ -136,12 +207,19 @@ tools:
 
 1. Workflow receives input parameters from the caller
 2. Steps execute sequentially through the proxy
-3. Each step: shadow policy check → execute → output filter → log
+3. Each step: parameter validation → shadow policy check → execute → output filter → log
 4. `store:` saves step output as a variable for later steps
 5. `{{var}}` in step params is substituted from input params + stored outputs
 6. On failure, remaining steps are skipped and the state is persisted
 7. State is saved to `.factorly/workflows/<run-id>.json` after each step
 8. Output includes the full execution trace as JSON
+
+## Tips
+
+- **Keep workflows deterministic.** Every step is defined upfront — no LLM decision-making in the pipeline itself. If you need branching logic, let the agent decide which workflow to call.
+- **Use `store:` liberally.** Named variables make workflows readable and debuggable. The persisted state shows exactly what data flowed between steps.
+- **Combine with parameter validation.** Add `min`/`max`/`enum` rules on workflow parameters to catch bad inputs before any step runs.
+- **Shadow policy applies per step.** If `factorly.shell` has `confirm: true`, each shell step in the workflow will trigger confirmation independently.
 
 ---
 

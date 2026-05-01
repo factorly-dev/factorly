@@ -401,6 +401,52 @@ Disabled commands return a clear error: `command "vault" is disabled in .factorl
 
 Supported commands: `call`, `exec`, `wrap`, `serve`, `sync`, `logs`, `vault`, `auth`.
 
+## Workflows
+
+Workflows chain multiple tool calls into a single governed pipeline. Define with `type: workflow` and a `steps:` array:
+
+```yaml
+tools:
+  ci.check:
+    type: workflow
+    description: Run lint and tests, then notify
+    parameters:
+      - name: channel
+        default: "#ci"
+    steps:
+      - tool: factorly.shell
+        params: { command: "make lint" }
+        store: lint
+      - tool: factorly.shell
+        params: { command: "make test" }
+        store: tests
+      - tool: slack.post_message
+        params:
+          channel: "{{channel}}"
+          text: "CI passed: {{tests}}"
+```
+
+**Step fields:**
+
+| Field | Description |
+|-------|-------------|
+| `tool` | Tool name to call (must exist in config) |
+| `params` | Parameters to pass (supports `{{var}}` substitution) |
+| `store` | Save step output as a named variable for later steps |
+
+**Variable sources** (in order of precedence):
+1. Stored outputs from previous steps (`store: varname`)
+2. Input parameters from the caller
+3. Parameter defaults
+
+**Behavior:**
+- Steps execute sequentially, each through the full proxy (oversight, logging, output filters)
+- On failure, remaining steps are skipped — output shows `"status": "failed"`
+- State is persisted to `.factorly/workflows/<run-id>.json` after each step
+- Any tool type can be a step: CLI, REST, MCP, or another workflow
+
+See [Workflow Example](examples/30-workflows.md) for full usage details.
+
 ## Parameter inference
 
 For CLI tools, parameters are automatically inferred from `{{placeholder}}` patterns in `args` and `stdin`.

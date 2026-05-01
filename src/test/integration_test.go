@@ -3137,3 +3137,169 @@ tools:
 		t.Errorf("expected file error in stderr, got %q", stderr)
 	}
 }
+
+// --- Workflows ---
+
+func TestCallWorkflowSimple(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo.hello:
+    type: cli
+    command: echo
+    args: ["hello"]
+  echo.world:
+    type: cli
+    command: echo
+    args: ["world"]
+  my.pipeline:
+    type: workflow
+    description: Run two echo commands
+    steps:
+      - tool: echo.hello
+      - tool: echo.world
+`,
+	})
+
+	stdout, _, code := run(t, dir, "call", "my.pipeline")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	// Workflow output should contain the last step's output
+	if !strings.Contains(stdout, "world") {
+		t.Errorf("expected 'world' in output, got %q", stdout)
+	}
+}
+
+func TestCallWorkflowVariablePassing(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo.msg:
+    type: cli
+    command: echo
+    args: ["{{message}}"]
+    parameters:
+      - name: message
+        required: true
+  pipeline.chain:
+    type: workflow
+    description: Pass output from step 1 to step 2
+    steps:
+      - tool: echo.msg
+        params: { message: "first" }
+        store: result
+      - tool: echo.msg
+        params: { message: "got {{result}}" }
+`,
+	})
+
+	stdout, _, code := run(t, dir, "call", "pipeline.chain")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	// Step 2 should receive step 1's output via {{result}}
+	if !strings.Contains(stdout, "got first") {
+		t.Errorf("expected 'got first' in output, got %q", stdout)
+	}
+}
+
+func TestCallWorkflowWithInputParams(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo.msg:
+    type: cli
+    command: echo
+    args: ["{{message}}"]
+    parameters:
+      - name: message
+        required: true
+  pipeline.greet:
+    type: workflow
+    description: Greet someone
+    parameters:
+      - name: name
+        required: true
+    steps:
+      - tool: echo.msg
+        params: { message: "hello {{name}}" }
+`,
+	})
+
+	stdout, _, code := run(t, dir, "call", "pipeline.greet", "--name", "world")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "hello world") {
+		t.Errorf("expected 'hello world' in output, got %q", stdout)
+	}
+}
+
+func TestCallWorkflowWithShadowDeny(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo.safe:
+    type: cli
+    command: echo
+    args: ["safe"]
+  echo.danger:
+    type: cli
+    command: echo
+    args: ["danger"]
+    shadow:
+      deny: [echo.danger]
+  pipeline.mixed:
+    type: workflow
+    description: Second step is denied
+    steps:
+      - tool: echo.safe
+      - tool: echo.danger
+`,
+	})
+
+	_, stderr, code := run(t, dir, "call", "pipeline.mixed")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when workflow step is denied")
+	}
+	if !strings.Contains(stderr, "denied") {
+		t.Errorf("expected 'denied' in stderr, got %q", stderr)
+	}
+}
+
+func TestCallWorkflowThreeSteps(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo.msg:
+    type: cli
+    command: printf
+    args: ["{{message}}"]
+    parameters:
+      - name: message
+        required: true
+  pipeline.three:
+    type: workflow
+    description: Three step chain
+    steps:
+      - tool: echo.msg
+        params: { message: "alpha" }
+        store: a
+      - tool: echo.msg
+        params: { message: "{{a}} beta" }
+        store: b
+      - tool: echo.msg
+        params: { message: "{{b}} gamma" }
+`,
+	})
+
+	stdout, _, code := run(t, dir, "call", "pipeline.three")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	// Output is JSON with result field containing the final output
+	if !strings.Contains(stdout, "alpha beta gamma") {
+		t.Errorf("expected chained output 'alpha beta gamma', got %q", stdout)
+	}
+}

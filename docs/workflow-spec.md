@@ -1,6 +1,6 @@
 # Spec: `type: workflow` — governed sequential tool pipelines
 
-> Status: **Draft** — not yet implemented.
+> Status: **Implemented** — sequential pipelines with variable passing, state persistence, and per-step oversight.
 
 ## Overview
 
