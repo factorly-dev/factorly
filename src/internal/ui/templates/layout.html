@@ -1,0 +1,27 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Factorly{{if .Title}} — {{.Title}}{{end}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/static/htmx.min.js"></script>
+  <script src="/static/sse.js"></script>
+  <style>
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline; }
+    .htmx-request button[type="submit"] { opacity: 0.5; pointer-events: none; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+  <nav class="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-6">
+    <a href="/tools" class="font-bold text-lg text-indigo-600">factorly</a>
+    <a href="/tools" class="text-sm {{if eq .Nav "tools"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Tools</a>
+    <a href="/templates" class="text-sm {{if eq .Nav "templates"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Templates</a>
+    <a href="/vault" class="text-sm {{if eq .Nav "vault"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Vault</a>
+  </nav>
+  <main class="max-w-5xl mx-auto px-6 py-8">
+    {{template "content" .}}
+  </main>
+</body>
+</html>{{end}}

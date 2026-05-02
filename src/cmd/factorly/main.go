@@ -480,7 +480,7 @@ func init() {
 
 	toolsCmd.AddCommand(toolsListCmd, addCmd, removeCmd, importCmd, recordCmd, statusCmd)
 	utilsCmd.AddCommand(autocompleteCmd)
-	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, authCmd, serveCmd, wrapCmd, execCmd, logsCmd, utilsCmd)
+	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, authCmd, serveCmd, wrapCmd, execCmd, logsCmd, utilsCmd, uiCmd)
 }
 
 // loadConfig loads config and builds a registry. Does not open the vault
