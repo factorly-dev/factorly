@@ -3303,3 +3303,161 @@ tools:
 		t.Errorf("expected chained output 'alpha beta gamma', got %q", stdout)
 	}
 }
+
+func TestCallWorkflowIfCondition(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo.msg:
+    type: cli
+    command: printf
+    args: ["{{message}}"]
+    parameters:
+      - name: message
+        required: true
+  pipeline.conditional:
+    type: workflow
+    description: Skip step based on condition
+    parameters:
+      - name: flag
+    steps:
+      - tool: echo.msg
+        params: { message: "always" }
+        store: first
+      - tool: echo.msg
+        params: { message: "conditional" }
+        if: "flag == 'yes'"
+        store: second
+      - tool: echo.msg
+        params: { message: "done" }
+`,
+	})
+
+	// With flag=yes: all three steps run
+	stdout, _, code := run(t, dir, "call", "pipeline.conditional", "--flag", "yes")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, `"result":"done"`) {
+		t.Errorf("expected 'done' as result, got %q", stdout)
+	}
+	if strings.Contains(stdout, `"skipped"`) {
+		t.Error("no steps should be skipped when flag=yes")
+	}
+
+	// With flag=no: second step skipped
+	stdout, _, code = run(t, dir, "call", "pipeline.conditional", "--flag", "no")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, `"skipped"`) {
+		t.Errorf("expected skipped step when flag=no, got %q", stdout)
+	}
+}
+
+func TestCallWorkflowSwitch(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo.msg:
+    type: cli
+    command: printf
+    args: ["{{message}}"]
+    parameters:
+      - name: message
+        required: true
+  pipeline.switch:
+    type: workflow
+    description: Branch based on input
+    parameters:
+      - name: mode
+        required: true
+    steps:
+      - switch:
+          - condition: "mode == 'fast'"
+            tool: echo.msg
+            params: { message: "speed mode" }
+          - condition: "mode == 'safe'"
+            tool: echo.msg
+            params: { message: "safety mode" }
+          - condition: "true"
+            tool: echo.msg
+            params: { message: "default mode" }
+`,
+	})
+
+	// mode=fast → first case
+	stdout, _, code := run(t, dir, "call", "pipeline.switch", "--mode", "fast")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "speed mode") {
+		t.Errorf("expected 'speed mode', got %q", stdout)
+	}
+
+	// mode=safe → second case
+	stdout, _, code = run(t, dir, "call", "pipeline.switch", "--mode", "safe")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "safety mode") {
+		t.Errorf("expected 'safety mode', got %q", stdout)
+	}
+
+	// mode=other → default (true)
+	stdout, _, code = run(t, dir, "call", "pipeline.switch", "--mode", "other")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "default mode") {
+		t.Errorf("expected 'default mode', got %q", stdout)
+	}
+}
+
+func TestCallWorkflowSwitchWithStore(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo.msg:
+    type: cli
+    command: printf
+    args: ["{{message}}"]
+    parameters:
+      - name: message
+        required: true
+  pipeline.store:
+    type: workflow
+    description: Switch stores output for next step
+    parameters:
+      - name: tier
+    steps:
+      - switch:
+          - condition: "tier == 'premium'"
+            tool: echo.msg
+            params: { message: "unlimited" }
+            store: limit
+          - condition: "true"
+            tool: echo.msg
+            params: { message: "100" }
+            store: limit
+      - tool: echo.msg
+        params: { message: "your limit is {{limit}}" }
+`,
+	})
+
+	stdout, _, code := run(t, dir, "call", "pipeline.store", "--tier", "premium")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "your limit is unlimited") {
+		t.Errorf("expected 'your limit is unlimited', got %q", stdout)
+	}
+
+	stdout, _, code = run(t, dir, "call", "pipeline.store", "--tier", "free")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "your limit is 100") {
+		t.Errorf("expected 'your limit is 100', got %q", stdout)
+	}
+}

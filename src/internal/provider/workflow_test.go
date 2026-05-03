@@ -560,3 +560,150 @@ func TestWorkflowOutputIncludesState(t *testing.T) {
 		t.Errorf("expected last output as result, got %q", state.Result)
 	}
 }
+
+func TestWorkflowIfTrue(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.if", []WorkflowStep{
+		{Tool: "step1", Store: "out"},
+		{Tool: "step2", If: "out != ''"},
+	})
+
+	result, err := wp.Execute("test.if", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.calls) != 2 {
+		t.Errorf("expected 2 calls, got %d: %v", len(exec.calls), exec.calls)
+	}
+	if !strings.Contains(result.Output, `"status":"completed"`) {
+		t.Error("expected completed status")
+	}
+}
+
+func TestWorkflowIfFalse(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.if", []WorkflowStep{
+		{Tool: "step1", Store: "out"},
+		{Tool: "step2", If: "missing != ''"}, // "missing" is not stored, so empty → false
+	})
+
+	result, err := wp.Execute("test.if", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// step2 should be skipped
+	if len(exec.calls) != 1 {
+		t.Errorf("expected 1 call (step2 skipped), got %d: %v", len(exec.calls), exec.calls)
+	}
+	if !strings.Contains(result.Output, `"skipped"`) {
+		t.Error("expected skipped step in output")
+	}
+}
+
+func TestWorkflowSwitchFirstMatch(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.switch", []WorkflowStep{
+		{
+			Switch: []WorkflowSwitchCase{
+				{Condition: "false", Tool: "wrong"},
+				{Condition: "true", Tool: "right"},
+			},
+		},
+	})
+
+	_, err := wp.Execute("test.switch", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.calls) != 1 || exec.calls[0] != "right" {
+		t.Errorf("expected only 'right' called, got %v", exec.calls)
+	}
+}
+
+func TestWorkflowSwitchWithVariable(t *testing.T) {
+	exec := &mockWorkflowExecutor{
+		results: map[string]*Result{
+			"get.status": {Output: "degraded"},
+		},
+	}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.switch", []WorkflowStep{
+		{Tool: "get.status", Store: "status"},
+		{
+			Switch: []WorkflowSwitchCase{
+				{Condition: "status == 'healthy'", Tool: "notify.ok"},
+				{Condition: "status == 'degraded'", Tool: "notify.warn"},
+				{Condition: "true", Tool: "notify.critical"},
+			},
+		},
+	})
+
+	_, err := wp.Execute("test.switch", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Should call get.status then notify.warn
+	if len(exec.calls) != 2 {
+		t.Fatalf("expected 2 calls, got %d: %v", len(exec.calls), exec.calls)
+	}
+	if exec.calls[1] != "notify.warn" {
+		t.Errorf("expected notify.warn, got %s", exec.calls[1])
+	}
+}
+
+func TestWorkflowSwitchNoMatch(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.switch", []WorkflowStep{
+		{
+			Switch: []WorkflowSwitchCase{
+				{Condition: "false", Tool: "never"},
+				{Condition: "x == 'nope'", Tool: "also.never"},
+			},
+		},
+	})
+
+	result, err := wp.Execute("test.switch", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No match = skipped, no tools called
+	if len(exec.calls) != 0 {
+		t.Errorf("expected 0 calls, got %d: %v", len(exec.calls), exec.calls)
+	}
+	if !strings.Contains(result.Output, `"skipped"`) {
+		t.Error("expected skipped in output")
+	}
+}
+
+func TestWorkflowSwitchStore(t *testing.T) {
+	exec := &mockWorkflowExecutor{
+		results: map[string]*Result{
+			"produce": {Output: "value123"},
+		},
+	}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.switch", []WorkflowStep{
+		{
+			Switch: []WorkflowSwitchCase{
+				{Condition: "true", Tool: "produce", Store: "captured"},
+			},
+		},
+		{Tool: "consume", Params: map[string]string{"data": "{{captured}}"}},
+	})
+
+	_, err := wp.Execute("test.switch", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.calls) != 2 {
+		t.Fatalf("expected 2 calls, got %v", exec.calls)
+	}
+	// The consume step should have received the stored value
+	if exec.calls[1] != "consume" {
+		t.Errorf("expected consume, got %s", exec.calls[1])
+	}
+}

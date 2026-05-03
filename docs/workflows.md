@@ -46,9 +46,13 @@ factorly call daily.summary
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `tool` | Yes | Tool name to call (must exist in config) |
+| `tool` | Yes* | Tool name to call (must exist in config) |
 | `params` | No | Parameters to pass — supports `{{var}}` substitution |
 | `store` | No | Save step output as a named variable |
+| `if` | No | [Expression](expressions.md) — skip step when false |
+| `switch` | No | List of conditional branches (replaces `tool`) |
+
+*`tool` is required unless `switch` is set.
 
 ### Parameters
 
@@ -104,6 +108,37 @@ tools:
       - tool: anthropic.ask        # REST tool (LLM)
         params: { prompt: "Summarize: {{filtered}}" }
 ```
+
+## Conditionals
+
+Steps can be conditional. See the [Expressions](expressions.md) doc for full syntax.
+
+### Skip a step with `if:`
+
+```yaml
+steps:
+  - tool: git.status
+    store: changes
+  - tool: git.commit
+    if: "changes != ''"
+```
+
+### Branch with `switch:`
+
+```yaml
+steps:
+  - tool: api.health
+    store: status
+  - switch:
+      - condition: "status == 'healthy'"
+        tool: slack.post
+        params: { text: "All good" }
+      - condition: "true"
+        tool: pagerduty.alert
+        params: { severity: "critical" }
+```
+
+First matching condition executes. Use `condition: "true"` as a default. Switch cases support `tool`, `params`, and `store`.
 
 ## How agents see workflows
 

@@ -112,9 +112,18 @@ type ParamConfig struct {
 }
 
 type StepConfig struct {
-	Tool   string            `yaml:"tool"`
+	Tool   string            `yaml:"tool,omitempty"`
 	Params map[string]string `yaml:"params,omitempty"`
 	Store  string            `yaml:"store,omitempty"`
+	If     string            `yaml:"if,omitempty"`     // condition expression — skip step if false
+	Switch []SwitchCase      `yaml:"switch,omitempty"` // multi-branch conditional
+}
+
+type SwitchCase struct {
+	Condition string            `yaml:"condition"`
+	Tool      string            `yaml:"tool"`
+	Params    map[string]string `yaml:"params,omitempty"`
+	Store     string            `yaml:"store,omitempty"`
 }
 
 type ShadowConfig struct {
@@ -500,7 +509,7 @@ func validate(cfg *Config) error {
 				return fmt.Errorf("config: workflow tool %q has no steps", name)
 			}
 			for i, step := range tool.Steps {
-				if step.Tool == "" {
+				if step.Tool == "" && len(step.Switch) == 0 {
 					return fmt.Errorf("config: workflow tool %q step %d missing tool name", name, i+1)
 				}
 			}

@@ -26,6 +26,15 @@ type WorkflowStep struct {
 	Tool   string
 	Params map[string]string
 	Store  string
+	If     string
+	Switch []WorkflowSwitchCase
+}
+
+type WorkflowSwitchCase struct {
+	Condition string
+	Tool      string
+	Params    map[string]string
+	Store     string
 }
 
 // WorkflowState tracks the full state of a workflow run.
@@ -128,6 +137,78 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 				state.Steps[j].Status = "skipped"
 			}
 			break
+		}
+
+		// Conditional: skip step if `if` condition is false
+		if step.If != "" && !EvalCondition(step.If, state.Variables) {
+			state.Steps[i].Status = "skipped"
+			if p.verbose {
+				fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s skipped    (condition false)\n", i+1, len(steps), step.Tool)
+			}
+			continue
+		}
+
+		// Switch step: evaluate cases, execute first match
+		if len(step.Switch) > 0 {
+			matched := false
+			for _, c := range step.Switch {
+				if EvalCondition(c.Condition, state.Variables) {
+					matched = true
+					state.Steps[i].Status = "running"
+					state.Steps[i].Tool = c.Tool
+
+					if p.verbose {
+						fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s running... (switch → %s)\n", i+1, len(steps), c.Tool, c.Condition)
+					}
+
+					resolvedParams := make(map[string]string, len(c.Params))
+					for k, v := range c.Params {
+						resolvedParams[k] = substituteVars(v, state.Variables)
+					}
+
+					stepStart := time.Now()
+					result, err := p.executor.ExecuteWithContext(ctx, c.Tool, resolvedParams, "workflow")
+					duration := time.Since(stepStart)
+					state.Steps[i].DurationMs = duration.Milliseconds()
+
+					if err != nil {
+						state.Steps[i].Status = "failed"
+						state.Steps[i].Error = err.Error()
+						state.Status = "failed"
+						state.Error = fmt.Sprintf("step %d switch (%s): %s", i+1, c.Tool, err)
+						for j := i + 1; j < len(steps); j++ {
+							state.Steps[j].Status = "skipped"
+						}
+						p.saveState(state)
+						return &Result{Output: marshalState(state), Error: state.Error},
+							fmt.Errorf("workflow %q failed at step %d switch (%s): %w", toolName, i+1, c.Tool, err)
+					}
+
+					output := ""
+					if result != nil {
+						output = result.Output
+					}
+					state.Steps[i].Status = "completed"
+					state.Steps[i].Output = truncateForState(output)
+					lastOutput = output
+					if c.Store != "" {
+						state.Variables[c.Store] = output
+					}
+
+					if p.verbose {
+						fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s completed  %s\n", i+1, len(steps), c.Tool, duration.Truncate(time.Millisecond))
+					}
+					p.saveState(state)
+					break
+				}
+			}
+			if !matched {
+				state.Steps[i].Status = "skipped"
+				if p.verbose {
+					fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s skipped    (no match)\n", i+1, len(steps), "switch")
+				}
+			}
+			continue
 		}
 
 		state.Steps[i].Status = "running"
