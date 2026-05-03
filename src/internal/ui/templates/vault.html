@@ -1,4 +1,54 @@
 {{define "content"}}
 <h1 class="text-2xl font-bold mb-6">Vault</h1>
-<p class="text-gray-500">Coming soon.</p>
+
+{{if not .Available}}
+<div class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
+  Vault not available. Run <code class="bg-gray-100 px-1 rounded">factorly vault set KEY value</code> from the CLI to initialize.
+</div>
+{{else}}
+
+<!-- Add secret form -->
+<div class="bg-white rounded-lg border border-gray-200 p-5 mb-6">
+  <h2 class="font-semibold mb-3">Add Secret</h2>
+  <form hx-post="/vault" hx-target="#vault-keys" hx-swap="innerHTML" class="flex gap-3">
+    <input type="text" name="key" required placeholder="API_KEY"
+           class="flex-1 px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+    <input type="password" name="value" required placeholder="secret value"
+           class="flex-1 px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+    <button type="submit"
+            class="px-4 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors">
+      Set
+    </button>
+  </form>
+</div>
+
+<!-- Key list -->
+<div class="bg-white rounded-lg border border-gray-200">
+  <div class="px-5 py-3 border-b border-gray-100">
+    <h2 class="font-semibold text-sm">Stored Keys</h2>
+  </div>
+  <div id="vault-keys">
+    {{if not .Keys}}
+    <div class="px-5 py-8 text-center text-gray-400 text-sm">No secrets stored.</div>
+    {{else}}
+    <div class="divide-y divide-gray-100">
+      {{range .Keys}}
+      <div class="px-5 py-3 flex items-center justify-between">
+        <span class="font-mono text-sm">{{.}}</span>
+        <div class="flex items-center gap-3">
+          <span class="text-gray-300 text-sm">••••••••</span>
+          <button hx-delete="/vault/{{.}}"
+                  hx-target="#vault-keys"
+                  hx-swap="innerHTML"
+                  hx-confirm="Delete secret '{{.}}'?"
+                  class="text-red-400 hover:text-red-600 text-xs">delete</button>
+        </div>
+      </div>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+</div>
+
+{{end}}
 {{end}}

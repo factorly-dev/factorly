@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"github.com/factorly-dev/factorly/internal/ui"
+	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/spf13/cobra"
 )
 
@@ -37,6 +38,10 @@ func runUI(cmd *cobra.Command, args []string) error {
 	}
 	defer p.Teardown()
 
+	// Get vault backend (cached singleton from bootstrapProviders, won't re-prompt)
+	var vaultBackend vault.Backend
+	vaultBackend, _ = getCachedVault()
+
 	addr := fmt.Sprintf("localhost:%d", uiPort)
 
 	srv, err := ui.New(ui.Options{
@@ -45,6 +50,7 @@ func runUI(cmd *cobra.Command, args []string) error {
 		ToolsDir: cfg.ToolsDir,
 		Registry: reg,
 		Proxy:    p,
+		Vault:    vaultBackend,
 	})
 	if err != nil {
 		return err

@@ -35,6 +35,17 @@
   </div>
 </div>
 
+<!-- Install -->
+<div class="mt-6">
+  <form method="POST" action="/templates/{{.Template.Name}}/install">
+    <button type="submit"
+            class="px-5 py-2.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors">
+      Install Template
+    </button>
+    <span class="text-sm text-gray-500 ml-3">Adds tools to your project config</span>
+  </form>
+</div>
+
 <!-- YAML preview -->
 <div class="mt-6 bg-white rounded-lg border border-gray-200 p-5">
   <h2 class="font-semibold mb-3">YAML</h2>

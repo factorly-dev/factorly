@@ -1,0 +1,124 @@
+{{define "content"}}
+<div class="mb-6">
+  <a href="/tools" class="text-sm text-gray-500 hover:text-gray-700">← Back to tools</a>
+</div>
+
+<div class="flex items-center justify-between mb-6">
+  <div class="flex items-center gap-3">
+    <h1 class="text-2xl font-bold font-mono">{{.Name}}</h1>
+    <span class="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">workflow</span>
+  </div>
+  <button hx-delete="/tools/{{.Name}}"
+          hx-confirm="Delete workflow '{{.Name}}'?"
+          class="text-red-400 hover:text-red-600 text-sm">Delete</button>
+</div>
+
+{{if .Description}}
+<p class="text-gray-600 mb-6">{{.Description}}</p>
+{{end}}
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <!-- Steps editor -->
+  <div class="bg-white rounded-lg border border-gray-200 p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-semibold">Steps</h2>
+      <button type="button" onclick="addStep()" class="text-indigo-600 hover:text-indigo-800 text-sm">+ Add step</button>
+    </div>
+
+    <form method="POST" action="/workflows/{{.Name}}/save" id="workflow-form">
+      <div id="steps-list" class="space-y-3 mb-4">
+        {{range $i, $step := .Steps}}
+        <div class="step-row flex items-center gap-2 p-3 bg-gray-50 rounded border border-gray-100">
+          <span class="step-num text-gray-400 text-sm w-5 text-right">{{inc $i}}</span>
+          <select name="step_tool_{{$i}}" class="step-tool flex-1 px-2 py-1 border border-gray-200 rounded text-sm font-mono">
+            {{range $.AvailableTools}}
+            <option value="{{.}}" {{if eq . $step.Tool}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+          <input type="text" name="step_store_{{$i}}" value="{{$step.Store}}" placeholder="store as..."
+                 class="step-store w-24 px-2 py-1 border border-gray-200 rounded text-xs font-mono">
+          <button type="button" onclick="removeStep(this)" class="text-red-400 hover:text-red-600 text-xs">✕</button>
+        </div>
+        {{end}}
+      </div>
+
+      <button type="submit" class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">Save</button>
+    </form>
+  </div>
+
+  <!-- Run panel -->
+  <div class="bg-white rounded-lg border border-gray-200 p-5">
+    <h2 class="font-semibold mb-4">Run</h2>
+
+    <form hx-post="/workflows/{{.Name}}/run"
+          hx-target="#run-result"
+          hx-swap="innerHTML"
+          hx-indicator="#run-spinner">
+
+      {{if .Params}}
+      <div class="space-y-3 mb-4">
+        {{range .Params}}
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">
+            {{.Name}}
+            {{if .Required}}<span class="text-red-400">*</span>{{end}}
+          </label>
+          <input type="text" name="param_{{.Name}}" value="{{.Default}}"
+                 class="w-full px-3 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                 {{if .Required}}required{{end}}>
+        </div>
+        {{end}}
+      </div>
+      {{else}}
+      <p class="text-sm text-gray-400 mb-4">No parameters required.</p>
+      {{end}}
+
+      <button type="submit"
+              class="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors">
+        Run Workflow
+      </button>
+      <span id="run-spinner" class="htmx-indicator ml-2 text-sm text-gray-400">running...</span>
+    </form>
+
+    <div id="run-result" class="mt-4"></div>
+  </div>
+</div>
+
+<script>
+function addStep() {
+  const list = document.getElementById('steps-list');
+  const rows = list.querySelectorAll('.step-row');
+  const idx = rows.length;
+
+  const div = document.createElement('div');
+  div.className = 'step-row flex items-center gap-2 p-3 bg-gray-50 rounded border border-gray-100';
+
+  // Get tool options from first row (or build empty)
+  let options = '';
+  const firstSelect = list.querySelector('.step-tool');
+  if (firstSelect) {
+    options = firstSelect.innerHTML;
+  }
+
+  div.innerHTML = `
+    <span class="step-num text-gray-400 text-sm w-5 text-right">${idx + 1}</span>
+    <select name="step_tool_${idx}" class="step-tool flex-1 px-2 py-1 border border-gray-200 rounded text-sm font-mono">${options}</select>
+    <input type="text" name="step_store_${idx}" placeholder="store as..." class="step-store w-24 px-2 py-1 border border-gray-200 rounded text-xs font-mono">
+    <button type="button" onclick="removeStep(this)" class="text-red-400 hover:text-red-600 text-xs">✕</button>
+  `;
+  list.appendChild(div);
+}
+
+function removeStep(btn) {
+  const row = btn.closest('.step-row');
+  row.remove();
+  // Renumber
+  const rows = document.querySelectorAll('.step-row');
+  rows.forEach((r, i) => {
+    r.querySelector('.step-num').textContent = i + 1;
+    r.querySelector('.step-tool').name = 'step_tool_' + i;
+    r.querySelector('.step-store').name = 'step_store_' + i;
+  });
+}
+</script>
+{{end}}

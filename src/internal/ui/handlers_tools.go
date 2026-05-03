@@ -48,6 +48,12 @@ func (s *Server) handleToolEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Redirect workflows to their dedicated editor
+	if tc.Type == "workflow" {
+		http.Redirect(w, r, "/workflows/"+name, http.StatusFound)
+		return
+	}
+
 	// Combine tool config name with struct for template
 	type toolView struct {
 		Name string
@@ -117,6 +123,200 @@ func (s *Server) handleToolTry(w http.ResponseWriter, r *http.Request) {
 		</div>
 		<pre class="text-gray-800 text-xs whitespace-pre-wrap max-h-96 overflow-y-auto">%s</pre>
 	</div>`, statusColor, statusColor, statusColor, status, duration.Milliseconds(), template.HTMLEscapeString(output))
+}
+
+func (s *Server) handleToolFormPartial(w http.ResponseWriter, r *http.Request) {
+	toolType := r.URL.Query().Get("type")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	switch toolType {
+	case "rest":
+		fmt.Fprint(w, `<div class="space-y-4 pt-4 border-t border-gray-100">
+			<div>
+				<label class="block text-sm font-medium text-gray-700 mb-1">Method</label>
+				<select name="method" class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
+					<option value="GET">GET</option>
+					<option value="POST">POST</option>
+					<option value="PUT">PUT</option>
+					<option value="PATCH">PATCH</option>
+					<option value="DELETE">DELETE</option>
+				</select>
+			</div>
+			<div>
+				<label class="block text-sm font-medium text-gray-700 mb-1">Base URL</label>
+				<input type="text" name="base_url" placeholder="https://api.example.com"
+					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+			</div>
+			<div>
+				<label class="block text-sm font-medium text-gray-700 mb-1">Path</label>
+				<input type="text" name="path" placeholder="/v1/{{resource}}"
+					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+			</div>
+		</div>`)
+	case "workflow":
+		fmt.Fprint(w, `<div class="pt-4 border-t border-gray-100">
+			<p class="text-sm text-gray-500">Workflow steps can be configured after creation.</p>
+		</div>`)
+	default: // cli
+		fmt.Fprint(w, `<div class="space-y-4 pt-4 border-t border-gray-100">
+			<div>
+				<label class="block text-sm font-medium text-gray-700 mb-1">Command</label>
+				<input type="text" name="command" placeholder="curl"
+					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+			</div>
+			<div>
+				<label class="block text-sm font-medium text-gray-700 mb-1">Args</label>
+				<input type="text" name="args" placeholder="-s {{url}}"
+					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+				<p class="text-xs text-gray-400 mt-1">Space-separated. Use {{param}} for placeholders.</p>
+			</div>
+		</div>`)
+	}
+}
+
+func (s *Server) handleToolNew(w http.ResponseWriter, r *http.Request) {
+	s.render(w, "tool_new.html", map[string]any{
+		"Title": "New Tool",
+		"Nav":   "tools",
+	})
+}
+
+func (s *Server) handleToolCreate(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	name := r.FormValue("name")
+	if name == "" {
+		http.Error(w, "name is required", http.StatusBadRequest)
+		return
+	}
+
+	tc := config.ToolConfig{
+		Type:        r.FormValue("type"),
+		Description: r.FormValue("description"),
+	}
+
+	switch tc.Type {
+	case "cli":
+		tc.Command = r.FormValue("command")
+		if args := r.FormValue("args"); args != "" {
+			tc.Args = splitArgs(args)
+		}
+	case "rest":
+		tc.BaseURL = r.FormValue("base_url")
+		tc.Method = r.FormValue("method")
+		tc.Path = r.FormValue("path")
+	}
+
+	if err := SaveTool(s.cfgPath, s.toolsDir, name, tc); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Reload config
+	s.cfg.Tools[name] = tc
+
+	http.Redirect(w, r, "/tools/"+name, http.StatusFound)
+}
+
+func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	tc, ok := s.cfg.Tools[name]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	tc.Description = r.FormValue("description")
+	switch tc.Type {
+	case "cli":
+		tc.Command = r.FormValue("command")
+		if args := r.FormValue("args"); args != "" {
+			tc.Args = splitArgs(args)
+		} else {
+			tc.Args = nil
+		}
+		if stdin := r.FormValue("stdin"); stdin != "" {
+			tc.Stdin = stdin
+		}
+	case "rest":
+		tc.BaseURL = r.FormValue("base_url")
+		tc.Method = r.FormValue("method")
+		tc.Path = r.FormValue("path")
+		if body := r.FormValue("body"); body != "" {
+			tc.Body = body
+		}
+	case "mcp":
+		tc.Command = r.FormValue("command")
+		if args := r.FormValue("args"); args != "" {
+			tc.Args = splitArgs(args)
+		} else {
+			tc.Args = nil
+		}
+	}
+
+	if err := SaveTool(s.cfgPath, s.toolsDir, name, tc); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.cfg.Tools[name] = tc
+	http.Redirect(w, r, "/tools/"+name, http.StatusFound)
+}
+
+func (s *Server) handleToolDelete(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	if err := DeleteTool(s.cfgPath, s.toolsDir, name); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	delete(s.cfg.Tools, name)
+
+	// Return empty response for htmx (redirects via HX-Redirect header)
+	w.Header().Set("HX-Redirect", "/tools")
+	w.WriteHeader(http.StatusOK)
+}
+
+// splitArgs splits a space-separated string respecting quoted segments.
+func splitArgs(s string) []string {
+	var args []string
+	var current []byte
+	inQuote := false
+	quoteChar := byte(0)
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inQuote {
+			if c == quoteChar {
+				inQuote = false
+			} else {
+				current = append(current, c)
+			}
+		} else if c == '"' || c == '\'' {
+			inQuote = true
+			quoteChar = c
+		} else if c == ' ' {
+			if len(current) > 0 {
+				args = append(args, string(current))
+				current = current[:0]
+			}
+		} else {
+			current = append(current, c)
+		}
+	}
+	if len(current) > 0 {
+		args = append(args, string(current))
+	}
+	return args
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {

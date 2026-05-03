@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/proxy"
@@ -46,8 +47,10 @@ func New(opts Options) (*Server, error) {
 	pages := []string{
 		"templates/tools.html",
 		"templates/tool_edit.html",
+		"templates/tool_new.html",
 		"templates/templates.html",
 		"templates/template_detail.html",
+		"templates/workflow_edit.html",
 		"templates/vault.html",
 	}
 	tmpls := make(map[string]*template.Template, len(pages))
@@ -88,15 +91,28 @@ func (s *Server) routes() {
 		http.Redirect(w, r, "/tools", http.StatusFound)
 	})
 	s.mux.HandleFunc("GET /tools", s.handleToolsList)
+	s.mux.HandleFunc("GET /tools/new", s.handleToolNew)
+	s.mux.HandleFunc("GET /tools/_form", s.handleToolFormPartial)
 	s.mux.HandleFunc("GET /tools/{name}", s.handleToolEdit)
+	s.mux.HandleFunc("POST /tools/_new", s.handleToolCreate)
+	s.mux.HandleFunc("POST /tools/{name}", s.handleToolSave)
 	s.mux.HandleFunc("POST /tools/{name}/try", s.handleToolTry)
+	s.mux.HandleFunc("DELETE /tools/{name}", s.handleToolDelete)
 
 	// Templates
 	s.mux.HandleFunc("GET /templates", s.handleTemplatesList)
 	s.mux.HandleFunc("GET /templates/{name}", s.handleTemplateDetail)
+	s.mux.HandleFunc("POST /templates/{name}/install", s.handleTemplateInstall)
 
-	// Vault (placeholder)
+	// Workflows
+	s.mux.HandleFunc("GET /workflows/{name}", s.handleWorkflowEdit)
+	s.mux.HandleFunc("POST /workflows/{name}/save", s.handleWorkflowSave)
+	s.mux.HandleFunc("POST /workflows/{name}/run", s.handleWorkflowRun)
+
+	// Vault
 	s.mux.HandleFunc("GET /vault", s.handleVault)
+	s.mux.HandleFunc("POST /vault", s.handleVaultSet)
+	s.mux.HandleFunc("DELETE /vault/{key}", s.handleVaultDelete)
 }
 
 // Start begins serving the UI.
@@ -108,6 +124,17 @@ func (s *Server) Start(addr string) error {
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"inc": func(i int) int { return i + 1 },
+		"joinArgs": func(args []string) string {
+			var parts []string
+			for _, a := range args {
+				if strings.Contains(a, " ") {
+					parts = append(parts, `"`+a+`"`)
+				} else {
+					parts = append(parts, a)
+				}
+			}
+			return strings.Join(parts, " ")
+		},
 		"shadowSummary": func(sc *config.ShadowConfig) string {
 			if sc == nil {
 				return "none"
