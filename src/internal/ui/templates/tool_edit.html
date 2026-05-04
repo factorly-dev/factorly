@@ -102,6 +102,22 @@
             <input type="text" name="path" value="{{.Tool.Path}}"
                    class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
           </div>
+          {{if .Tool.Auth}}
+          <div>
+            <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Auth</label>
+            <div class="flex items-center gap-2 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded text-sm">
+              <span class="px-1.5 py-0.5 text-[10px] font-bold rounded
+                {{if eq .Tool.Auth.Type "bearer"}}bg-green-100 text-green-700{{else if eq .Tool.Auth.Type "basic"}}bg-blue-100 text-blue-700{{else if eq .Tool.Auth.Type "header"}}bg-purple-100 text-purple-700{{else if eq .Tool.Auth.Type "oauth"}}bg-orange-100 text-orange-700{{else}}bg-gray-100 text-gray-700{{end}}">{{.Tool.Auth.Type}}</span>
+              <span class="font-mono text-xs text-gray-500 truncate">
+                {{if eq .Tool.Auth.Type "bearer"}}{{.Tool.Auth.Token}}
+                {{else if eq .Tool.Auth.Type "header"}}{{.Tool.Auth.Header}}: {{.Tool.Auth.Value}}
+                {{else if eq .Tool.Auth.Type "oauth"}}provider
+                {{else}}configured{{end}}
+              </span>
+            </div>
+          </div>
+          {{end}}
+
           <div>
             <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Body</label>
             <textarea name="body" rows="3" placeholder="JSON body with {{"{{param}}"}} placeholders"
