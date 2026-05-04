@@ -14,13 +14,15 @@
 [![GitHub](https://img.shields.io/badge/GitHub-factorly-181717?logo=github)](https://github.com/factorly-dev/factorly)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](https://github.com/factorly-dev/factorly/tree/main/docs)
 
-Stop giving your AI agents your API keys.
+**Stop giving your AI agents your API keys.** One command. All your tools. Credentials stay out of your agent's hands.
 
 </center>
 
-Factorly is a local proxy between your AI agent and the tools it uses. Secrets stay in an encrypted vault on your device. Every call is logged, governed, and rate-limited.
+Factorly is a local runtime for agent tool chains. It proxies agent tool calls, injects credentials from an encrypted vault, enforces governance rules, and logs everything.
 
-Install it, and your agent has safe access to GitHub, Slack, Stripe, and 30+ more services, plus any CLI or MCP server, in under a minute.
+REST APIs, CLI commands, and MCP servers run through one config, one audit log, one set of rules.
+
+Your agent sees workflows, tool names, and data. Never secrets.
 
 ## Install
 

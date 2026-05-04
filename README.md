@@ -17,21 +17,15 @@
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](docs/)
 
-Stop giving your AI agents your API keys.
+**Stop giving your AI agents your API keys.** One command. All your tools. Credentials stay out of your agent's hands.
 
 </center>
 
-Factorly is a local proxy between your AI agent and the tools it uses. Secrets stay in an encrypted vault on your device. Every call is logged, governed, and rate-limited.
+Factorly is a local runtime for agent tool chains. It proxies agent tool calls, injects credentials from an encrypted vault, enforces governance rules, and logs everything.
 
-Install it, and your agent has safe access to GitHub, Slack, Stripe, and 30+ more services, plus any CLI or MCP server, in under a minute.
+REST APIs, CLI commands, and MCP servers run through one config, one audit log, one set of rules.
 
-## The problem
-
-Most MCP setups today expose secrets too broadly — API keys in `.env` files, OAuth tokens in config, credentials inherited from your user permissions. That means weak isolation, inconsistent policy enforcement, and incomplete audit trails.
-
-## The solution
-
-Your agent connects to Factorly as a single MCP server or CLI tool.
+Your agent sees workflows, tool names, and data. Never secrets.
 
 ```
 ┌────────────┐       ┌────────────┐       ┌────────────┐
@@ -39,20 +33,16 @@ Your agent connects to Factorly as a single MCP server or CLI tool.
 │ Your Agent │──────▶│  Factorly  │──────▶│ Your Tools │
 │            │       │            │       │            │
 └────────────┘       └────────────┘       └────────────┘
-  Knows tools          Injects creds        GitHub, Slack,
-  Knows params         Enforces policy      Stripe, REST,
-  Makes requests       Logs everything      MCP, CLI
-                       Rate-limits
-  
+  Sees:                Vault               REST APIs
+  - tool names         Governance          CLI commands
+  - workflows          Audit log           MCP servers
+  - data               Rate limits
+
   Never sees:
-  API keys             ◀──────────────────  Returns only
-  Tokens               data, never secrets  data
-  Credentials
+  - API keys
+  - tokens
+  - credentials
 ```
-
-Factorly proxies every call, injecting real credentials server-side, enforcing policy, and logging everything.
-
-The agent never handles secrets. The agent never bypasses governance.
 
 ---
 
