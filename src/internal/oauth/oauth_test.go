@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -386,6 +387,39 @@ func waitForPort(t *testing.T, port int, timeout time.Duration) {
 	t.Fatalf("port %d not listening after %s", port, timeout)
 }
 
+// waitForCallback polls until capturedURL is set, extracts the callback port
+// from the redirect_uri, waits for it to be listening, and returns the port.
+// This avoids hardcoding port 18019 which causes flaky tests when the port
+// isn't released between test runs.
+func waitForCallback(t *testing.T, capturedURL *string, timeout time.Duration) int {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for *capturedURL == "" && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if *capturedURL == "" {
+		t.Fatal("auth URL was not captured")
+	}
+	parsed, err := url.Parse(*capturedURL)
+	if err != nil {
+		t.Fatalf("parsing auth URL: %v", err)
+	}
+	redirectURI := parsed.Query().Get("redirect_uri")
+	if redirectURI == "" {
+		t.Fatal("no redirect_uri in auth URL")
+	}
+	rParsed, err := url.Parse(redirectURI)
+	if err != nil {
+		t.Fatalf("parsing redirect_uri: %v", err)
+	}
+	port, err := strconv.Atoi(rParsed.Port())
+	if err != nil {
+		t.Fatalf("parsing port from redirect_uri %q: %v", redirectURI, err)
+	}
+	waitForPort(t, port, timeout)
+	return port
+}
+
 func TestLoginFlowSuccess(t *testing.T) {
 	// Mock token endpoint
 	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -425,8 +459,8 @@ func TestLoginFlowSuccess(t *testing.T) {
 		}
 	}()
 
-	// Wait for callback server to start
-	waitForPort(t, 18019, 2*time.Second)
+	// Wait for callback server to start and extract port
+	port := waitForCallback(t, &capturedURL, 2*time.Second)
 
 	// Extract state from captured auth URL
 	parsed, err := url.Parse(capturedURL)
@@ -439,7 +473,7 @@ func TestLoginFlowSuccess(t *testing.T) {
 	}
 
 	// Simulate browser callback
-	callbackURL := fmt.Sprintf("http://127.0.0.1:18019/callback?code=test-code&state=%s", url.QueryEscape(state))
+	callbackURL := fmt.Sprintf("http://127.0.0.1:%d/callback?code=test-code&state=%s", port, url.QueryEscape(state))
 	resp, err := http.Get(callbackURL)
 	if err != nil {
 		t.Fatalf("hitting callback: %v", err)
@@ -462,8 +496,9 @@ func TestLoginFlowSuccess(t *testing.T) {
 }
 
 func TestLoginFlowStateMismatch(t *testing.T) {
+	var capturedURL string
 	origFn := openBrowserFn
-	openBrowserFn = func(string) {}
+	openBrowserFn = func(u string) { capturedURL = u }
 	defer func() { openBrowserFn = origFn }()
 
 	cfg := ProviderConfig{
@@ -481,10 +516,10 @@ func TestLoginFlowStateMismatch(t *testing.T) {
 		errCh <- err
 	}()
 
-	waitForPort(t, 18019, 2*time.Second)
+	port := waitForCallback(t, &capturedURL, 2*time.Second)
 
 	// Send callback with wrong state
-	resp, err := http.Get("http://127.0.0.1:18019/callback?code=test-code&state=wrong-state")
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/callback?code=test-code&state=wrong-state", port))
 	if err != nil {
 		t.Fatalf("hitting callback: %v", err)
 	}
@@ -527,13 +562,13 @@ func TestLoginFlowMissingCode(t *testing.T) {
 		errCh <- err
 	}()
 
-	waitForPort(t, 18019, 2*time.Second)
+	port := waitForCallback(t, &capturedURL, 2*time.Second)
 
 	parsed, _ := url.Parse(capturedURL)
 	state := parsed.Query().Get("state")
 
 	// Send callback with correct state but no code
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:18019/callback?state=%s", url.QueryEscape(state)))
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/callback?state=%s", port, url.QueryEscape(state)))
 	if err != nil {
 		t.Fatalf("hitting callback: %v", err)
 	}
@@ -573,13 +608,13 @@ func TestLoginFlowProviderError(t *testing.T) {
 		errCh <- err
 	}()
 
-	waitForPort(t, 18019, 2*time.Second)
+	port := waitForCallback(t, &capturedURL, 2*time.Second)
 
 	parsed, _ := url.Parse(capturedURL)
 	state := parsed.Query().Get("state")
 
 	// Send callback with OAuth error
-	callbackURL := fmt.Sprintf("http://127.0.0.1:18019/callback?state=%s&error=access_denied&error_description=user+denied", url.QueryEscape(state))
+	callbackURL := fmt.Sprintf("http://127.0.0.1:%d/callback?state=%s&error=access_denied&error_description=user+denied", port, url.QueryEscape(state))
 	resp, err := http.Get(callbackURL)
 	if err != nil {
 		t.Fatalf("hitting callback: %v", err)
