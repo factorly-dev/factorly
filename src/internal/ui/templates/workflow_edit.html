@@ -14,94 +14,93 @@
 {{end}}
 
 <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-  <!-- Pipeline view (3 cols) -->
+  <!-- Steps (3 cols) -->
   <div class="lg:col-span-3">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="font-semibold text-sm text-gray-500 uppercase tracking-wide">Pipeline</h2>
-      <button type="button" onclick="addStep()" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">+ Add step</button>
-    </div>
-
     <form method="POST" action="/workflows/{{.Name}}/save" id="workflow-form">
-      <div id="pipeline" class="relative">
-        {{range $i, $step := .Steps}}
+      <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <!-- Header -->
+        <div class="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+          <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Steps</span>
+          <button type="button" onclick="addStep()" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">+ Add</button>
+        </div>
 
-        {{if $i}}
-        <!-- Connector -->
-        <div class="flex items-center justify-center py-1">
-          <div class="w-px h-6 bg-gray-300"></div>
-        </div>
-        {{if $step.If}}
-        <div class="flex items-center justify-center pb-1">
-          <span class="px-2 py-0.5 text-[10px] font-mono bg-blue-50 text-blue-600 rounded-full border border-blue-200">if: {{$step.If}}</span>
-        </div>
-        {{else if $step.Require}}
-        <div class="flex items-center justify-center pb-1">
-          <span class="px-2 py-0.5 text-[10px] font-mono bg-amber-50 text-amber-700 rounded-full border border-amber-200">require: {{$step.Require}}</span>
-        </div>
-        {{end}}
-        {{end}}
+        <div id="steps-list">
+          {{if not .Steps}}
+          <div class="px-4 py-8 text-center text-gray-400 text-sm" id="empty-state">
+            No steps. Click "+ Add" to start.
+          </div>
+          {{end}}
 
-        <!-- Step card -->
-        <div class="step-card group relative bg-white rounded-lg border border-gray-200 p-4 hover:border-indigo-200 hover:shadow-sm transition-all" data-index="{{$i}}">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold">{{inc $i}}</span>
+          {{range $i, $step := .Steps}}
+          <div class="step-row border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors" data-index="{{$i}}">
+            <div class="px-4 py-3 flex items-center gap-3">
+              <!-- Step number -->
+              <span class="step-num text-[10px] font-bold text-gray-400 w-4 text-right shrink-0">{{inc $i}}</span>
+
+              <!-- Tool name -->
               {{if $step.Tool}}
-              <select name="step_tool_{{$i}}" class="step-tool text-sm font-mono font-medium bg-transparent border-none p-0 focus:outline-none focus:ring-0 cursor-pointer">
+              <select name="step_tool_{{$i}}" class="step-tool text-sm font-mono font-medium text-gray-800 bg-transparent border-none p-0 focus:outline-none focus:ring-0 cursor-pointer flex-1 min-w-0">
                 {{range $.AvailableTools}}
                 <option value="{{.}}" {{if eq . $step.Tool}}selected{{end}}>{{.}}</option>
                 {{end}}
               </select>
               {{else}}
-              <span class="text-sm font-mono text-green-600 font-medium">switch</span>
+              <span class="text-sm font-mono text-green-600 font-medium flex-1">switch</span>
+              {{end}}
+
+              <!-- Store variable -->
+              {{if $step.Store}}
+              <div class="flex items-center gap-1 shrink-0">
+                <span class="text-[10px] text-gray-300">→</span>
+                <input type="text" name="step_store_{{$i}}" value="{{$step.Store}}"
+                       class="step-store text-[11px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded w-20 border-none focus:outline-none focus:ring-1 focus:ring-indigo-200"
+                       placeholder="var">
+              </div>
+              {{else}}
+              <input type="hidden" name="step_store_{{$i}}" value="">
+              <button type="button" onclick="showStore(this, {{$i}})" class="text-[10px] text-gray-300 hover:text-indigo-500 shrink-0">+ store</button>
+              {{end}}
+
+              <!-- Remove -->
+              <button type="button" onclick="removeStep(this)" class="text-gray-300 hover:text-red-500 text-xs shrink-0 ml-1">✕</button>
+            </div>
+
+            {{if or $step.If $step.Require}}
+            <div class="px-4 pb-2 pl-11">
+              {{if $step.If}}
+              <span class="text-[10px] font-mono px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded border border-blue-100">if: {{$step.If}}</span>
+              {{end}}
+              {{if $step.Require}}
+              <span class="text-[10px] font-mono px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded border border-amber-100">require: {{$step.Require}}</span>
               {{end}}
             </div>
-            <button type="button" onclick="removeStep(this)" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs transition-opacity">✕</button>
-          </div>
+            {{end}}
 
-          {{if $step.Store}}
-          <div class="flex items-center gap-1 mt-2">
-            <span class="text-[10px] text-gray-400">→</span>
-            <input type="text" name="step_store_{{$i}}" value="{{$step.Store}}"
-                   class="step-store text-[11px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border-none w-auto focus:outline-none focus:ring-1 focus:ring-indigo-200">
-          </div>
-          {{else}}
-          <input type="hidden" name="step_store_{{$i}}" value="">
-          {{end}}
+            {{if $step.Switch}}
+            <div class="px-4 pb-2 pl-11 space-y-0.5">
+              {{range $step.Switch}}
+              <div class="text-[10px] font-mono text-gray-500">
+                <span class="text-blue-500">{{.Condition}}</span> → <span class="text-gray-700">{{.Tool}}</span>
+              </div>
+              {{end}}
+            </div>
+            {{end}}
 
-          {{if $step.Switch}}
-          <div class="mt-2 space-y-1">
-            {{range $step.Switch}}
-            <div class="flex items-center gap-2 text-[11px]">
-              <span class="text-gray-400">│</span>
-              <span class="font-mono text-blue-500">{{.Condition}}</span>
-              <span class="text-gray-300">→</span>
-              <span class="font-mono text-gray-700">{{.Tool}}</span>
+            {{if $step.Params}}
+            <div class="px-4 pb-2 pl-11 flex flex-wrap gap-1">
+              {{range $k, $v := $step.Params}}
+              <span class="text-[10px] font-mono text-gray-400">{{$k}}=<span class="text-gray-600">{{$v}}</span></span>
+              {{end}}
             </div>
             {{end}}
           </div>
           {{end}}
-
-          {{if $step.Params}}
-          <div class="mt-2 flex flex-wrap gap-1">
-            {{range $k, $v := $step.Params}}
-            <span class="text-[10px] font-mono bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded">{{$k}}</span>
-            {{end}}
-          </div>
-          {{end}}
         </div>
-        {{end}}
-
-        {{if not .Steps}}
-        <div class="text-center py-8 text-gray-400 text-sm">
-          No steps yet. Click "+ Add step" to start building.
-        </div>
-        {{end}}
       </div>
 
       {{if .Steps}}
-      <div class="mt-4 flex gap-2">
-        <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">Save Pipeline</button>
+      <div class="mt-3">
+        <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">Save</button>
       </div>
       {{end}}
     </form>
@@ -111,8 +110,8 @@
   <div class="lg:col-span-2">
     <div class="bg-white rounded-lg border border-gray-200 p-5 sticky top-6">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="font-semibold text-sm text-gray-500 uppercase tracking-wide">Run</h2>
-        <span class="text-xs text-gray-400 font-mono">{{.Name}}</span>
+        <h2 class="text-xs font-medium text-gray-500 uppercase tracking-wide">Run</h2>
+        <span class="text-[10px] text-gray-400 font-mono">{{.Name}}</span>
       </div>
 
       <form hx-post="/workflows/{{.Name}}/run"
@@ -135,15 +134,15 @@
           {{end}}
         </div>
         {{else}}
-        <p class="text-xs text-gray-400 mb-4">No parameters required.</p>
+        <p class="text-xs text-gray-400 mb-4">No parameters.</p>
         {{end}}
 
         <button type="submit"
                 class="w-full px-4 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm">
-          ▶ Run Pipeline
+          {{icon "play"}} Run
         </button>
         <span id="run-spinner" class="htmx-indicator block mt-2 text-center text-xs text-gray-400">
-          <span class="inline-block animate-pulse">●</span> executing steps...
+          <span class="inline-block animate-pulse">●</span> executing...
         </span>
       </form>
 
@@ -154,71 +153,74 @@
 
 <script>
 function addStep() {
-  const pipeline = document.getElementById('pipeline');
-  const cards = pipeline.querySelectorAll('.step-card');
-  const idx = cards.length;
+  const list = document.getElementById('steps-list');
+  const rows = list.querySelectorAll('.step-row');
+  const idx = rows.length;
 
-  // Add connector
-  const connector = document.createElement('div');
-  connector.className = 'flex items-center justify-center py-1';
-  connector.innerHTML = '<div class="w-px h-6 bg-gray-300"></div>';
-  pipeline.appendChild(connector);
+  // Remove empty state
+  const empty = document.getElementById('empty-state');
+  if (empty) empty.remove();
 
   // Get tool options
   let options = '';
-  const firstSelect = pipeline.querySelector('.step-tool');
+  const firstSelect = list.querySelector('.step-tool');
   if (firstSelect) {
     options = firstSelect.innerHTML;
   }
 
-  const card = document.createElement('div');
-  card.className = 'step-card group relative bg-white rounded-lg border border-gray-200 p-4 hover:border-indigo-200 hover:shadow-sm transition-all';
-  card.dataset.index = idx;
-  card.innerHTML = `
-    <div class="flex items-center justify-between mb-2">
-      <div class="flex items-center gap-2">
-        <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold">${idx + 1}</span>
-        <select name="step_tool_${idx}" class="step-tool text-sm font-mono font-medium bg-transparent border-none p-0 focus:outline-none focus:ring-0 cursor-pointer">${options}</select>
-      </div>
-      <button type="button" onclick="removeStep(this)" class="text-red-400 hover:text-red-600 text-xs">✕</button>
-    </div>
-    <div class="flex items-center gap-1 mt-2">
-      <span class="text-[10px] text-gray-400">→</span>
-      <input type="text" name="step_store_${idx}" placeholder="store as..." class="step-store text-[11px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border-none w-24 focus:outline-none focus:ring-1 focus:ring-indigo-200">
+  const row = document.createElement('div');
+  row.className = 'step-row border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors';
+  row.dataset.index = idx;
+  row.innerHTML = `
+    <div class="px-4 py-3 flex items-center gap-3">
+      <span class="step-num text-[10px] font-bold text-gray-400 w-4 text-right shrink-0">${idx + 1}</span>
+      <select name="step_tool_${idx}" class="step-tool text-sm font-mono font-medium text-gray-800 bg-transparent border-none p-0 focus:outline-none focus:ring-0 cursor-pointer flex-1 min-w-0">${options}</select>
+      <input type="hidden" name="step_store_${idx}" value="">
+      <button type="button" onclick="showStore(this, ${idx})" class="text-[10px] text-gray-300 hover:text-indigo-500 shrink-0">+ store</button>
+      <button type="button" onclick="removeStep(this)" class="text-gray-300 hover:text-red-500 text-xs shrink-0 ml-1">✕</button>
     </div>
   `;
-  pipeline.appendChild(card);
+  list.appendChild(row);
+}
 
-  // Remove empty state if present
-  const empty = pipeline.querySelector('.text-center');
-  if (empty) empty.remove();
+function showStore(btn, idx) {
+  const row = btn.closest('.step-row');
+  // Replace hidden input + button with visible store input
+  const hidden = row.querySelector('input[type="hidden"][name="step_store_' + idx + '"]');
+  if (hidden) hidden.remove();
+  btn.replaceWith(createStoreInput(idx));
+}
+
+function createStoreInput(idx) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'flex items-center gap-1 shrink-0';
+  wrapper.innerHTML = `
+    <span class="text-[10px] text-gray-300">→</span>
+    <input type="text" name="step_store_${idx}" class="step-store text-[11px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded w-20 border-none focus:outline-none focus:ring-1 focus:ring-indigo-200" placeholder="var" autofocus>
+  `;
+  return wrapper;
 }
 
 function removeStep(btn) {
-  const card = btn.closest('.step-card');
-  const prev = card.previousElementSibling;
-  // Remove connector before this card (if it's a connector div)
-  if (prev && prev.querySelector('.bg-gray-300')) {
-    prev.remove();
-  }
-  // Also remove condition label if present
-  const prevAfterRemove = card.previousElementSibling;
-  if (prevAfterRemove && prevAfterRemove.querySelector('.rounded-full')) {
-    prevAfterRemove.remove();
-  }
-  card.remove();
-
-  // Renumber remaining cards
-  const cards = document.querySelectorAll('.step-card');
-  cards.forEach((c, i) => {
-    c.dataset.index = i;
-    const num = c.querySelector('.rounded-full.bg-gray-100');
+  const row = btn.closest('.step-row');
+  row.remove();
+  // Renumber
+  const rows = document.querySelectorAll('.step-row');
+  rows.forEach((r, i) => {
+    r.dataset.index = i;
+    const num = r.querySelector('.step-num');
     if (num) num.textContent = i + 1;
-    const sel = c.querySelector('.step-tool');
+    const sel = r.querySelector('.step-tool');
     if (sel) sel.name = 'step_tool_' + i;
-    const store = c.querySelector('.step-store');
+    const store = r.querySelector('.step-store');
     if (store) store.name = 'step_store_' + i;
+    const hidden = r.querySelector('input[type="hidden"]');
+    if (hidden && hidden.name.startsWith('step_store_')) hidden.name = 'step_store_' + i;
   });
+  if (rows.length === 0) {
+    const list = document.getElementById('steps-list');
+    list.innerHTML = '<div class="px-4 py-8 text-center text-gray-400 text-sm" id="empty-state">No steps. Click "+ Add" to start.</div>';
+  }
 }
 </script>
 {{end}}
