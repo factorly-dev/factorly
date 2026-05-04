@@ -70,6 +70,7 @@ Practical, copy-paste examples for every Factorly feature. Each is self-containe
 | # | Example | Description |
 |---|---------|-------------|
 | 30 | [Workflows](30-workflows.md) | Chain tools into governed pipelines with variable passing |
+| 31 | [Workflow Conditionals](31-workflow-conditionals.md) | Branch with `if:` and `switch:` using expressions and jsonpath |
 
 ## Compliance
 

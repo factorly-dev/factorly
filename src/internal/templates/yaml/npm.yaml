@@ -1,0 +1,80 @@
+npm.run:
+  type: cli
+  description: Run an npm script
+  command: npm
+  args: ["run", "{{script}}"]
+  parameters:
+    - name: script
+      description: Script name from package.json
+      required: true
+  filter:
+    strip_lines:
+      - "^>"
+      - "^\\s*$"
+    max_lines: 100
+
+npm.test:
+  type: cli
+  description: Run tests
+  command: npm
+  args: ["test"]
+  filter:
+    match_output:
+      - pattern: "Tests:.*passed"
+        message: "ok (all tests passed)"
+        unless: "failed|FAIL"
+    strip_lines:
+      - "^>"
+      - "^\\s*$"
+    max_lines: 80
+
+npm.install:
+  type: cli
+  description: Install dependencies
+  command: npm
+  args: ["install"]
+  filter:
+    match_output:
+      - pattern: "added \\d+ packages"
+        message: "ok (dependencies installed)"
+    strip_lines:
+      - "^npm warn"
+    max_lines: 20
+
+npm.build:
+  type: cli
+  description: Run build script
+  command: npm
+  args: ["run", "build"]
+  filter:
+    match_output:
+      - pattern: "^$"
+        message: "ok (build succeeded)"
+        unless: "error|Error|ERROR"
+    strip_lines:
+      - "^>"
+      - "^\\s*$"
+    max_lines: 50
+
+npm.lint:
+  type: cli
+  description: Run linter
+  command: npm
+  args: ["run", "lint"]
+  filter:
+    match_output:
+      - pattern: "^$"
+        message: "ok (no lint issues)"
+        unless: "error|warning"
+    strip_lines:
+      - "^>"
+      - "^\\s*$"
+    max_lines: 60
+
+npm.outdated:
+  type: cli
+  description: Check for outdated packages
+  command: npm
+  args: ["outdated"]
+  filter:
+    max_lines: 40

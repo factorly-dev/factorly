@@ -145,8 +145,8 @@ func TestToolNames(t *testing.T) {
 
 func TestTemplateCount(t *testing.T) {
 	all := All()
-	if len(all) != 39 {
-		t.Errorf("expected 39 templates, got %d", len(all))
+	if len(all) != 41 {
+		t.Errorf("expected 41 templates, got %d", len(all))
 	}
 }
 
