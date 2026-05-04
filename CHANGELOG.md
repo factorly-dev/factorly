@@ -1,3 +1,33 @@
+## [v0.8.0] - 2026-05-04
+
+### Added
+- Integration test for version command with offline CI mode
+- Make and npm tool templates with output filters
+- Workflows feature - linear sequence of tool calls
+  - Workflow tool type with state machine and persisted execution
+  - Variable passing between workflow steps
+  - Switch case validation for condition and tool fields
+  - Expression debug output showing actual conditions evaluated
+  - Workflow conditionals with if/switch branching
+    - `require:` step condition for halting workflows early
+  - Expression evaluator with tokenizer and parser
+  - Built-in functions: contains() and jsonpath()
+  - Workflow integration tests for variable passing and shadow policies
+  - User-facing workflows documentation
+  - Workflow specification documentation
+  - Conditional workflow example documentation
+
+### Changed
+- README updated for problem/solution/install structure
+- Result truncation now preserves full output for callers while keeping state files small
+- Converted workflow-spec.md to user-facing workflows.md documentation
+- Workflow status from "Draft" to "Implemented"
+- Documentation structure to include oversight content
+
+### Fixed
+- Workflow result truncation affecting both state file and caller output
+- Verbose output now shows specific expressions when steps are skipped
+
 ## [v0.7.0] - 2026-04-30
 
 ### Added
