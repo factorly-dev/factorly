@@ -49,7 +49,8 @@ factorly call daily.summary
 | `tool` | Yes* | Tool name to call (must exist in config) |
 | `params` | No | Parameters to pass — supports `{{var}}` substitution |
 | `store` | No | Save step output as a named variable |
-| `if` | No | [Expression](expressions.md) — skip step when false |
+| `if` | No | [Expression](expressions.md) — skip step when false, continue workflow |
+| `require` | No | [Expression](expressions.md) — stop workflow when false |
 | `switch` | No | List of conditional branches (replaces `tool`) |
 
 *`tool` is required unless `switch` is set.
@@ -139,6 +140,28 @@ steps:
 ```
 
 First matching condition executes. Use `condition: "true"` as a default. Switch cases support `tool`, `params`, and `store`.
+
+### Stop the workflow with `require:`
+
+A gate — if the condition is false, the workflow stops entirely (remaining steps are skipped):
+
+```yaml
+steps:
+  - tool: git.status
+    store: changes
+
+  - tool: git.commit
+    require: "changes != ''"
+    params: { message: "auto" }
+
+  - tool: git.push    # never reached if no changes
+```
+
+The difference:
+- `if:` — skip this step, continue to next
+- `require:` — stop here, nothing after runs
+
+The workflow status is `"completed"` (not failed) — it's an intentional early exit. Verbose output shows `stopped    (require: ...)`.
 
 ## How agents see workflows
 

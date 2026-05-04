@@ -144,22 +144,29 @@ With `-v`, each step streams progress to stderr:
 
 ### Conditional steps
 
-Steps can have `if:` conditions (skip when false) and `switch:` branches (first match executes):
+Steps can have `if:` (skip when false), `require:` (stop workflow when false), and `switch:` (multi-branch):
 
 ```yaml
 steps:
   - tool: make.test
     store: output
-    if: "branch == 'main'"      # skip if not main branch
+    if: "branch == 'main'"        # skip this step if not main
 
-  - switch:                      # multi-branch
+  - tool: make.deploy
+    require: "contains(output, 'PASS')"  # stop workflow if tests failed
+
+  - switch:                        # multi-branch
       - condition: "contains(output, 'PASS')"
         tool: slack.post
         params: { text: "✓ passed" }
-      - condition: "true"        # default
+      - condition: "true"          # default
         tool: slack.post
         params: { text: "✗ failed" }
 ```
+
+- `if:` — skip one step, continue
+- `require:` — stop entire workflow (graceful, status = completed)
+- `switch:` — first matching condition executes
 
 Conditions use the [expression language](expressions.md): comparisons (`==`, `!=`, `>`, `<`), boolean logic (`and`, `or`, `not`), `contains()`, `jsonpath()`, and member access (`response.code`).
 

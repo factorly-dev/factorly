@@ -112,11 +112,12 @@ type ParamConfig struct {
 }
 
 type StepConfig struct {
-	Tool   string            `yaml:"tool,omitempty"`
-	Params map[string]string `yaml:"params,omitempty"`
-	Store  string            `yaml:"store,omitempty"`
-	If     string            `yaml:"if,omitempty"`     // condition expression — skip step if false
-	Switch []SwitchCase      `yaml:"switch,omitempty"` // multi-branch conditional
+	Tool    string            `yaml:"tool,omitempty"`
+	Params  map[string]string `yaml:"params,omitempty"`
+	Store   string            `yaml:"store,omitempty"`
+	If      string            `yaml:"if,omitempty"`      // condition — skip step if false
+	Require string            `yaml:"require,omitempty"` // condition — stop workflow if false
+	Switch  []SwitchCase      `yaml:"switch,omitempty"`  // multi-branch conditional
 }
 
 type SwitchCase struct {

@@ -23,11 +23,12 @@ type WorkflowExecutor interface {
 
 // WorkflowStep defines a single step in a workflow.
 type WorkflowStep struct {
-	Tool   string
-	Params map[string]string
-	Store  string
-	If     string
-	Switch []WorkflowSwitchCase
+	Tool    string
+	Params  map[string]string
+	Store   string
+	If      string
+	Require string
+	Switch  []WorkflowSwitchCase
 }
 
 type WorkflowSwitchCase struct {
@@ -137,6 +138,24 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 				state.Steps[j].Status = "skipped"
 			}
 			break
+		}
+
+		// Require: stop workflow if condition is false
+		if step.Require != "" && !EvalCondition(step.Require, state.Variables) {
+			state.Steps[i].Status = "skipped"
+			state.Status = "completed"
+			state.CompletedAt = time.Now()
+			// Mark remaining steps as skipped
+			for j := i + 1; j < len(steps); j++ {
+				state.Steps[j].Status = "skipped"
+			}
+			if p.verbose {
+				fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s stopped    (require: %s)\n", i+1, len(steps), step.Tool, step.Require)
+			}
+			state.Result = truncateForState(lastOutput)
+			p.saveState(state)
+			state.Result = lastOutput
+			return &Result{Output: marshalState(state)}, nil
 		}
 
 		// Conditional: skip step if `if` condition is false
@@ -280,15 +299,18 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 		state.Status = "completed"
 	}
 	state.CompletedAt = time.Now()
-	state.Result = truncateForState(lastOutput)
 
 	if p.verbose {
 		totalDuration := time.Since(state.StartedAt).Truncate(time.Millisecond)
 		fmt.Fprintf(os.Stderr, "[workflow] %s %s (%d steps, %s)\n", toolName, state.Status, len(steps), totalDuration)
 	}
 
+	// Save state with truncated result (keep file small)
+	state.Result = truncateForState(lastOutput)
 	p.saveState(state)
 
+	// Return full result to caller (not truncated)
+	state.Result = lastOutput
 	return &Result{
 		Output: marshalState(state),
 	}, nil

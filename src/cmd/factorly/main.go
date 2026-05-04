@@ -675,10 +675,11 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			steps := make([]provider.WorkflowStep, len(toolCfg.Steps))
 			for i, s := range toolCfg.Steps {
 				ws := provider.WorkflowStep{
-					Tool:   s.Tool,
-					Params: s.Params,
-					Store:  s.Store,
-					If:     s.If,
+					Tool:    s.Tool,
+					Params:  s.Params,
+					Store:   s.Store,
+					If:      s.If,
+					Require: s.Require,
 				}
 				for _, sc := range s.Switch {
 					ws.Switch = append(ws.Switch, provider.WorkflowSwitchCase{

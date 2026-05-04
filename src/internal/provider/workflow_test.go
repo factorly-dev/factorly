@@ -504,17 +504,14 @@ func TestWorkflowLongOutputTruncatedInState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// State output should be truncated but the full value should be in variables
+	// Returned output should have the FULL result (not truncated)
 	var state struct {
 		Result string `json:"result"`
 	}
 	_ = json.Unmarshal([]byte(result.Output), &state)
 
-	if len(state.Result) > 510 { // 500 + "..."
-		t.Errorf("expected truncated result in state, got %d chars", len(state.Result))
-	}
-	if !strings.HasSuffix(state.Result, "...") {
-		t.Error("expected truncated result to end with ...")
+	if len(state.Result) != 1000 {
+		t.Errorf("expected full result (1000 chars) in returned output, got %d chars", len(state.Result))
 	}
 }
 
@@ -705,5 +702,104 @@ func TestWorkflowSwitchStore(t *testing.T) {
 	// The consume step should have received the stored value
 	if exec.calls[1] != "consume" {
 		t.Errorf("expected consume, got %s", exec.calls[1])
+	}
+}
+
+func TestWorkflowRequireTrue(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.require", []WorkflowStep{
+		{Tool: "step1", Store: "val"},
+		{Tool: "step2", Require: "val != ''"},
+		{Tool: "step3"},
+	})
+
+	result, err := wp.Execute("test.require", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// All three should run (require passes)
+	if len(exec.calls) != 3 {
+		t.Errorf("expected 3 calls, got %d: %v", len(exec.calls), exec.calls)
+	}
+	if !strings.Contains(result.Output, `"status":"completed"`) {
+		t.Error("expected completed")
+	}
+}
+
+func TestWorkflowRequireFalse(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.require", []WorkflowStep{
+		{Tool: "step1", Store: "val"},
+		{Tool: "step2", Require: "missing != ''"}, // missing var = empty = false
+		{Tool: "step3"},
+	})
+
+	result, err := wp.Execute("test.require", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// step1 runs, step2+step3 skipped (require halts)
+	if len(exec.calls) != 1 {
+		t.Errorf("expected 1 call (require halted), got %d: %v", len(exec.calls), exec.calls)
+	}
+	// Status should be completed (not failed — it's an intentional stop)
+	if !strings.Contains(result.Output, `"status":"completed"`) {
+		t.Errorf("expected completed status (graceful stop), got %s", result.Output)
+	}
+	// Both step2 and step3 should be skipped
+	if strings.Count(result.Output, `"skipped"`) < 2 {
+		t.Error("expected step2 and step3 to be skipped")
+	}
+}
+
+func TestWorkflowRequireAtFirstStep(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.require", []WorkflowStep{
+		{Tool: "step1", Require: "precondition"},
+	})
+
+	// precondition not in params → empty → false → stop immediately
+	result, err := wp.Execute("test.require", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.calls) != 0 {
+		t.Errorf("expected 0 calls, got %d", len(exec.calls))
+	}
+	if !strings.Contains(result.Output, `"status":"completed"`) {
+		t.Error("expected completed (graceful stop)")
+	}
+}
+
+func TestWorkflowRequireWithParams(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.require", []WorkflowStep{
+		{Tool: "step1", Require: "env == 'prod'"},
+	})
+
+	// With env=prod → runs
+	_, err := wp.Execute("test.require", map[string]string{"env": "prod"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.calls) != 1 {
+		t.Errorf("expected 1 call with env=prod, got %d", len(exec.calls))
+	}
+
+	// With env=staging → stops
+	exec.calls = nil
+	result, err := wp.Execute("test.require", map[string]string{"env": "staging"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.calls) != 0 {
+		t.Errorf("expected 0 calls with env=staging, got %d", len(exec.calls))
+	}
+	if !strings.Contains(result.Output, `"skipped"`) {
+		t.Error("expected skipped")
 	}
 }

@@ -200,6 +200,24 @@ steps:
 
 Skipped steps show `"status": "skipped"` in the workflow output.
 
+### `require:` on steps
+
+Stop the entire workflow when the condition is false — a gate:
+
+```yaml
+steps:
+  - tool: git.status
+    store: changes
+
+  - tool: git.commit
+    require: "changes != ''"
+    params: { message: "auto" }
+
+  - tool: git.push             # never reached if no changes
+```
+
+Unlike `if:` (which skips one step), `require:` halts the workflow. Remaining steps are all skipped. Status is `"completed"` — it's an intentional early exit, not an error.
+
 ### `switch:` steps
 
 Multi-branch conditional — first matching condition executes:

@@ -71,6 +71,7 @@ Practical, copy-paste examples for every Factorly feature. Each is self-containe
 |---|---------|-------------|
 | 30 | [Workflows](30-workflows.md) | Chain tools into governed pipelines with variable passing |
 | 31 | [Workflow Conditionals](31-workflow-conditionals.md) | Branch with `if:` and `switch:` using expressions and jsonpath |
+| 32 | [Changelog Workflow](32-changelog-workflow.md) | Gather git log, diff stats, and contributors in one call |
 
 ## Compliance
 
