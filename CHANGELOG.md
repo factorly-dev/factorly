@@ -1,3 +1,8 @@
+## [v0.8.1] - 2026-05-04
+
+### Fixed
+- Flaky OAuth integration tests by randomizing the server port
+
 ## [v0.8.0] - 2026-05-04
 
 ### Added
