@@ -512,6 +512,14 @@ func validate(cfg *Config) error {
 				if step.Tool == "" && len(step.Switch) == 0 {
 					return fmt.Errorf("config: workflow tool %q step %d missing tool name", name, i+1)
 				}
+				for j, sc := range step.Switch {
+					if sc.Condition == "" {
+						return fmt.Errorf("config: workflow tool %q step %d switch case %d missing condition", name, i+1, j+1)
+					}
+					if sc.Tool == "" {
+						return fmt.Errorf("config: workflow tool %q step %d switch case %d missing tool", name, i+1, j+1)
+					}
+				}
 			}
 		}
 		if tool.Auth != nil && tool.Auth.Type == "oauth" {

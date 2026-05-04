@@ -117,6 +117,73 @@ To pass a literal `@` prefix, escape with `@@`:
 factorly call tool --email @@user    # sends @user
 ```
 
+## Workflows
+
+Workflows are tools with `type: workflow` — call them like any other tool:
+
+```bash
+factorly call deploy.staging --branch main
+factorly call deploy.staging --branch main -v    # verbose: see each step
+```
+
+### Verbose output
+
+With `-v`, each step streams progress to stderr:
+
+```
+[workflow] deploy.staging started (run: a1b2c3d4)
+[workflow]   1/4 git.branch              running...
+[workflow]   1/4 git.branch              completed  12ms
+[workflow]   2/4 make.test               running...
+[workflow]   2/4 make.test               completed  5.2s
+[workflow]   3/4 make.deploy             skipped    (condition false)
+[workflow]   4/4 slack.notify            running...
+[workflow]   4/4 slack.notify            completed  342ms
+[workflow] deploy.staging completed (4 steps, 5.6s)
+```
+
+### Conditional steps
+
+Steps can have `if:` conditions (skip when false) and `switch:` branches (first match executes):
+
+```yaml
+steps:
+  - tool: make.test
+    store: output
+    if: "branch == 'main'"      # skip if not main branch
+
+  - switch:                      # multi-branch
+      - condition: "contains(output, 'PASS')"
+        tool: slack.post
+        params: { text: "✓ passed" }
+      - condition: "true"        # default
+        tool: slack.post
+        params: { text: "✗ failed" }
+```
+
+Conditions use the [expression language](expressions.md): comparisons (`==`, `!=`, `>`, `<`), boolean logic (`and`, `or`, `not`), `contains()`, `jsonpath()`, and member access (`response.code`).
+
+### Output format
+
+Workflow output is JSON with the full execution trace:
+
+```json
+{
+  "status": "completed",
+  "steps": [
+    {"tool": "git.branch", "status": "completed", "duration_ms": 12},
+    {"tool": "make.test", "status": "completed", "duration_ms": 5200},
+    {"tool": "make.deploy", "status": "skipped"},
+    {"tool": "slack.notify", "status": "completed", "duration_ms": 342}
+  ],
+  "result": "Message posted"
+}
+```
+
+State is persisted to `.factorly/workflows/<run-id>.json` after each step.
+
+See [Workflows](workflows.md) and [Expressions](expressions.md) for full documentation.
+
 ## `factorly exec` — run a command with compression + logging
 
 Runs a single shell command through Factorly's full safety layer — the zero-config equivalent of a CLI tool definition. Uses the same code path as config-based CLI tools.

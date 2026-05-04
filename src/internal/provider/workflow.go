@@ -143,7 +143,7 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 		if step.If != "" && !EvalCondition(step.If, state.Variables) {
 			state.Steps[i].Status = "skipped"
 			if p.verbose {
-				fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s skipped    (condition false)\n", i+1, len(steps), step.Tool)
+				fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s skipped    (if: %s)\n", i+1, len(steps), step.Tool, step.If)
 			}
 			continue
 		}
@@ -205,7 +205,11 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 			if !matched {
 				state.Steps[i].Status = "skipped"
 				if p.verbose {
-					fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s skipped    (no match)\n", i+1, len(steps), "switch")
+					var conds []string
+					for _, c := range step.Switch {
+						conds = append(conds, c.Condition)
+					}
+					fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s skipped    (no match: %s)\n", i+1, len(steps), "switch", strings.Join(conds, "; "))
 				}
 			}
 			continue

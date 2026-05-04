@@ -899,3 +899,76 @@ tools:
 		t.Fatal("expected error for step missing tool name")
 	}
 }
+
+func TestWorkflowConfigSwitchValid(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["hi"]
+  test:
+    type: workflow
+    steps:
+      - switch:
+          - condition: "true"
+            tool: echo
+`)
+	_, err := Load(path)
+	if err != nil {
+		t.Fatalf("valid switch config should load: %v", err)
+	}
+}
+
+func TestWorkflowConfigSwitchMissingCondition(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["hi"]
+  test:
+    type: workflow
+    steps:
+      - switch:
+          - tool: echo
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for switch case missing condition")
+	}
+}
+
+func TestWorkflowConfigSwitchMissingTool(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  test:
+    type: workflow
+    steps:
+      - switch:
+          - condition: "true"
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for switch case missing tool")
+	}
+}
+
+func TestWorkflowConfigIfWithTool(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["hi"]
+  test:
+    type: workflow
+    steps:
+      - tool: echo
+        if: "x == 'y'"
+`)
+	_, err := Load(path)
+	if err != nil {
+		t.Fatalf("if with tool should be valid: %v", err)
+	}
+}
