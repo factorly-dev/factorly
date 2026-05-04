@@ -66,9 +66,36 @@ func (s *Server) handleWorkflowSave(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		store := r.FormValue(fmt.Sprintf("step_store_%d", i))
+		ifCond := r.FormValue(fmt.Sprintf("step_if_%d", i))
+		reqCond := r.FormValue(fmt.Sprintf("step_require_%d", i))
+
+		// Parse params (key[] and val[] arrays)
+		keys := r.Form[fmt.Sprintf("step_param_key_%d[]", i)]
+		vals := r.Form[fmt.Sprintf("step_param_val_%d[]", i)]
+		var params map[string]string
+		if len(keys) > 0 {
+			params = make(map[string]string)
+			for j, k := range keys {
+				if k == "" {
+					continue
+				}
+				v := ""
+				if j < len(vals) {
+					v = vals[j]
+				}
+				params[k] = v
+			}
+			if len(params) == 0 {
+				params = nil
+			}
+		}
+
 		steps = append(steps, config.StepConfig{
-			Tool:  tool,
-			Store: store,
+			Tool:    tool,
+			Store:   store,
+			If:      ifCond,
+			Require: reqCond,
+			Params:  params,
 		})
 	}
 

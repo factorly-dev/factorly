@@ -503,6 +503,7 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 		cfgPath := configPath
 		if cfgPath == "" {
 			cfgPath = config.FindConfig()
+			configPath = cfgPath // persist for UI/other commands that need the write path
 			vlog("found config: %s", cfgPath)
 		} else {
 			vlog("using config: %s", cfgPath)

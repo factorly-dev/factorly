@@ -11,6 +11,7 @@ import (
 	"html/template"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -398,6 +399,21 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tc.Description = r.FormValue("description")
+	tc.Stdin = r.FormValue("stdin")
+	tc.Timeout = r.FormValue("timeout")
+	tc.Body = r.FormValue("body")
+
+	if mo := r.FormValue("max_output"); mo != "" {
+		if n, err := strconv.Atoi(mo); err == nil {
+			tc.MaxOutput = n
+		}
+	}
+	if compress := r.FormValue("compress"); compress != "" {
+		tc.Compress = splitComma(compress)
+	} else {
+		tc.Compress = nil
+	}
+
 	switch tc.Type {
 	case "cli":
 		tc.Command = r.FormValue("command")
@@ -406,16 +422,10 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 		} else {
 			tc.Args = nil
 		}
-		if stdin := r.FormValue("stdin"); stdin != "" {
-			tc.Stdin = stdin
-		}
 	case "rest":
 		tc.BaseURL = r.FormValue("base_url")
 		tc.Method = r.FormValue("method")
 		tc.Path = r.FormValue("path")
-		if body := r.FormValue("body"); body != "" {
-			tc.Body = body
-		}
 	case "mcp":
 		tc.Command = r.FormValue("command")
 		if args := r.FormValue("args"); args != "" {
@@ -425,13 +435,50 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Parse parameters
+	var params []config.ParamConfig
+	for i := 0; ; i++ {
+		pname := r.FormValue(fmt.Sprintf("param_name_%d", i))
+		if pname == "" {
+			break
+		}
+		params = append(params, config.ParamConfig{
+			Name:        pname,
+			Type:        r.FormValue(fmt.Sprintf("param_type_%d", i)),
+			Required:    r.FormValue(fmt.Sprintf("param_required_%d", i)) == "on",
+			Default:     r.FormValue(fmt.Sprintf("param_default_%d", i)),
+			Description: r.FormValue(fmt.Sprintf("param_desc_%d", i)),
+		})
+	}
+	tc.Parameters = params
+
+	// Parse shadow/oversight
+	deny := splitComma(r.FormValue("shadow_deny"))
+	confirmOn := r.FormValue("shadow_confirm") == "on"
+	rateLimit := r.FormValue("shadow_rate_limit")
+	if len(deny) > 0 || confirmOn || rateLimit != "" {
+		sc := &config.ShadowConfig{
+			Deny:      deny,
+			RateLimit: rateLimit,
+		}
+		if confirmOn {
+			sc.Confirm = true
+		}
+		tc.Shadow = sc
+	} else {
+		tc.Shadow = nil
+	}
+
 	if err := SaveTool(s.cfgPath, s.toolsDir, name, tc); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	s.cfg.Tools[name] = tc
-	http.Redirect(w, r, "/tools/"+name, http.StatusFound)
+
+	// Return inline confirmation for htmx
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, `<span class="text-green-600 text-xs font-medium">✓ Saved</span>`)
 }
 
 func (s *Server) handleToolDelete(w http.ResponseWriter, r *http.Request) {
@@ -480,6 +527,20 @@ func splitArgs(s string) []string {
 		args = append(args, string(current))
 	}
 	return args
+}
+
+func splitComma(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var result []string
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
