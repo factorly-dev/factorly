@@ -130,7 +130,31 @@ $ factorly wrap -- npx @modelcontextprotocol/server-github
 
 Same tools, same interface. Now every call is logged, output is compressed, loops are detected, and calls are rate-limited.
 
-### Governance
+### Workflows
+
+Chain tools into governed pipelines. Steps run sequentially with variable passing, conditional branching, and state persistence. One call replaces many.
+
+```yaml
+tools:
+  deploy.staging:
+    type: workflow
+    steps:
+      - tool: make.test
+        store: output
+      - tool: make.deploy
+        require: "contains(output, 'PASS')"
+      - switch:
+          - condition: "contains(output, 'PASS')"
+            tool: slack.post
+            params: { text: "✓ Deployed" }
+          - condition: "true"
+            tool: slack.post
+            params: { text: "✗ Deploy blocked — tests failed" }
+```
+
+`if:` skips steps. `require:` stops the workflow. `switch:` branches. Full [expression language](docs/expressions.md) with comparisons, boolean logic, `contains()`, and `jsonpath()`. Every step is individually logged and governed.
+
+### Oversight
 
 Block destructive operations. Require confirmation before writes. Rate-limit calls. Loop detection is always on — Factorly fingerprints identical calls and blocks runaway agents after 12 repeats.
 
@@ -169,8 +193,9 @@ Agent tools return too much data. Factorly compresses JSON, deduplicates log out
 - [Installation](docs/getting-started.md)
 - [Configuration](docs/config-reference.md)
 - [CLI Reference](docs/cli-reference.md)
+- [Workflows](docs/workflows.md)
+- [Expressions](docs/expressions.md)
 - [Output Filters](docs/filters.md)
-- [Workflows](docs/workflow-spec.md)
 - [OAuth Setup](docs/oauth.md)
 - [Audit Logging](docs/logging.md)
 - [Template Library](docs/templates.md)
