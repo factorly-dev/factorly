@@ -119,6 +119,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /vault/{key}", s.handleVaultDelete)
 }
 
+// Handler returns the HTTP handler for the UI (for wrapping with middleware).
+func (s *Server) Handler() http.Handler {
+	return s.mux
+}
+
 // Start begins serving the UI.
 func (s *Server) Start(addr string) error {
 	fmt.Fprintf(os.Stderr, "Factorly UI running at http://%s\n", addr)

@@ -4,9 +4,13 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"net/http"
 	"os/exec"
 	"runtime"
+	"strings"
 
 	"github.com/factorly-dev/factorly/internal/ui"
 	"github.com/factorly-dev/factorly/internal/vault"
@@ -14,6 +18,8 @@ import (
 )
 
 var uiPort int
+
+const uiHost = "localhost"
 
 var uiCmd = &cobra.Command{
 	Use:   "ui",
@@ -42,8 +48,6 @@ func runUI(cmd *cobra.Command, args []string) error {
 	var vaultBackend vault.Backend
 	vaultBackend, _ = getCachedVault()
 
-	addr := fmt.Sprintf("localhost:%d", uiPort)
-
 	srv, err := ui.New(ui.Options{
 		Config:   cfg,
 		CfgPath:  configPath,
@@ -56,10 +60,88 @@ func runUI(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Open browser
-	go openBrowser(fmt.Sprintf("http://%s", addr))
+	// Generate per-run nonce token
+	token := generateNonce()
 
-	return srv.Start(addr)
+	// Bind to loopback only
+	addr := fmt.Sprintf("127.0.0.1:%d", uiPort)
+	url := fmt.Sprintf("http://localhost:%d/?token=%s", uiPort, token)
+
+	fmt.Fprintf(cmd.ErrOrStderr(), "Factorly UI running at %s\n", url)
+
+	// Open browser with token
+	go openBrowser(url)
+
+	// Wrap handler with host validation + token check
+	handler := hostValidation(tokenValidation(srv.Handler(), token))
+
+	return http.ListenAndServe(addr, handler)
+}
+
+// hostValidation rejects requests with unexpected Host headers.
+func hostValidation(next http.Handler) http.Handler {
+	allowed := map[string]bool{
+		"localhost":  true,
+		"127.0.0.1": true,
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		// Strip port
+		if i := strings.LastIndex(host, ":"); i != -1 {
+			host = host[:i]
+		}
+		if !allowed[host] {
+			http.Error(w, "forbidden: invalid host", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// tokenValidation requires a valid token on the first request (sets a cookie),
+// then validates the cookie on subsequent requests. Static assets are exempt.
+func tokenValidation(next http.Handler, token string) http.Handler {
+	const cookieName = "factorly_session"
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Static assets don't need auth
+		if strings.HasPrefix(r.URL.Path, "/static/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Check cookie first
+		if cookie, err := r.Cookie(cookieName); err == nil && cookie.Value == token {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Check token query param (initial page load from browser open)
+		if r.URL.Query().Get("token") == token {
+			// Set session cookie and redirect to clean URL
+			http.SetCookie(w, &http.Cookie{
+				Name:     cookieName,
+				Value:    token,
+				Path:     "/",
+				HttpOnly: true,
+				SameSite: http.SameSiteStrictMode,
+			})
+			// Redirect to strip token from URL
+			clean := r.URL
+			q := clean.Query()
+			q.Del("token")
+			clean.RawQuery = q.Encode()
+			http.Redirect(w, r, clean.String(), http.StatusFound)
+			return
+		}
+
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	})
+}
+
+func generateNonce() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func openBrowser(url string) {
