@@ -35,7 +35,12 @@ type Result struct {
 }
 
 // Check returns the version check result, using the 24-hour cache.
+// Set FACTORLY_NO_UPDATE_CHECK=1 to disable network checks (CI, testing).
 func Check() Result {
+	if os.Getenv("FACTORLY_NO_UPDATE_CHECK") != "" {
+		return Result{UpToDate: true}
+	}
+
 	cache := loadCache()
 
 	if cache != nil && time.Since(cache.CheckedAt) < checkInterval {
@@ -47,6 +52,9 @@ func Check() Result {
 
 // CheckNow returns the version check result, bypassing the cache.
 func CheckNow() Result {
+	if os.Getenv("FACTORLY_NO_UPDATE_CHECK") != "" {
+		return Result{UpToDate: true}
+	}
 	return checkAndCache()
 }
 

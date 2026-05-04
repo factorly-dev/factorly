@@ -54,7 +54,7 @@ func TestMain(m *testing.M) {
 func run(t *testing.T, dir string, args ...string) (string, string, int) {
 	t.Helper()
 	cmd := exec.Command(binary, args...)
-	cmd.Env = append(os.Environ(), "FACTORLY_NO_LOG=1")
+	cmd.Env = append(os.Environ(), "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")
 	if dir != "" {
 		cmd.Dir = dir
 	}
@@ -1252,7 +1252,7 @@ tools:
 
 	// Start server with token auth
 	cmd := exec.Command(binary, "serve", "--http", ":0", "--http-token", "test-secret-token", "-c", filepath.Join(dir, "factorly.yaml"))
-	cmd.Env = append(os.Environ(), "FACTORLY_NO_LOG=1")
+	cmd.Env = append(os.Environ(), "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 
@@ -1584,7 +1584,7 @@ func TestMissingConfig(t *testing.T) {
 func runWithStdin(t *testing.T, dir string, stdin string, args ...string) (string, string, int) {
 	t.Helper()
 	cmd := exec.Command(binary, args...)
-	cmd.Env = append(os.Environ(), "FACTORLY_NO_LOG=1")
+	cmd.Env = append(os.Environ(), "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")
 	if dir != "" {
 		cmd.Dir = dir
 	}
