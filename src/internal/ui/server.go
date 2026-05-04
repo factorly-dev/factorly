@@ -51,6 +51,7 @@ func New(opts Options) (*Server, error) {
 		"templates/templates.html",
 		"templates/template_detail.html",
 		"templates/workflow_edit.html",
+		"templates/history.html",
 		"templates/vault.html",
 	}
 	tmpls := make(map[string]*template.Template, len(pages))
@@ -108,6 +109,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /workflows/{name}", s.handleWorkflowEdit)
 	s.mux.HandleFunc("POST /workflows/{name}/save", s.handleWorkflowSave)
 	s.mux.HandleFunc("POST /workflows/{name}/run", s.handleWorkflowRun)
+
+	// History
+	s.mux.HandleFunc("GET /history", s.handleHistory)
 
 	// Vault
 	s.mux.HandleFunc("GET /vault", s.handleVault)

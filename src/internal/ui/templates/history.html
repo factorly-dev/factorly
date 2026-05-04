@@ -1,0 +1,91 @@
+{{define "content"}}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">History</h1>
+  <div class="flex items-center gap-2">
+    <input type="text" placeholder="Filter by tool..."
+           value="{{.ToolFilter}}"
+           class="px-3 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-200"
+           hx-get="/history"
+           hx-target="body"
+           hx-trigger="keyup changed delay:300ms"
+           name="tool">
+    <select name="status"
+            class="px-3 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-200"
+            hx-get="/history"
+            hx-target="body"
+            hx-trigger="change"
+            hx-include="[name='tool']">
+      <option value="">All statuses</option>
+      <option value="success" {{if eq .StatusFilter "success"}}selected{{end}}>success</option>
+      <option value="error" {{if eq .StatusFilter "error"}}selected{{end}}>error</option>
+      <option value="blocked" {{if eq .StatusFilter "blocked"}}selected{{end}}>blocked</option>
+    </select>
+  </div>
+</div>
+
+{{if not .Entries}}
+<div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-400">
+  <p class="text-lg mb-2">No history yet</p>
+  <p class="text-sm">Tool calls will appear here after you run them.</p>
+</div>
+{{else}}
+<div class="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
+  {{range .Entries}}
+  <details class="group">
+    <summary class="px-5 py-3 cursor-pointer hover:bg-gray-50 transition-colors flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold shrink-0
+          {{if eq .Status "success"}}bg-green-100 text-green-600{{else if eq .Status "blocked"}}bg-red-100 text-red-600{{else}}bg-amber-100 text-amber-600{{end}}">
+          {{if eq .Status "success"}}✓{{else if eq .Status "blocked"}}✗{{else}}!{{end}}
+        </span>
+        <span class="font-mono text-sm">{{.Tool}}</span>
+        {{if .ShadowAction}}
+        <span class="px-1.5 py-0.5 text-[10px] rounded bg-amber-50 text-amber-700">{{.ShadowAction}}</span>
+        {{end}}
+      </div>
+      <div class="flex items-center gap-3 text-xs text-gray-400">
+        <span class="font-mono">{{.DurationMs}}ms</span>
+        <span>{{.TimestampRel}}</span>
+      </div>
+    </summary>
+    <div class="px-5 pb-4 pt-1 border-t border-gray-50">
+      <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-3">
+        <div><dt class="text-gray-400">Time</dt><dd class="font-mono">{{.Timestamp}}</dd></div>
+        <div><dt class="text-gray-400">Interface</dt><dd class="font-mono">{{.Interface}}</dd></div>
+        <div><dt class="text-gray-400">Status</dt><dd class="font-mono">{{.Status}}</dd></div>
+        <div><dt class="text-gray-400">Duration</dt><dd class="font-mono">{{.DurationMs}}ms</dd></div>
+        {{if .AgentID}}<div><dt class="text-gray-400">Agent</dt><dd class="font-mono">{{.AgentID}}</dd></div>{{end}}
+        {{if .ShadowAction}}<div><dt class="text-gray-400">Shadow</dt><dd class="font-mono">{{.ShadowAction}}</dd></div>{{end}}
+      </dl>
+
+      {{if .Params}}
+      <div class="mb-3">
+        <h4 class="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Parameters</h4>
+        <div class="space-y-2">
+          {{range $k, $v := .Params}}
+          <div>
+            <div class="text-[11px] text-gray-500 font-medium mb-0.5">{{$k}}</div>
+            <pre class="text-[11px] font-mono bg-gray-50 text-gray-700 px-2.5 py-1.5 rounded border border-gray-100 whitespace-pre-wrap break-all">{{$v}}</pre>
+          </div>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+
+      {{if .Error}}
+      <div class="bg-red-50 rounded p-2 mb-2">
+        <pre class="text-red-700 text-[11px] font-mono whitespace-pre-wrap">{{.Error}}</pre>
+      </div>
+      {{end}}
+
+      {{if .Output}}
+      <div class="bg-gray-900 rounded p-3">
+        <pre class="text-green-300 text-[11px] font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">{{.Output}}</pre>
+      </div>
+      {{end}}
+    </div>
+  </details>
+  {{end}}
+</div>
+{{end}}
+{{end}}

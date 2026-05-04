@@ -36,6 +36,7 @@ func (s *Server) handleWorkflowEdit(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "workflow_edit.html", map[string]any{
 		"Title":          name,
 		"Nav":            "tools",
+		"ActiveTool":     name,
 		"Name":           name,
 		"Description":    tc.Description,
 		"Steps":          tc.Steps,
@@ -138,55 +139,69 @@ func (s *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Render structured workflow result
+	// Render structured workflow result as mini-pipeline
+	statusIcon := "✓"
 	statusColor := "green"
 	if wfResult.Status == "failed" {
+		statusIcon = "✗"
 		statusColor = "red"
 	}
 
-	fmt.Fprintf(w, `<div class="rounded-lg border border-%s-200 bg-%s-50 p-4">`, statusColor, statusColor)
-	fmt.Fprintf(w, `<div class="flex items-center gap-2 mb-3">
-		<span class="text-%s-600 font-medium text-sm">%s</span>
-		<span class="text-gray-400 text-xs">%dms</span>
-	</div>`, statusColor, wfResult.Status, duration.Milliseconds())
+	fmt.Fprintf(w, `
+<div class="rounded-lg overflow-hidden border border-%s-200">
+  <div class="bg-%s-50 px-4 py-2.5 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-%s-100 text-%s-600 text-xs font-bold">%s</span>
+      <span class="text-%s-700 font-medium text-sm">%s</span>
+    </div>
+    <span class="text-gray-400 text-xs font-mono">%dms</span>
+  </div>
+  <div class="bg-white px-4 py-3 space-y-1.5">`,
+		statusColor, statusColor, statusColor, statusColor, statusIcon, statusColor, wfResult.Status, duration.Milliseconds())
 
-	// Step list
-	fmt.Fprint(w, `<div class="space-y-1 mb-3">`)
 	for _, step := range wfResult.Steps {
 		icon := "✓"
-		color := "green"
+		iconBg := "bg-green-100 text-green-600"
 		if step.Status == "failed" {
 			icon = "✗"
-			color = "red"
+			iconBg = "bg-red-100 text-red-600"
 		} else if step.Status == "skipped" {
 			icon = "—"
-			color = "gray"
+			iconBg = "bg-gray-100 text-gray-400"
 		}
 		dur := ""
 		if step.DurationMs > 0 {
 			dur = strconv.Itoa(step.DurationMs) + "ms"
 		}
-		fmt.Fprintf(w, `<div class="flex items-center gap-2 text-xs">
-			<span class="text-%s-500">%s</span>
-			<span class="font-mono">%s</span>
-			<span class="text-gray-400">%s</span>
-			<span class="text-gray-400">%s</span>
-		</div>`, color, icon, step.Tool, step.Status, dur)
+		fmt.Fprintf(w, `
+    <div class="flex items-center gap-2.5">
+      <span class="inline-flex items-center justify-center w-4 h-4 rounded-full %s text-[9px] font-bold shrink-0">%s</span>
+      <span class="font-mono text-xs text-gray-700 flex-1">%s</span>
+      <span class="text-[10px] text-gray-400 font-mono">%s</span>
+    </div>`, iconBg, icon, step.Tool, dur)
 		if step.Error != "" {
-			fmt.Fprintf(w, `<div class="text-red-600 text-xs ml-6">%s</div>`, template.HTMLEscapeString(step.Error))
+			fmt.Fprintf(w, `
+    <div class="ml-6 text-[11px] text-red-600 font-mono">%s</div>`, template.HTMLEscapeString(step.Error))
 		}
 	}
-	fmt.Fprint(w, `</div>`)
 
-	// Result
+	fmt.Fprint(w, `
+  </div>`)
+
+	// Result on dark background
 	if wfResult.Result != "" {
-		fmt.Fprintf(w, `<pre class="text-gray-700 text-xs whitespace-pre-wrap mt-2 pt-2 border-t border-%s-200">%s</pre>`,
-			statusColor, template.HTMLEscapeString(wfResult.Result))
+		fmt.Fprintf(w, `
+  <div class="bg-gray-900 px-4 py-3 border-t border-gray-200">
+    <pre class="text-green-300 text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">%s</pre>
+  </div>`, template.HTMLEscapeString(wfResult.Result))
 	}
-	if wfResult.Error != "" {
-		fmt.Fprintf(w, `<pre class="text-red-700 text-xs whitespace-pre-wrap mt-2">%s</pre>`,
-			template.HTMLEscapeString(wfResult.Error))
+	if wfResult.Error != "" && wfResult.Result == "" {
+		fmt.Fprintf(w, `
+  <div class="bg-gray-900 px-4 py-3 border-t border-gray-200">
+    <pre class="text-red-300 text-xs font-mono whitespace-pre-wrap">%s</pre>
+  </div>`, template.HTMLEscapeString(wfResult.Error))
 	}
 
-	fmt.Fprint(w, `</div>`)
+	fmt.Fprint(w, `
+</div>`)
 }
