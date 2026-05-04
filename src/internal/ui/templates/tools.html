@@ -1,36 +1,16 @@
 {{define "content"}}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold">Tools</h1>
-  <div class="flex items-center gap-3">
-    <span class="text-sm text-gray-500">{{len .Tools}} configured</span>
-    <a href="/tools/new" class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors">+ New Tool</a>
+{{if not .Tools}}
+<div class="bg-white rounded-lg border border-gray-200 p-12 text-center">
+  <p class="text-gray-500 mb-4">No tools configured yet.</p>
+  <div class="flex items-center justify-center gap-4">
+    <a href="/templates" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Browse Templates</a>
+    <a href="/tools/new" class="px-4 py-2 border border-gray-200 text-sm rounded-lg hover:bg-gray-50">Create Tool</a>
   </div>
 </div>
-
-{{if not .Tools}}
-<div class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
-  No tools configured. <a href="/templates" class="text-indigo-600 hover:underline">Browse templates</a> to get started.
-</div>
 {{else}}
-<div class="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
-  {{range .Tools}}
-  <a href="/tools/{{.Name}}" class="block px-5 py-4 hover:bg-gray-50 transition-colors">
-    <div class="flex items-center justify-between">
-      <div>
-        <span class="font-mono font-medium text-sm">{{.Name}}</span>
-        {{if .Description}}
-        <span class="text-gray-500 text-sm ml-3">{{.Description}}</span>
-        {{end}}
-      </div>
-      <div class="flex items-center gap-3">
-        <span class="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">{{.Type}}</span>
-        {{if .Shadow}}
-        <span class="px-2 py-0.5 text-xs rounded-full bg-amber-50 text-amber-700">{{shadowSummary .Shadow}}</span>
-        {{end}}
-      </div>
-    </div>
-  </a>
-  {{end}}
+<div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-400">
+  <p class="text-lg mb-2">← Select a tool</p>
+  <p class="text-sm">Choose a tool from the sidebar to view its configuration and try it.</p>
 </div>
 {{end}}
 {{end}}

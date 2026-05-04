@@ -11,17 +11,59 @@
     .htmx-indicator { display: none; }
     .htmx-request .htmx-indicator { display: inline; }
     .htmx-request button[type="submit"] { opacity: 0.5; pointer-events: none; }
+    .sidebar-item.active { background: #EEF2FF; border-right: 2px solid #6366F1; }
+    .sidebar-item:hover { background: #F9FAFB; }
   </style>
 </head>
-<body class="bg-gray-50 text-gray-900 min-h-screen">
-  <nav class="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-6">
+<body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col">
+  <!-- Top nav -->
+  <nav class="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-6 shrink-0">
     <a href="/tools" class="font-bold text-lg text-indigo-600">factorly</a>
     <a href="/tools" class="text-sm {{if eq .Nav "tools"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Tools</a>
     <a href="/templates" class="text-sm {{if eq .Nav "templates"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Templates</a>
     <a href="/vault" class="text-sm {{if eq .Nav "vault"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Vault</a>
   </nav>
-  <main class="max-w-5xl mx-auto px-6 py-8">
-    {{template "content" .}}
-  </main>
+
+  <div class="flex flex-1 overflow-hidden">
+    {{if eq .Nav "tools"}}
+    <!-- Sidebar -->
+    <aside class="w-60 bg-white border-r border-gray-200 overflow-y-auto shrink-0">
+      <div class="p-3">
+        <input type="text" placeholder="Filter tools..."
+               class="w-full px-3 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-200"
+               oninput="filterTools(this.value)">
+      </div>
+      <div id="sidebar-tools" class="pb-3">
+        {{range .SidebarTools}}
+        <a href="/tools/{{.Name}}"
+           class="sidebar-item block px-4 py-2 text-xs font-mono truncate {{if eq .Name $.ActiveTool}}active{{end}}">
+          <span class="inline-block w-2 h-2 rounded-full mr-1.5
+            {{if eq .Type "cli"}}bg-gray-400{{else if eq .Type "rest"}}bg-blue-400{{else if eq .Type "mcp"}}bg-purple-400{{else if eq .Type "workflow"}}bg-green-400{{end}}"></span>{{.Name}}
+        </a>
+        {{end}}
+      </div>
+      <div class="px-3 pb-3">
+        <a href="/tools/new" class="block text-center px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">+ New Tool</a>
+      </div>
+    </aside>
+    {{end}}
+
+    <!-- Main content -->
+    <main class="flex-1 overflow-y-auto p-6">
+      <div class="max-w-5xl mx-auto">
+        {{template "content" .}}
+      </div>
+    </main>
+  </div>
+
+  <script>
+  function filterTools(query) {
+    const items = document.querySelectorAll('#sidebar-tools .sidebar-item');
+    const q = query.toLowerCase();
+    items.forEach(item => {
+      item.style.display = item.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  }
+  </script>
 </body>
 </html>{{end}}
