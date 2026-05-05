@@ -30,6 +30,7 @@ type Server struct {
 	globalVault  vault.Backend
 	tmpls        map[string]*template.Template
 	mux          *http.ServeMux
+	mcpHandler   http.Handler
 }
 
 // Options configures the UI server.
@@ -131,9 +132,27 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /vault/{key}", s.handleVaultDelete)
 }
 
+// MountMCP sets the MCP handler. The StreamableHTTPServer is its own
+// root handler (it internally routes /mcp), so we intercept requests
+// before the UI mux and delegate /mcp paths to it directly.
+func (s *Server) MountMCP(handler http.Handler) {
+	s.mcpHandler = handler
+}
+
 // Handler returns the HTTP handler for the UI (for wrapping with middleware).
+// If MCP is mounted, /mcp requests are delegated to the StreamableHTTPServer
+// which acts as its own root handler (it internally routes /mcp).
 func (s *Server) Handler() http.Handler {
-	return s.mux
+	if s.mcpHandler == nil {
+		return s.mux
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/mcp") {
+			s.mcpHandler.ServeHTTP(w, r)
+			return
+		}
+		s.mux.ServeHTTP(w, r)
+	})
 }
 
 // Start begins serving the UI.

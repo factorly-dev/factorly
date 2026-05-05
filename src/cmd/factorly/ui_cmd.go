@@ -16,10 +16,16 @@ import (
 
 	"github.com/factorly-dev/factorly/internal/ui"
 	"github.com/factorly-dev/factorly/internal/vault"
+	factorlyServer "github.com/factorly-dev/factorly/internal/server"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 )
 
-var uiPort int
+var (
+	uiPort    int
+	uiMCP     bool
+	uiMCPToken string
+)
 
 var uiCmd = &cobra.Command{
 	Use:   "ui",
@@ -30,6 +36,8 @@ var uiCmd = &cobra.Command{
 
 func init() {
 	uiCmd.Flags().IntVar(&uiPort, "port", 3741, "port for the UI server")
+	uiCmd.Flags().BoolVar(&uiMCP, "mcp", false, "also serve MCP endpoint at /mcp")
+	uiCmd.Flags().StringVar(&uiMCPToken, "mcp-token", "", "bearer token for MCP endpoint (required when --mcp is set)")
 }
 
 func runUI(cmd *cobra.Command, args []string) error {
@@ -83,17 +91,48 @@ func runUI(cmd *cobra.Command, args []string) error {
 	// Generate per-run nonce token
 	token := generateNonce()
 
-	// Bind to loopback only
-	addr := fmt.Sprintf("127.0.0.1:%d", uiPort)
+	// Optionally mount MCP endpoint on the UI server's mux
+	if uiMCP {
+		mcpSrv := factorlyServer.New(reg, p)
+		mcpHTTP := mcpserver.NewStreamableHTTPServer(mcpSrv)
+
+		// Resolve MCP token: flag → env var → vault refs
+		if uiMCPToken == "" {
+			uiMCPToken = os.Getenv("FACTORLY_HTTP_TOKEN")
+		}
+		if uiMCPToken != "" && vault.HasVaultRefs(uiMCPToken) {
+			if backend, vErr := getCachedLocalVault(); vErr == nil {
+				resolver := vault.NewResolver()
+				resolver.Register("vault", backend)
+				uiMCPToken = resolveVaultRef(resolver, uiMCPToken)
+			}
+		}
+		if uiMCPToken == "" {
+			fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: MCP endpoint has no authentication. Use --mcp-token or FACTORLY_HTTP_TOKEN.")
+		}
+
+		// Wrap MCP handler with bearer token auth
+		var mcpHandler http.Handler = mcpHTTP
+		if uiMCPToken != "" {
+			mcpHandler = tokenAuthMiddleware(mcpHTTP, uiMCPToken)
+		}
+		srv.MountMCP(mcpHandler)
+	}
+
+	// Wrap with host validation + token check
+	handler := hostValidation(tokenValidation(srv.Handler(), token))
+
+	// Bind to all interfaces (needed for container/port-forward scenarios)
+	addr := fmt.Sprintf(":%d", uiPort)
 	url := fmt.Sprintf("http://localhost:%d/?token=%s", uiPort, token)
 
 	fmt.Fprintf(cmd.ErrOrStderr(), "Factorly UI running at %s\n", url)
+	if uiMCP {
+		fmt.Fprintf(cmd.ErrOrStderr(), "MCP endpoint at http://localhost:%d/mcp (token: %s)\n", uiPort, uiMCPToken)
+	}
 
 	// Open browser with token
 	go openBrowser(url)
-
-	// Wrap handler with host validation + token check
-	handler := hostValidation(tokenValidation(srv.Handler(), token))
 
 	return http.ListenAndServe(addr, handler)
 }
@@ -101,8 +140,9 @@ func runUI(cmd *cobra.Command, args []string) error {
 // hostValidation rejects requests with unexpected Host headers.
 func hostValidation(next http.Handler) http.Handler {
 	allowed := map[string]bool{
-		"localhost": true,
-		"127.0.0.1": true,
+		"localhost":              true,
+		"127.0.0.1":             true,
+		"host.docker.internal":  true,
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := r.Host
@@ -123,8 +163,8 @@ func hostValidation(next http.Handler) http.Handler {
 func tokenValidation(next http.Handler, token string) http.Handler {
 	const cookieName = "factorly_session"
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Static assets don't need auth
-		if strings.HasPrefix(r.URL.Path, "/static/") {
+		// Static assets and MCP endpoint don't need cookie auth
+		if strings.HasPrefix(r.URL.Path, "/static/") || strings.HasPrefix(r.URL.Path, "/mcp") {
 			next.ServeHTTP(w, r)
 			return
 		}
