@@ -20,24 +20,28 @@ import (
 
 // Server serves the Factorly web UI.
 type Server struct {
-	cfg      *config.Config
-	cfgPath  string
-	toolsDir string
-	registry *registry.Registry
-	proxy    *proxy.Proxy
-	vault    vault.Backend
-	tmpls    map[string]*template.Template
-	mux      *http.ServeMux
+	cfg          *config.Config
+	cfgPath      string
+	toolsDir     string
+	registry     *registry.Registry
+	proxy        *proxy.Proxy
+	vault        vault.Backend
+	projectVault vault.Backend
+	globalVault  vault.Backend
+	tmpls        map[string]*template.Template
+	mux          *http.ServeMux
 }
 
 // Options configures the UI server.
 type Options struct {
-	Config   *config.Config
-	CfgPath  string
-	ToolsDir string
-	Registry *registry.Registry
-	Proxy    *proxy.Proxy
-	Vault    vault.Backend
+	Config       *config.Config
+	CfgPath      string
+	ToolsDir     string
+	Registry     *registry.Registry
+	Proxy        *proxy.Proxy
+	Vault        vault.Backend
+	ProjectVault vault.Backend
+	GlobalVault  vault.Backend
 }
 
 // New creates a UI server.
@@ -68,14 +72,16 @@ func New(opts Options) (*Server, error) {
 	}
 
 	s := &Server{
-		cfg:      opts.Config,
-		cfgPath:  opts.CfgPath,
-		toolsDir: opts.ToolsDir,
-		registry: opts.Registry,
-		proxy:    opts.Proxy,
-		vault:    opts.Vault,
-		tmpls:    tmpls,
-		mux:      http.NewServeMux(),
+		cfg:          opts.Config,
+		cfgPath:      opts.CfgPath,
+		toolsDir:     opts.ToolsDir,
+		registry:     opts.Registry,
+		proxy:        opts.Proxy,
+		vault:        opts.Vault,
+		projectVault: opts.ProjectVault,
+		globalVault:  opts.GlobalVault,
+		tmpls:        tmpls,
+		mux:          http.NewServeMux(),
 	}
 
 	s.routes()

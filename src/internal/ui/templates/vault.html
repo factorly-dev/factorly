@@ -1,7 +1,7 @@
 {{define "content"}}
 <h1 class="text-2xl font-bold mb-6">Vault</h1>
 
-{{if not .Available}}
+{{if not .Sections}}
 <div class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
   Vault not available. Run <code class="bg-gray-100 px-1 rounded">factorly vault set KEY value</code> from the CLI to initialize.
 </div>
@@ -9,46 +9,89 @@
 
 <!-- Add secret form -->
 <div class="bg-white rounded-lg border border-gray-200 p-5 mb-6">
-  <h2 class="font-semibold mb-3">Add Secret</h2>
-  <form hx-post="/vault" hx-target="#vault-keys" hx-swap="innerHTML" class="flex gap-3">
-    <input type="text" name="key" required placeholder="API_KEY"
-           class="flex-1 px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
-    <input type="password" name="value" required placeholder="secret value"
-           class="flex-1 px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+  <h2 class="font-semibold mb-3 text-sm">Add Secret</h2>
+  <form hx-post="/vault" hx-target="#vault-keys" hx-swap="innerHTML" class="flex gap-3 items-end">
+    <div class="flex-1">
+      <label class="block text-[10px] text-gray-400 uppercase mb-1">Key</label>
+      <input type="text" name="key" required placeholder="API_KEY"
+             class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+    </div>
+    <div class="flex-1">
+      <label class="block text-[10px] text-gray-400 uppercase mb-1">Value</label>
+      <input type="password" name="value" required placeholder="secret value"
+             class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+    </div>
+    <div class="w-32">
+      <label class="block text-[10px] text-gray-400 uppercase mb-1">Store in</label>
+      <select name="scope" class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
+        {{range .Sections}}
+        <option value="{{.Scope}}">{{.Label}}</option>
+        {{end}}
+      </select>
+    </div>
     <button type="submit"
-            class="px-4 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors">
+            class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shrink-0">
       Set
     </button>
   </form>
 </div>
 
 <!-- Key list -->
-<div class="bg-white rounded-lg border border-gray-200">
-  <div class="px-5 py-3 border-b border-gray-100">
-    <h2 class="font-semibold text-sm">Stored Keys</h2>
-  </div>
+<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
   <div id="vault-keys">
-    {{if not .Keys}}
-    <div class="px-5 py-8 text-center text-gray-400 text-sm">No secrets stored.</div>
-    {{else}}
-    <div class="divide-y divide-gray-100">
+    {{range .Sections}}
+    <div class="border-b border-gray-200 last:border-b-0">
+      <div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide">{{.Label}} <span class="text-gray-300">({{len .Keys}} keys)</span></div>
+      {{if not .Keys}}
+      <div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>
+      {{else}}
       {{range .Keys}}
-      <div class="px-5 py-3 flex items-center justify-between">
-        <span class="font-mono text-sm">{{.}}</span>
-        <div class="flex items-center gap-3">
-          <span class="text-gray-300 text-sm">••••••••</span>
-          <button hx-delete="/vault/{{.}}"
-                  hx-target="#vault-keys"
-                  hx-swap="innerHTML"
-                  hx-confirm="Delete secret '{{.}}'?"
-                  class="text-red-400 hover:text-red-600 text-xs">delete</button>
+      <div class="px-5 py-2.5">
+        <div class="flex items-center justify-between">
+          <span class="font-mono text-sm">{{.}}</span>
+          <div class="flex items-center gap-3">
+            <span class="text-gray-300 text-sm">••••••••</span>
+            <button type="button" onclick="showReplace(this, '{{.}}', '{{$.Scope}}')"
+                    class="text-indigo-400 hover:text-indigo-600 text-xs">replace</button>
+            <button hx-delete="/vault/{{.}}?scope={{$.Scope}}"
+                    hx-target="#vault-keys"
+                    hx-swap="innerHTML"
+                    hx-confirm="Delete secret '{{.}}'?"
+                    class="text-red-400 hover:text-red-600 text-xs">delete</button>
+          </div>
         </div>
       </div>
+      {{end}}
       {{end}}
     </div>
     {{end}}
   </div>
 </div>
+
+<script>
+function showReplace(btn, key, scope) {
+  const row = btn.closest('.px-5');
+  // Check if form already shown
+  if (row.querySelector('.replace-form')) return;
+
+  const form = document.createElement('form');
+  form.className = 'replace-form flex gap-2 mt-2';
+  form.setAttribute('hx-post', '/vault');
+  form.setAttribute('hx-target', '#vault-keys');
+  form.setAttribute('hx-swap', 'innerHTML');
+  form.innerHTML = `
+    <input type="hidden" name="key" value="${key}">
+    <input type="hidden" name="scope" value="${scope}">
+    <input type="password" name="value" placeholder="new value" required autofocus
+           class="flex-1 px-2 py-1 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+    <button type="submit" class="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700">Save</button>
+    <button type="button" onclick="this.closest('.replace-form').remove()" class="px-2 py-1 text-gray-400 hover:text-gray-600 text-xs">Cancel</button>
+  `;
+  // htmx needs to process the new form
+  row.appendChild(form);
+  if (window.htmx) htmx.process(form);
+}
+</script>
 
 {{end}}
 {{end}}

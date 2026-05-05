@@ -8,7 +8,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -46,13 +48,33 @@ func runUI(cmd *cobra.Command, args []string) error {
 	var vaultBackend vault.Backend
 	vaultBackend, _ = getCachedVault()
 
+	// Detect project vs global vault from the cached backend
+	var projectVault, globalVault vault.Backend
+	projectPath := filepath.Join(".factorly", "vault.enc")
+	globalPath := vault.DefaultVaultPath()
+	if fb, ok := vaultBackend.(*vault.FallbackBackend); ok {
+		projectVault = fb.Primary
+		globalVault = fb.Secondary
+	} else if vaultBackend != nil {
+		// Single vault — determine which one it is
+		if _, err := os.Stat(projectPath); err == nil {
+			projectVault = vaultBackend
+		} else if _, err := os.Stat(globalPath); err == nil {
+			globalVault = vaultBackend
+		} else {
+			projectVault = vaultBackend
+		}
+	}
+
 	srv, err := ui.New(ui.Options{
-		Config:   cfg,
-		CfgPath:  configPath,
-		ToolsDir: cfg.ToolsDir,
-		Registry: reg,
-		Proxy:    p,
-		Vault:    vaultBackend,
+		Config:       cfg,
+		CfgPath:      configPath,
+		ToolsDir:     cfg.ToolsDir,
+		Registry:     reg,
+		Proxy:        p,
+		Vault:        vaultBackend,
+		ProjectVault: projectVault,
+		GlobalVault:  globalVault,
 	})
 	if err != nil {
 		return err
