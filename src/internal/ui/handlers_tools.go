@@ -313,10 +313,39 @@ func (s *Server) handleToolFormPartial(w http.ResponseWriter, r *http.Request) {
 			</div>
 			<div>
 				<label class="block text-sm font-medium text-gray-700 mb-1">Path</label>
-				<input type="text" name="path" placeholder="/v1/{{resource}}"
+				<input type="text" name="path" placeholder="/v1/resource"
 					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
 			</div>
-		</div>`)
+			<div>
+				<label class="block text-sm font-medium text-gray-700 mb-1">Auth</label>
+				<select name="auth_type" class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 mb-2"
+				        onchange="toggleNewAuthFields(this.value)">
+					<option value="">None</option>
+					<option value="bearer">Bearer token</option>
+					<option value="header">Custom header</option>
+					<option value="oauth">OAuth</option>
+				</select>
+				<div id="new-auth-fields"></div>
+			</div>
+		</div>
+		<script>
+		function toggleNewAuthFields(type) {
+			const c = document.getElementById('new-auth-fields');
+			switch(type) {
+				case 'bearer':
+					c.innerHTML = '<input type="text" name="auth_token" placeholder="token or {{vault:KEY}}" class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">';
+					break;
+				case 'header':
+					c.innerHTML = '<div class="flex gap-2"><input type="text" name="auth_header" placeholder="Header name" class="w-1/3 px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200"><input type="text" name="auth_value" placeholder="value" class="flex-1 px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200"></div>';
+					break;
+				case 'oauth':
+					c.innerHTML = '<input type="text" name="auth_provider" placeholder="provider name" class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">';
+					break;
+				default:
+					c.innerHTML = '';
+			}
+		}
+		</script>`)
 	case "workflow":
 		fmt.Fprint(w, `<div class="pt-4 border-t border-gray-100">
 			<p class="text-sm text-gray-500">Workflow steps can be configured after creation.</p>
@@ -372,6 +401,21 @@ func (s *Server) handleToolCreate(w http.ResponseWriter, r *http.Request) {
 		tc.BaseURL = r.FormValue("base_url")
 		tc.Method = r.FormValue("method")
 		tc.Path = r.FormValue("path")
+	}
+
+	// Parse auth (for REST tools)
+	if authType := r.FormValue("auth_type"); authType != "" {
+		auth := &config.AuthConfig{Type: authType}
+		switch authType {
+		case "bearer":
+			auth.Token = r.FormValue("auth_token")
+		case "header":
+			auth.Header = r.FormValue("auth_header")
+			auth.Value = r.FormValue("auth_value")
+		case "oauth":
+			auth.Provider = r.FormValue("auth_provider")
+		}
+		tc.Auth = auth
 	}
 
 	if err := SaveTool(s.cfgPath, s.toolsDir, name, tc); err != nil {
@@ -467,6 +511,24 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 		tc.Shadow = sc
 	} else {
 		tc.Shadow = nil
+	}
+
+	// Parse auth
+	authType := r.FormValue("auth_type")
+	if authType != "" {
+		auth := &config.AuthConfig{Type: authType}
+		switch authType {
+		case "bearer":
+			auth.Token = r.FormValue("auth_token")
+		case "header":
+			auth.Header = r.FormValue("auth_header")
+			auth.Value = r.FormValue("auth_value")
+		case "oauth":
+			auth.Provider = r.FormValue("auth_provider")
+		}
+		tc.Auth = auth
+	} else {
+		tc.Auth = nil
 	}
 
 	if err := SaveTool(s.cfgPath, s.toolsDir, name, tc); err != nil {

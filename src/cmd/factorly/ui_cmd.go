@@ -19,8 +19,6 @@ import (
 
 var uiPort int
 
-const uiHost = "localhost"
-
 var uiCmd = &cobra.Command{
 	Use:   "ui",
 	Short: "Open the Factorly web UI",
@@ -81,7 +79,7 @@ func runUI(cmd *cobra.Command, args []string) error {
 // hostValidation rejects requests with unexpected Host headers.
 func hostValidation(next http.Handler) http.Handler {
 	allowed := map[string]bool{
-		"localhost":  true,
+		"localhost": true,
 		"127.0.0.1": true,
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

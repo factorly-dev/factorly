@@ -102,21 +102,32 @@
             <input type="text" name="path" value="{{.Tool.Path}}"
                    class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
           </div>
-          {{if .Tool.Auth}}
           <div>
             <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Auth</label>
-            <div class="flex items-center gap-2 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded text-sm">
-              <span class="px-1.5 py-0.5 text-[10px] font-bold rounded
-                {{if eq .Tool.Auth.Type "bearer"}}bg-green-100 text-green-700{{else if eq .Tool.Auth.Type "basic"}}bg-blue-100 text-blue-700{{else if eq .Tool.Auth.Type "header"}}bg-purple-100 text-purple-700{{else if eq .Tool.Auth.Type "oauth"}}bg-orange-100 text-orange-700{{else}}bg-gray-100 text-gray-700{{end}}">{{.Tool.Auth.Type}}</span>
-              <span class="font-mono text-xs text-gray-500 truncate">
-                {{if eq .Tool.Auth.Type "bearer"}}{{.Tool.Auth.Token}}
-                {{else if eq .Tool.Auth.Type "header"}}{{.Tool.Auth.Header}}: {{.Tool.Auth.Value}}
-                {{else if eq .Tool.Auth.Type "oauth"}}provider
-                {{else}}configured{{end}}
-              </span>
+            <select name="auth_type" class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200 mb-2"
+                    onchange="toggleAuthFields(this.value)">
+              <option value="" {{if not .Tool.Auth}}selected{{end}}>None</option>
+              <option value="bearer" {{if and .Tool.Auth (eq .Tool.Auth.Type "bearer")}}selected{{end}}>Bearer token</option>
+              <option value="header" {{if and .Tool.Auth (eq .Tool.Auth.Type "header")}}selected{{end}}>Custom header</option>
+              <option value="oauth" {{if and .Tool.Auth (eq .Tool.Auth.Type "oauth")}}selected{{end}}>OAuth</option>
+            </select>
+            <div id="auth-fields">
+              {{if and .Tool.Auth (eq .Tool.Auth.Type "bearer")}}
+              <input type="text" name="auth_token" value="{{.Tool.Auth.Token}}" placeholder="token or {{"{{vault:KEY}}"}}"
+                     class="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+              {{else if and .Tool.Auth (eq .Tool.Auth.Type "header")}}
+              <div class="flex gap-2">
+                <input type="text" name="auth_header" value="{{.Tool.Auth.Header}}" placeholder="Header name"
+                       class="w-1/3 px-2 py-1.5 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+                <input type="text" name="auth_value" value="{{.Tool.Auth.Value}}" placeholder="value or {{"{{vault:KEY}}"}}"
+                       class="flex-1 px-2 py-1.5 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+              </div>
+              {{else if and .Tool.Auth (eq .Tool.Auth.Type "oauth")}}
+              <input type="text" name="auth_provider" value="{{.Tool.Auth.Provider}}" placeholder="provider name (from oauth_providers)"
+                     class="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+              {{end}}
             </div>
           </div>
-          {{end}}
 
           <div>
             <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Body</label>
@@ -288,6 +299,23 @@
 </div>
 
 <script>
+function toggleAuthFields(type) {
+  const container = document.getElementById('auth-fields');
+  switch (type) {
+    case 'bearer':
+      container.innerHTML = `<input type="text" name="auth_token" placeholder="token or {{"{{vault:KEY}}"}}" class="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">`;
+      break;
+    case 'header':
+      container.innerHTML = `<div class="flex gap-2"><input type="text" name="auth_header" placeholder="Header name" class="w-1/3 px-2 py-1.5 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200"><input type="text" name="auth_value" placeholder="value or {{"{{vault:KEY}}"}}" class="flex-1 px-2 py-1.5 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200"></div>`;
+      break;
+    case 'oauth':
+      container.innerHTML = `<input type="text" name="auth_provider" placeholder="provider name (from oauth_providers)" class="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">`;
+      break;
+    default:
+      container.innerHTML = '';
+  }
+}
+
 function addToolParam() {
   const list = document.getElementById('params-list');
   const count = list.querySelectorAll('.param-row').length;
