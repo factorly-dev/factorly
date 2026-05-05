@@ -584,17 +584,19 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	hasOAuth := false
 
 	for name, toolCfg := range cfg.Tools {
+		var vaultKeys []string // collect vault keys accessed for this tool
+
 		switch toolCfg.Type {
 		case "cli":
 			// Resolve backend refs in args (e.g., {{vault:KEY}}, {{op:KEY}})
 			resolvedArgs := make([]string, len(toolCfg.Args))
 			for i, arg := range toolCfg.Args {
-				resolvedArgs[i] = resolveVaultRef(resolver, arg)
+				resolvedArgs[i] = resolveVaultRefTracked(resolver, arg, &vaultKeys)
 			}
 			def := provider.CLIToolDef{
-				Command:     resolveVaultRef(resolver, toolCfg.Command),
+				Command:     resolveVaultRefTracked(resolver, toolCfg.Command, &vaultKeys),
 				Args:        resolvedArgs,
-				Stdin:       resolveVaultRef(resolver, toolCfg.Stdin),
+				Stdin:       resolveVaultRefTracked(resolver, toolCfg.Stdin, &vaultKeys),
 				Interactive: toolCfg.Interactive,
 				Env:         resolveVaultMap(resolver, toolCfg.Env),
 				EnvStrict:   toolCfg.EnvIsolation == "strict",
@@ -611,7 +613,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 		case "rest":
 			restDef := provider.RESTToolDef{
 				Method:  toolCfg.Method,
-				BaseURL: resolveVaultRef(resolver, toolCfg.BaseURL),
+				BaseURL: resolveVaultRefTracked(resolver, toolCfg.BaseURL, &vaultKeys),
 				Path:    toolCfg.Path,
 				Body:    toolCfg.Body,
 				Headers: resolveVaultMap(resolver, toolCfg.Headers),
@@ -619,15 +621,15 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			if toolCfg.Auth != nil {
 				authDef := &provider.AuthDef{
 					Type:   toolCfg.Auth.Type,
-					Token:  resolveVaultRef(resolver, toolCfg.Auth.Token),
+					Token:  resolveVaultRefTracked(resolver, toolCfg.Auth.Token, &vaultKeys),
 					Header: toolCfg.Auth.Header,
-					Value:  resolveVaultRef(resolver, toolCfg.Auth.Value),
+					Value:  resolveVaultRefTracked(resolver, toolCfg.Auth.Value, &vaultKeys),
 				}
 				if toolCfg.Auth.Type == "oauth" {
 					oauthCfg := cfg.ResolveOAuthProvider(toolCfg.Auth)
 					authDef.OAuthProvider = &oauth.ProviderConfig{
-						ClientID:     resolveVaultRef(resolver, oauthCfg.ClientID),
-						ClientSecret: resolveVaultRef(resolver, oauthCfg.ClientSecret),
+						ClientID:     resolveVaultRefTracked(resolver, oauthCfg.ClientID, &vaultKeys),
+						ClientSecret: resolveVaultRefTracked(resolver, oauthCfg.ClientSecret, &vaultKeys),
 						AuthURL:      oauthCfg.AuthURL,
 						TokenURL:     oauthCfg.TokenURL,
 						Scopes:       oauthCfg.Scopes,
@@ -693,6 +695,13 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			}
 			workflowDefs[name] = steps
 			vlog("  registered workflow: %s (%d steps)", name, len(steps))
+		}
+
+		// Store vault keys on registry tool for audit logging
+		if len(vaultKeys) > 0 {
+			if tool, err := reg.Get(name); err == nil {
+				tool.VaultKeys = dedup(vaultKeys)
+			}
 		}
 	}
 
@@ -954,6 +963,32 @@ func resolveVaultRef(resolver *vault.Resolver, s string) string {
 		return s
 	}
 	return resolved
+}
+
+// resolveVaultRefTracked resolves a vault reference and appends accessed keys to the collector.
+func resolveVaultRefTracked(resolver *vault.Resolver, s string, keys *[]string) string {
+	if resolver == nil || s == "" {
+		return s
+	}
+	resolved, accessed, err := resolver.ResolveTracked(s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		return s
+	}
+	*keys = append(*keys, accessed...)
+	return resolved
+}
+
+func dedup(ss []string) []string {
+	seen := make(map[string]bool, len(ss))
+	var result []string
+	for _, s := range ss {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	return result
 }
 
 func resolveVaultMap(resolver *vault.Resolver, m map[string]string) map[string]string {

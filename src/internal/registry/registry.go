@@ -35,6 +35,7 @@ type Tool struct {
 	Compress       []string
 	AllowOverrides []string       // allow overrides for built-in tool guards
 	Filter         *output.Filter // per-tool output filter
+	VaultKeys      []string       // vault keys this tool accesses (e.g., "vault:GITHUB_TOKEN")
 }
 
 // ValidateParams checks that all required parameters (without defaults) are present.

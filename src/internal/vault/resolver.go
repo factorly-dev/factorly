@@ -72,6 +72,47 @@ func (r *Resolver) Resolve(s string) (string, error) {
 	return result, resolveErr
 }
 
+// ResolveTracked resolves references like Resolve, but also returns which keys were
+// successfully accessed (as "backend:key" strings).
+func (r *Resolver) ResolveTracked(s string) (string, []string, error) {
+	const placeholder = "\x00ESCAPED_BRACE\x00"
+	s = strings.ReplaceAll(s, "\\{{", placeholder)
+
+	var resolveErr error
+	var accessed []string
+	result := refPattern.ReplaceAllStringFunc(s, func(match string) string {
+		parts := refPattern.FindStringSubmatch(match)
+		if len(parts) < 3 {
+			return match
+		}
+		backend, key := parts[1], parts[2]
+		defaultVal := ""
+		hasDefault := len(parts) >= 4 && parts[3] != ""
+		if hasDefault {
+			defaultVal = parts[3]
+		}
+		b, ok := r.backends[backend]
+		if !ok {
+			if hasDefault {
+				return defaultVal
+			}
+			return match
+		}
+		val, err := b.Get(key)
+		if err != nil {
+			if hasDefault {
+				return defaultVal
+			}
+			resolveErr = fmt.Errorf("resolving vault reference from %s backend: %w", backend, err)
+			return match
+		}
+		accessed = append(accessed, backend+":"+key)
+		return val
+	})
+	result = strings.ReplaceAll(result, placeholder, "{{")
+	return result, accessed, resolveErr
+}
+
 // HasVaultRefs returns true if the string contains any {{backend:key}} references
 // that require vault access. Excludes {{env:VAR}} since env vars are resolved
 // at config load time — unresolved env refs mean the var isn't set, not that

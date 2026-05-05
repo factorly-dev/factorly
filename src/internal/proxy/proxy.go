@@ -210,6 +210,7 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		DurationMs:     result.Duration.Milliseconds(),
 		ShadowAction:   string(shadowAction),
 		AgentID:        agentID,
+		VaultKeys:      tool.VaultKeys,
 		OriginalBytes:  originalBytes,
 		ProcessedBytes: processedBytes,
 	}
