@@ -31,6 +31,7 @@ type Server struct {
 	tmpls        map[string]*template.Template
 	mux          *http.ServeMux
 	mcpHandler   http.Handler
+	activity     *ActivityBroadcaster
 }
 
 // Options configures the UI server.
@@ -43,6 +44,7 @@ type Options struct {
 	Vault        vault.Backend
 	ProjectVault vault.Backend
 	GlobalVault  vault.Backend
+	Activity     *ActivityBroadcaster
 }
 
 // New creates a UI server.
@@ -56,6 +58,7 @@ func New(opts Options) (*Server, error) {
 		"templates/templates.html",
 		"templates/template_detail.html",
 		"templates/workflow_edit.html",
+		"templates/activity.html",
 		"templates/history.html",
 		"templates/auth.html",
 		"templates/vault.html",
@@ -82,6 +85,7 @@ func New(opts Options) (*Server, error) {
 		vault:        opts.Vault,
 		projectVault: opts.ProjectVault,
 		globalVault:  opts.GlobalVault,
+		activity:     opts.Activity,
 		tmpls:        tmpls,
 		mux:          http.NewServeMux(),
 	}
@@ -117,6 +121,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /workflows/{name}", s.handleWorkflowEdit)
 	s.mux.HandleFunc("POST /workflows/{name}/save", s.handleWorkflowSave)
 	s.mux.HandleFunc("POST /workflows/{name}/run", s.handleWorkflowRun)
+
+	// Activity (live feed)
+	s.mux.HandleFunc("GET /activity", s.handleActivity)
+	s.mux.HandleFunc("GET /activity/stream", s.handleActivityStream)
 
 	// History
 	s.mux.HandleFunc("GET /history", s.handleHistory)

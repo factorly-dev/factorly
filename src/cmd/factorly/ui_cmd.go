@@ -14,16 +14,17 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/factorly-dev/factorly/internal/proxy"
+	factorlyServer "github.com/factorly-dev/factorly/internal/server"
 	"github.com/factorly-dev/factorly/internal/ui"
 	"github.com/factorly-dev/factorly/internal/vault"
-	factorlyServer "github.com/factorly-dev/factorly/internal/server"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 )
 
 var (
-	uiPort    int
-	uiMCP     bool
+	uiPort     int
+	uiMCP      bool
 	uiMCPToken string
 )
 
@@ -74,6 +75,12 @@ func runUI(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Set up activity broadcaster for live feed
+	activity := ui.NewActivityBroadcaster()
+	p.SetOnCall(func(e proxy.CallEvent) {
+		activity.Broadcast(e)
+	})
+
 	srv, err := ui.New(ui.Options{
 		Config:       cfg,
 		CfgPath:      configPath,
@@ -83,6 +90,7 @@ func runUI(cmd *cobra.Command, args []string) error {
 		Vault:        vaultBackend,
 		ProjectVault: projectVault,
 		GlobalVault:  globalVault,
+		Activity:     activity,
 	})
 	if err != nil {
 		return err
@@ -140,9 +148,9 @@ func runUI(cmd *cobra.Command, args []string) error {
 // hostValidation rejects requests with unexpected Host headers.
 func hostValidation(next http.Handler) http.Handler {
 	allowed := map[string]bool{
-		"localhost":              true,
-		"127.0.0.1":             true,
-		"host.docker.internal":  true,
+		"localhost":            true,
+		"127.0.0.1":            true,
+		"host.docker.internal": true,
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := r.Host

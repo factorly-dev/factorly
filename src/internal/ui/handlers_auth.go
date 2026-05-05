@@ -177,8 +177,8 @@ func (s *Server) buildAuthProviderViews() []authProviderView {
 		if tc.Auth != nil && tc.Auth.Type == "oauth" && tc.Auth.Provider != "" && !seen[tc.Auth.Provider] {
 			tokenKey := config.OAuthTokenKey(tc.Auth)
 			view := authProviderView{
-				Name:   tc.Auth.Provider,
-				Tools:  s.findToolsUsingProvider(tc.Auth.Provider),
+				Name:  tc.Auth.Provider,
+				Tools: s.findToolsUsingProvider(tc.Auth.Provider),
 			}
 			s.populateTokenStatus(&view, tokenKey)
 			views = append(views, view)

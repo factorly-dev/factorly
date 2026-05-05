@@ -28,11 +28,35 @@ func WithShadow(s *shadow.Policy) Option {
 	return func(p *Proxy) { p.shadow = s }
 }
 
+// WithOnCall sets a callback that fires after each tool call.
+func WithOnCall(fn func(CallEvent)) Option {
+	return func(p *Proxy) { p.onCall = fn }
+}
+
+// SetOnCall sets the call event callback after proxy creation.
+func (p *Proxy) SetOnCall(fn func(CallEvent)) {
+	p.onCall = fn
+}
+
+// CallEvent is emitted after each tool call for live activity feeds.
+type CallEvent struct {
+	Timestamp    time.Time
+	Tool         string
+	Params       map[string]string
+	Status       string // "success", "error", "blocked"
+	DurationMs   int64
+	ShadowAction string
+	AgentID      string
+	Output       string
+	Error        string
+}
+
 type Proxy struct {
 	registry  *registry.Registry
 	providers map[string]provider.Provider
 	logger    logger.Logger
 	shadow    *shadow.Policy
+	onCall    func(CallEvent)
 }
 
 func New(reg *registry.Registry, providers map[string]provider.Provider, log logger.Logger, opts ...Option) *Proxy {
@@ -104,6 +128,7 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 				AgentID:      agentID,
 			}
 			_ = p.logger.Log(entry)
+			p.emitCallEvent(entry)
 			return nil, fmt.Errorf("parameter validation failed for %q: %s",
 				toolName, strings.Join(validationResult.Errors, "; "))
 		}
@@ -130,6 +155,7 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 			}
 			entry.AgentID = agentID
 			_ = p.logger.Log(entry)
+			p.emitCallEvent(entry)
 			return nil, err
 		}
 	}
@@ -152,6 +178,7 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 				AgentID:      agentID,
 			}
 			_ = p.logger.Log(entry)
+			p.emitCallEvent(entry)
 			return nil, err
 		}
 	}
@@ -234,7 +261,30 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		fmt.Fprintf(os.Stderr, "warning: failed to log call: %v\n", logErr)
 	}
 
+	p.emitCallEvent(entry)
+
 	return result, nil
+}
+
+func (p *Proxy) emitCallEvent(entry *logger.Entry) {
+	if p.onCall == nil {
+		return
+	}
+	output := entry.Output
+	if len(output) > 500 {
+		output = output[:500] + "..."
+	}
+	p.onCall(CallEvent{
+		Timestamp:    entry.Timestamp,
+		Tool:         entry.Tool,
+		Params:       entry.Params,
+		Status:       entry.Status,
+		DurationMs:   entry.DurationMs,
+		ShadowAction: entry.ShadowAction,
+		AgentID:      entry.AgentID,
+		Output:       output,
+		Error:        entry.Error,
+	})
 }
 
 func filterParams(params map[string]string, keys []string) map[string]string {
