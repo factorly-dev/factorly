@@ -18,24 +18,32 @@
     details summary::-webkit-details-marker { display: none; }
     details summary .chevron { transition: transform 0.15s; }
     details[open] summary .chevron { transform: rotate(90deg); }
+    #activity-drawer { transform: translateX(100%); transition: transform 0.2s ease; }
+    #activity-drawer.open { transform: translateX(0); }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col" hx-boost="true">
   <!-- Top nav -->
-  <nav class="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-6 shrink-0">
-    <a href="/tools" class="flex items-center gap-2 font-bold text-lg text-gray-900">
-      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAAAQHRFWHRTb2Z0d2FyZQBSZWFsRmF2aWNvbkdlbmVyYXRvciAoaHR0cHM6Ly9yZWFsZmF2aWNvbmdlbmVyYXRvci5uZXQpmZlW4QAAAdlJREFUeF7t3EtuwlAQBVF7R+x/EywpHymzoAzcz5StHKQMm2tXcZuHQNm3bfv4+vOICOwEROR/Yglo+W8EEBATiOM1gICYQByvAQTEBOJ4DSAgJhDHawABMYE4XgMIiAnE8RpAQEwgjteA/y7g+Xxuj8cjxvA7ft+/X5vnP/IGEBB/J0wAAS/3jBV0/vr9M4EAAt5DwHuA9wDvAT4HvGfbvEyxgm66gt51Sjn7tXnbT8IELHppHF1BBBCwhIAVtATj8Sch4Di7JZMELMF4/EkIOM5uySQBSzAefxICjrNbMnlbAdO7v8rnCAKmJofzBAwBTscJmBIczhMwBDgdJ2BKcDhPwBDgdJyAKcHhPAFDgNNxAqYEh/O5gOH1336cgFghAQTEBOL4vAF+FeGHWWkHNCDFv/X/M84KsoLSDlhBKf4LrKD4/vP4vAE5gfgCCCAgJhDH5w1wDHUMTTugASn+CxxDrSArKO2AFZTiv8AKiu8/j88bkBOIL4AAAmICcXzeAMdQx9C0AxqQ4r/AMdQKsoLSDlhBKf4LrKD4/vP4vAE5gfgCCCAgJhDHawABMYE4XgMIiAnE8RpAQEwgjtcAAmICcbwGEBATiOM1gICYQByvAQTEBOL4T5888AHEhh/MAAAAAElFTkSuQmCC" alt="" class="w-6 h-6 rounded-full">
-      factorly
-    </a>
-    <a href="/tools" class="text-sm {{if eq .Nav "tools"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Tools</a>
-    <a href="/templates" class="text-sm {{if eq .Nav "templates"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Templates</a>
-    <a href="/activity" class="text-sm {{if eq .Nav "activity"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Activity</a>
-    <a href="/history" class="text-sm {{if eq .Nav "history"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">History</a>
-    <a href="/auth" class="text-sm {{if eq .Nav "auth"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Auth</a>
-    <a href="/vault" class="text-sm {{if eq .Nav "vault"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Vault</a>
+  <nav class="bg-white border-b border-gray-200 px-4 py-3 flex items-center shrink-0">
+    <div class="flex items-center gap-6 flex-1">
+      <a href="/tools" class="flex items-center gap-2 font-bold text-lg text-gray-900">
+        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAAAQHRFWHRTb2Z0d2FyZQBSZWFsRmF2aWNvbkdlbmVyYXRvciAoaHR0cHM6Ly9yZWFsZmF2aWNvbmdlbmVyYXRvci5uZXQpmZlW4QAAAdlJREFUeF7t3EtuwlAQBVF7R+x/EywpHymzoAzcz5StHKQMm2tXcZuHQNm3bfv4+vOICOwEROR/Yglo+W8EEBATiOM1gICYQByvAQTEBOJ4DSAgJhDHawABMYE4XgMIiAnE8RpAQEwgjteA/y7g+Xxuj8cjxvA7ft+/X5vnP/IGEBB/J0wAAS/3jBV0/vr9M4EAAt5DwHuA9wDvAT4HvGfbvEyxgm66gt51Sjn7tXnbT8IELHppHF1BBBCwhIAVtATj8Sch4Di7JZMELMF4/EkIOM5uySQBSzAefxICjrNbMnlbAdO7v8rnCAKmJofzBAwBTscJmBIczhMwBDgdJ2BKcDhPwBDgdJyAKcHhPAFDgNNxAqYEh/O5gOH1336cgFghAQTEBOL4vAF+FeGHWWkHNCDFv/X/M84KsoLSDlhBKf4LrKD4/vP4vAE5gfgCCCAgJhDH5w1wDHUMTTugASn+CxxDrSArKO2AFZTiv8AKiu8/j88bkBOIL4AAAmICcXzeAMdQx9C0AxqQ4r/AMdQKsoLSDlhBKf4LrKD4/vP4vAE5gfgCCCAgJhDHawABMYE4XgMIiAnE8RpAQEwgjtcAAmICcbwGEBATiOM1gICYQByvAQTEBOL4T5888AHEhh/MAAAAAElFTkSuQmCC" alt="" class="w-6 h-6 rounded-full">
+        factorly
+      </a>
+      <a href="/tools" class="text-sm {{if eq .Nav "tools"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Tools</a>
+      <a href="/templates" class="text-sm {{if eq .Nav "templates"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Templates</a>
+      <a href="/history" class="text-sm {{if eq .Nav "history"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">History</a>
+      <a href="/auth" class="text-sm {{if eq .Nav "auth"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Auth</a>
+      <a href="/vault" class="text-sm {{if eq .Nav "vault"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Vault</a>
+    </div>
+    <!-- Activity toggle (right-aligned) -->
+    <button onclick="toggleActivity()" class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors" id="activity-toggle">
+      <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" id="activity-dot"></span>
+      <span id="activity-badge">Activity</span>
+    </button>
   </nav>
 
-  <div class="flex flex-1 overflow-hidden">
+  <div class="flex flex-1 overflow-hidden relative">
     {{if eq .Nav "tools"}}
     <!-- Sidebar -->
     <aside class="w-60 bg-white border-r border-gray-200 overflow-y-auto shrink-0">
@@ -65,6 +73,31 @@
         {{template "content" .}}
       </div>
     </main>
+
+    <!-- Activity drawer (right panel) -->
+    <div id="activity-drawer" class="fixed top-0 right-0 h-full w-96 bg-white border-l border-gray-200 shadow-xl z-50 flex flex-col">
+      <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-semibold">Activity</span>
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-50 text-green-700 text-[10px] font-medium rounded-full border border-green-200">
+            <span class="w-1 h-1 bg-green-500 rounded-full animate-pulse"></span>
+            live
+          </span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="drawer-count" class="text-[10px] text-gray-400">0 calls</span>
+          <button onclick="clearActivity()" class="text-[10px] text-gray-400 hover:text-gray-600">clear</button>
+          <button onclick="toggleActivity()" class="text-gray-400 hover:text-gray-600">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="activity-feed" class="flex-1 overflow-y-auto">
+        <div id="activity-empty" class="px-4 py-12 text-center text-gray-400 text-xs">
+          Waiting for agent activity...
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -74,6 +107,110 @@
     items.forEach(item => {
       item.style.display = item.textContent.toLowerCase().includes(q) ? '' : 'none';
     });
+  }
+
+  // Activity drawer — use var to avoid redeclaration on hx-boost navigation
+  if (typeof activityOpen === 'undefined') {
+    var activityOpen = false;
+    var activityCount = 0;
+  }
+
+  function toggleActivity() {
+    activityOpen = !activityOpen;
+    document.getElementById('activity-drawer').classList.toggle('open', activityOpen);
+  }
+
+  function clearActivity() {
+    document.getElementById('activity-feed').innerHTML = '<div id="activity-empty" class="px-4 py-12 text-center text-gray-400 text-xs">Waiting for agent activity...</div>';
+    activityCount = 0;
+    document.getElementById('drawer-count').textContent = '0 calls';
+    document.getElementById('activity-badge').textContent = 'Activity';
+  }
+
+  // SSE connection (singleton — only create once across hx-boost navigations)
+  if (!window._activitySSE) {
+    window._activitySSE = new EventSource('/activity/stream');
+
+    window._activitySSE.onmessage = function(event) {
+      const data = JSON.parse(event.data);
+      const feed = document.getElementById('activity-feed');
+
+      // Remove empty state
+      const empty = document.getElementById('activity-empty');
+      if (empty) empty.remove();
+
+      let icon = '✓';
+      let iconClass = 'bg-green-100 text-green-600';
+      if (data.status === 'blocked') {
+        icon = '✗';
+        iconClass = 'bg-red-100 text-red-600';
+      } else if (data.status === 'error') {
+        icon = '!';
+        iconClass = 'bg-amber-100 text-amber-600';
+      }
+
+      let shadow = '';
+      if (data.shadow && data.shadow !== 'allowed') {
+        shadow = `<span class="px-1 py-0.5 text-[9px] rounded bg-amber-50 text-amber-700">${escapeHtml(data.shadow)}</span>`;
+      }
+
+      let paramsHtml = '';
+      if (data.params && Object.keys(data.params).length > 0) {
+        paramsHtml = '<div class="mb-2"><div class="text-[9px] text-gray-400 uppercase mb-1">Params</div>';
+        for (const [k, v] of Object.entries(data.params)) {
+          paramsHtml += `<div class="mb-1"><span class="text-[9px] text-gray-500">${escapeHtml(k)}</span><pre class="text-[9px] font-mono bg-gray-50 text-gray-700 px-1.5 py-1 rounded mt-0.5 whitespace-pre-wrap break-all max-h-24 overflow-y-auto">${escapeHtml(v)}</pre></div>`;
+        }
+        paramsHtml += '</div>';
+      }
+
+      let detailHtml = '';
+      if (data.error) {
+        detailHtml += `<div class="bg-red-50 rounded p-1.5 mb-1"><pre class="text-red-700 text-[9px] font-mono whitespace-pre-wrap">${escapeHtml(data.error)}</pre></div>`;
+      }
+      if (data.output) {
+        detailHtml += `<div class="bg-gray-900 rounded p-1.5"><pre class="text-green-300 text-[9px] font-mono whitespace-pre-wrap max-h-32 overflow-y-auto">${escapeHtml(data.output)}</pre></div>`;
+      }
+
+      const row = document.createElement('details');
+      row.className = 'border-b border-gray-100';
+      row.innerHTML = `
+        <summary class="px-4 py-2 cursor-pointer hover:bg-gray-50 transition-colors flex items-center justify-between text-xs">
+          <div class="flex items-center gap-1.5">
+            <span class="inline-flex items-center justify-center w-4 h-4 rounded-full ${iconClass} text-[8px] font-bold">${icon}</span>
+            <span class="font-mono text-[11px]">${escapeHtml(data.tool)}</span>
+            ${shadow}
+          </div>
+          <div class="flex items-center gap-2 text-[10px] text-gray-400 shrink-0">
+            <span class="font-mono">${data.duration_ms}ms</span>
+            <span>${data.timestamp}</span>
+          </div>
+        </summary>
+        <div class="px-4 pb-2 pt-1 pl-9">
+          ${paramsHtml}
+          ${detailHtml}
+          ${!paramsHtml && !detailHtml ? '<span class="text-[9px] text-gray-300">No details</span>' : ''}
+        </div>
+      `;
+
+      feed.insertBefore(row, feed.firstChild);
+
+      activityCount++;
+      document.getElementById('drawer-count').textContent = activityCount + (activityCount === 1 ? ' call' : ' calls');
+      document.getElementById('activity-badge').textContent = 'Activity (' + activityCount + ')';
+
+      // Flash the dot
+      const dot = document.getElementById('activity-dot');
+      dot.classList.remove('bg-green-500');
+      dot.classList.add('bg-indigo-500');
+      setTimeout(() => { dot.classList.remove('bg-indigo-500'); dot.classList.add('bg-green-500'); }, 300);
+    };
+  }
+
+  function escapeHtml(s) {
+    if (!s) return '';
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
   }
   </script>
 </body>

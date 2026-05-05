@@ -99,8 +99,6 @@ func (s *Server) handleActivityStream(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "activity.html", map[string]any{
-		"Title": "Activity",
-		"Nav":   "activity",
-	})
+	// Activity is now a drawer in the layout — redirect to tools
+	http.Redirect(w, r, "/tools", http.StatusFound)
 }
