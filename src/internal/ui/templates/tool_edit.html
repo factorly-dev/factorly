@@ -152,7 +152,10 @@
         <!-- Parameters -->
         <details class="border-t border-gray-200">
           <summary class="px-4 py-2.5 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors flex items-center justify-between">
-            <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Parameters {{if .Params}}<span class="text-gray-400 normal-case">({{len .Params}})</span>{{end}}</span>
+            <span class="flex items-center gap-2">
+              <svg class="chevron w-3 h-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Parameters {{if .Params}}<span class="text-gray-400 normal-case">({{len .Params}})</span>{{end}}</span>
+            </span>
             <span class="text-xs text-indigo-600" onclick="event.preventDefault(); addToolParam()">+ Add</span>
           </summary>
           <div class="p-4" id="params-list">
@@ -189,7 +192,8 @@
 
         <!-- Oversight -->
         <details class="border-t border-gray-200">
-          <summary class="px-4 py-2.5 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors">
+          <summary class="px-4 py-2.5 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors flex items-center gap-2">
+            <svg class="chevron w-3 h-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Oversight</span>
           </summary>
           <div class="p-4 space-y-3">
@@ -214,7 +218,8 @@
 
         <!-- Advanced -->
         <details class="border-t border-gray-200">
-          <summary class="px-4 py-2.5 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors">
+          <summary class="px-4 py-2.5 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors flex items-center gap-2">
+            <svg class="chevron w-3 h-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Advanced</span>
           </summary>
           <div class="p-4 space-y-3">

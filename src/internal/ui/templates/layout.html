@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Factorly{{if .Title}} — {{.Title}}{{end}}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/static/tailwind.js"></script>
   <script src="/static/htmx.min.js"></script>
   <script src="/static/sse.js"></script>
   <style>
@@ -14,6 +14,10 @@
     .sidebar-item.active { background: #EEF2FF; border-right: 2px solid #6366F1; }
     .sidebar-item:hover { background: #F9FAFB; }
     button svg, a svg { display: inline-block; vertical-align: middle; }
+    details summary { list-style: none; }
+    details summary::-webkit-details-marker { display: none; }
+    details summary .chevron { transition: transform 0.15s; }
+    details[open] summary .chevron { transform: rotate(90deg); }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col" hx-boost="true">
