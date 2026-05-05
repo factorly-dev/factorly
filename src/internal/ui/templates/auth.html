@@ -1,0 +1,68 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-6">Auth Providers</h1>
+
+{{if not .Providers}}
+<div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-400">
+  <p class="text-lg mb-2">No OAuth providers configured</p>
+  <p class="text-sm">Add <code class="bg-gray-100 px-1 rounded">oauth_providers:</code> to your config to manage OAuth authentication.</p>
+</div>
+{{else}}
+
+<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+  <div class="px-5 py-2.5 bg-gray-50 border-b border-gray-200">
+    <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Providers</span>
+  </div>
+  <div id="auth-list">
+    {{range .Providers}}
+    <div class="px-5 py-4 border-b border-gray-100 last:border-b-0">
+      <div class="flex items-center justify-between mb-1">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold
+            {{if eq .StatusColor "green"}}bg-green-100 text-green-600{{else if eq .StatusColor "amber"}}bg-amber-100 text-amber-600{{else}}bg-red-100 text-red-600{{end}}">
+            {{if eq .Status "valid"}}✓{{else if eq .Status "expired_refreshable"}}⟳{{else}}✗{{end}}
+          </span>
+          <span class="font-mono text-sm font-medium">{{.Name}}</span>
+          <span class="text-xs {{if eq .StatusColor "green"}}text-green-600{{else if eq .StatusColor "amber"}}text-amber-600{{else}}text-red-600{{end}}">{{.StatusLabel}}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          {{if not .HasToken}}
+          <span class="text-[10px] text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded border border-gray-200 select-all">factorly auth login {{.Name}}</span>
+          {{end}}
+          {{if eq .Status "expired_refreshable"}}
+          <button hx-post="/auth/{{.Name}}/refresh"
+                  hx-target="#auth-list"
+                  hx-swap="innerHTML"
+                  class="text-indigo-500 hover:text-indigo-700 text-xs font-medium">refresh</button>
+          {{end}}
+          {{if .HasToken}}
+          <button hx-delete="/auth/{{.Name}}"
+                  hx-target="#auth-list"
+                  hx-swap="innerHTML"
+                  hx-confirm="Logout from {{.Name}}?"
+                  class="text-red-400 hover:text-red-600 text-xs">logout</button>
+          {{end}}
+        </div>
+      </div>
+
+      {{if .Tools}}
+      <div class="flex flex-wrap gap-1 mt-1">
+        {{range .Tools}}
+        <span class="text-[10px] font-mono text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded">{{.}}</span>
+        {{end}}
+      </div>
+      {{end}}
+
+      {{if .Scopes}}
+      <div class="flex flex-wrap gap-1 mt-1">
+        {{range .Scopes}}
+        <span class="text-[10px] text-gray-400 px-1.5 py-0.5 rounded border border-gray-100">{{.}}</span>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+</div>
+
+{{end}}
+{{end}}
