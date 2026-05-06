@@ -11,10 +11,71 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/factorly-dev/factorly/internal/config"
 )
+
+func (s *Server) handleWorkflowNew(w http.ResponseWriter, r *http.Request) {
+	s.render(w, "workflow_new.html", map[string]any{
+		"Title": "New Workflow",
+		"Nav":   "workflows",
+	})
+}
+
+func (s *Server) handleWorkflowCreate(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	name := r.FormValue("name")
+	if name == "" {
+		http.Error(w, "name is required", http.StatusBadRequest)
+		return
+	}
+
+	tc := config.ToolConfig{
+		Type:        "workflow",
+		Description: r.FormValue("description"),
+	}
+
+	if err := SaveTool(s.cfgPath, s.toolsDir, name, tc); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.cfg.Tools[name] = tc
+
+	http.Redirect(w, r, "/workflows/"+name, http.StatusFound)
+}
+
+func (s *Server) handleWorkflowsList(w http.ResponseWriter, r *http.Request) {
+	type wfItem struct {
+		Name        string
+		Description string
+		StepCount   int
+	}
+	var workflows []wfItem
+	for name, tc := range s.cfg.Tools {
+		if tc.Type == "workflow" {
+			workflows = append(workflows, wfItem{
+				Name:        name,
+				Description: tc.Description,
+				StepCount:   len(tc.Steps),
+			})
+		}
+	}
+	sort.Slice(workflows, func(i, j int) bool {
+		return workflows[i].Name < workflows[j].Name
+	})
+
+	s.render(w, "workflows.html", map[string]any{
+		"Title":     "Workflows",
+		"Nav":       "workflows",
+		"Workflows": workflows,
+	})
+}
 
 func (s *Server) handleWorkflowEdit(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
@@ -35,7 +96,7 @@ func (s *Server) handleWorkflowEdit(w http.ResponseWriter, r *http.Request) {
 
 	s.render(w, "workflow_edit.html", map[string]any{
 		"Title":          name,
-		"Nav":            "tools",
+		"Nav":            "workflows",
 		"ActiveTool":     name,
 		"Name":           name,
 		"Description":    tc.Description,
@@ -99,7 +160,9 @@ func (s *Server) handleWorkflowSave(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	tc.Description = r.FormValue("description")
 	tc.Steps = steps
+
 	if err := SaveTool(s.cfgPath, s.toolsDir, name, tc); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -107,6 +170,60 @@ func (s *Server) handleWorkflowSave(w http.ResponseWriter, r *http.Request) {
 	s.cfg.Tools[name] = tc
 
 	http.Redirect(w, r, "/workflows/"+name, http.StatusFound)
+}
+
+func (s *Server) handleWorkflowRename(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	tc, ok := s.cfg.Tools[name]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	if r.Form.Has("description") {
+		tc.Description = r.FormValue("description")
+	}
+
+	newName := strings.TrimSpace(r.FormValue("rename"))
+	if newName == "" {
+		newName = name
+	}
+
+	if newName != name {
+		if err := DeleteTool(s.cfgPath, s.toolsDir, name); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		delete(s.cfg.Tools, name)
+	}
+
+	if err := SaveTool(s.cfgPath, s.toolsDir, newName, tc); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.cfg.Tools[newName] = tc
+
+	w.Header().Set("HX-Redirect", "/workflows/"+newName)
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handleWorkflowDelete(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	if err := DeleteTool(s.cfgPath, s.toolsDir, name); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	delete(s.cfg.Tools, name)
+
+	w.Header().Set("HX-Redirect", "/workflows")
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) {

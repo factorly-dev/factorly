@@ -2,14 +2,39 @@
 
 <div class="flex items-center justify-between mb-6">
   <div class="flex items-center gap-3">
-    <h1 class="text-2xl font-bold font-mono">{{.Tool.Name}}</h1>
-    {{if eq .Tool.Type "cli"}}
-    <span class="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 font-medium">CLI</span>
-    {{else if eq .Tool.Type "rest"}}
-    <span class="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 font-medium">REST</span>
-    {{else if eq .Tool.Type "mcp"}}
-    <span class="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 font-medium">MCP</span>
-    {{end}}
+    <!-- Static display -->
+    <div id="tool-header-static">
+      <div class="flex items-center gap-3">
+        <h1 class="text-2xl font-bold font-mono">{{.Tool.Name}}</h1>
+        {{if eq .Tool.Type "cli"}}
+        <span class="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 font-medium">CLI</span>
+        {{else if eq .Tool.Type "rest"}}
+        <span class="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 font-medium">REST</span>
+        {{else if eq .Tool.Type "mcp"}}
+        <span class="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 font-medium">MCP</span>
+        {{end}}
+        <button type="button" onclick="document.getElementById('tool-header-static').classList.add('hidden');document.getElementById('tool-header-edit').classList.remove('hidden');"
+                class="text-gray-400 hover:text-indigo-600 ml-1" title="Edit name & description">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+        </button>
+      </div>
+      {{if .Tool.Description}}<p class="text-sm text-gray-400 mt-1">{{.Tool.Description}}</p>{{end}}
+    </div>
+    <!-- Edit form (hidden by default) -->
+    <form id="tool-header-edit" class="hidden"
+          hx-post="/tools/{{.Tool.Name}}/rename" hx-target="#tool-header-area" hx-swap="outerHTML">
+      <div class="space-y-2">
+        <input type="text" name="rename" value="{{.Tool.Name}}"
+               class="w-full px-2 py-1 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+        <input type="text" name="description" value="{{.Tool.Description}}" placeholder="Description"
+               class="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-indigo-200">
+        <div class="flex items-center gap-2">
+          <button type="submit" class="px-2.5 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700">Save</button>
+          <button type="button" onclick="document.getElementById('tool-header-edit').classList.add('hidden');document.getElementById('tool-header-static').classList.remove('hidden');"
+                  class="px-2.5 py-1 text-gray-500 text-xs hover:text-gray-700">Cancel</button>
+        </div>
+      </div>
+    </form>
   </div>
   <button hx-delete="/tools/{{.Tool.Name}}"
           hx-confirm="Delete tool '{{.Tool.Name}}'?"
@@ -56,11 +81,7 @@
           <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Configuration</span>
         </div>
         <div class="p-4 space-y-3">
-          <div>
-            <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Description</label>
-            <input type="text" name="description" value="{{.Tool.Description}}"
-                   class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-indigo-200">
-          </div>
+          <input type="hidden" name="description" value="{{.Tool.Description}}">
 
           {{if eq .Tool.Type "cli"}}
           <div>

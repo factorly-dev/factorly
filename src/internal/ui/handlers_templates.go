@@ -16,7 +16,7 @@ import (
 func (s *Server) handleTemplatesList(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "templates.html", map[string]any{
 		"Title":     "Templates",
-		"Nav":       "templates",
+		"Nav":       "tools",
 		"Templates": templates.All(),
 	})
 }
@@ -31,7 +31,7 @@ func (s *Server) handleTemplateDetail(w http.ResponseWriter, r *http.Request) {
 
 	s.render(w, "template_detail.html", map[string]any{
 		"Title":     tmpl.DisplayName,
-		"Nav":       "templates",
+		"Nav":       "tools",
 		"Template":  tmpl,
 		"ToolNames": tmpl.ToolNames(),
 		"YAML":      tmpl.YAML,

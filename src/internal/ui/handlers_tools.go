@@ -28,6 +28,9 @@ type toolListItem struct {
 func (s *Server) handleToolsList(w http.ResponseWriter, r *http.Request) {
 	var tools []toolListItem
 	for name, tc := range s.cfg.Tools {
+		if tc.Type == "workflow" {
+			continue
+		}
 		tools = append(tools, toolListItem{
 			Name:        name,
 			Type:        tc.Type,
@@ -543,6 +546,49 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `<span class="text-green-600 text-xs font-medium">✓ Saved</span>`)
 }
 
+func (s *Server) handleToolRename(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	tc, ok := s.cfg.Tools[name]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Update description
+	if desc := r.FormValue("description"); desc != "" || r.Form.Has("description") {
+		tc.Description = r.FormValue("description")
+	}
+
+	// Handle rename
+	newName := strings.TrimSpace(r.FormValue("rename"))
+	if newName == "" {
+		newName = name
+	}
+
+	if newName != name {
+		if err := DeleteTool(s.cfgPath, s.toolsDir, name); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		delete(s.cfg.Tools, name)
+	}
+
+	if err := SaveTool(s.cfgPath, s.toolsDir, newName, tc); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.cfg.Tools[newName] = tc
+
+	// Redirect to the (possibly new) tool page
+	w.Header().Set("HX-Redirect", "/tools/"+newName)
+	w.WriteHeader(http.StatusOK)
+}
+
 func (s *Server) handleToolDelete(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 
@@ -612,10 +658,18 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 		return
 	}
 
-	// Inject sidebar tools for tools-related pages
-	if m, ok := data.(map[string]any); ok && m["Nav"] == "tools" {
-		if _, hasSidebar := m["SidebarTools"]; !hasSidebar {
-			m["SidebarTools"] = s.getSidebarTools()
+	if m, ok := data.(map[string]any); ok {
+		// Inject sidebar tools for tools-related pages
+		if m["Nav"] == "tools" {
+			if _, has := m["SidebarTools"]; !has {
+				m["SidebarTools"] = s.getSidebarTools()
+			}
+		}
+		// Inject sidebar workflows for workflow pages
+		if m["Nav"] == "workflows" {
+			if _, has := m["SidebarWorkflows"]; !has {
+				m["SidebarWorkflows"] = s.getSidebarWorkflows()
+			}
 		}
 	}
 
@@ -628,6 +682,9 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 func (s *Server) getSidebarTools() []toolListItem {
 	var tools []toolListItem
 	for name, tc := range s.cfg.Tools {
+		if tc.Type == "workflow" {
+			continue
+		}
 		tools = append(tools, toolListItem{
 			Name: name,
 			Type: tc.Type,
@@ -635,4 +692,19 @@ func (s *Server) getSidebarTools() []toolListItem {
 	}
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
 	return tools
+}
+
+func (s *Server) getSidebarWorkflows() []toolListItem {
+	var workflows []toolListItem
+	for name, tc := range s.cfg.Tools {
+		if tc.Type != "workflow" {
+			continue
+		}
+		workflows = append(workflows, toolListItem{
+			Name: name,
+			Type: tc.Type,
+		})
+	}
+	sort.Slice(workflows, func(i, j int) bool { return workflows[i].Name < workflows[j].Name })
+	return workflows
 }

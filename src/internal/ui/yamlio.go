@@ -14,20 +14,24 @@ import (
 )
 
 // SaveTool writes a tool config to disk. If toolsDir is set, writes as
-// individual file. Otherwise appends/updates in the main config file.
+// individual file and removes any inline definition to avoid duplicates.
+// Otherwise appends/updates in the main config file.
 func SaveTool(cfgPath, toolsDir, name string, tc config.ToolConfig) error {
 	if toolsDir != "" {
+		// Remove from inline config to prevent duplicate errors
+		_ = deleteToolFromConfig(cfgPath, name)
 		return saveToolToDir(toolsDir, name, tc)
 	}
 	return saveToolToConfig(cfgPath, name, tc)
 }
 
-// DeleteTool removes a tool from disk.
+// DeleteTool removes a tool from disk (both inline and dir file).
 func DeleteTool(cfgPath, toolsDir, name string) error {
+	_ = deleteToolFromConfig(cfgPath, name)
 	if toolsDir != "" {
 		return deleteToolFromDir(toolsDir, name)
 	}
-	return deleteToolFromConfig(cfgPath, name)
+	return nil
 }
 
 func saveToolToDir(toolsDir, name string, tc config.ToolConfig) error {
@@ -61,32 +65,59 @@ func saveToolToConfig(cfgPath, name string, tc config.ToolConfig) error {
 		return err
 	}
 
-	// Parse into a generic map to preserve structure
-	var raw map[string]any
-	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("parsing config: %w", err)
-	}
-
-	// Ensure tools map exists
-	tools, ok := raw["tools"].(map[string]any)
-	if !ok {
-		tools = make(map[string]any)
-		raw["tools"] = tools
-	}
-
-	// Marshal the tool config to generic form and insert
+	// Marshal the tool config to a yaml.Node to preserve field order
 	toolBytes, err := yaml.Marshal(tc)
 	if err != nil {
 		return err
 	}
-	var toolMap any
-	if err := yaml.Unmarshal(toolBytes, &toolMap); err != nil {
+	var toolNode yaml.Node
+	if err := yaml.Unmarshal(toolBytes, &toolNode); err != nil {
 		return err
 	}
-	tools[name] = toolMap
 
-	// Write back
-	out, err := yaml.Marshal(raw)
+	// Re-read the full file as a yaml.Node tree to preserve ordering
+	var docNode yaml.Node
+	if err := yaml.Unmarshal(data, &docNode); err != nil {
+		return fmt.Errorf("parsing config as node: %w", err)
+	}
+
+	// Find or create the tools mapping node
+	root := docNode.Content[0] // document root mapping
+	var toolsNode *yaml.Node
+	for i := 0; i < len(root.Content)-1; i += 2 {
+		if root.Content[i].Value == "tools" {
+			toolsNode = root.Content[i+1]
+			break
+		}
+	}
+	if toolsNode == nil {
+		root.Content = append(root.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "tools"},
+			&yaml.Node{Kind: yaml.MappingNode},
+		)
+		toolsNode = root.Content[len(root.Content)-1]
+	}
+
+	// Ensure block style for readable output
+	toolsNode.Style = 0
+
+	// Replace or append the tool entry
+	found := false
+	for i := 0; i < len(toolsNode.Content)-1; i += 2 {
+		if toolsNode.Content[i].Value == name {
+			toolsNode.Content[i+1] = toolNode.Content[0]
+			found = true
+			break
+		}
+	}
+	if !found {
+		toolsNode.Content = append(toolsNode.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: name},
+			toolNode.Content[0],
+		)
+	}
+
+	out, err := yaml.Marshal(&docNode)
 	if err != nil {
 		return err
 	}

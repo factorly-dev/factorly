@@ -57,6 +57,8 @@ func New(opts Options) (*Server, error) {
 		"templates/tool_new.html",
 		"templates/templates.html",
 		"templates/template_detail.html",
+		"templates/workflows.html",
+		"templates/workflow_new.html",
 		"templates/workflow_edit.html",
 		"templates/activity.html",
 		"templates/history.html",
@@ -109,6 +111,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /tools/{name}", s.handleToolEdit)
 	s.mux.HandleFunc("POST /tools/_new", s.handleToolCreate)
 	s.mux.HandleFunc("POST /tools/{name}", s.handleToolSave)
+	s.mux.HandleFunc("POST /tools/{name}/rename", s.handleToolRename)
 	s.mux.HandleFunc("POST /tools/{name}/try", s.handleToolTry)
 	s.mux.HandleFunc("DELETE /tools/{name}", s.handleToolDelete)
 
@@ -118,9 +121,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /templates/{name}/install", s.handleTemplateInstall)
 
 	// Workflows
+	s.mux.HandleFunc("GET /workflows", s.handleWorkflowsList)
+	s.mux.HandleFunc("GET /workflows/new", s.handleWorkflowNew)
+	s.mux.HandleFunc("POST /workflows/_new", s.handleWorkflowCreate)
 	s.mux.HandleFunc("GET /workflows/{name}", s.handleWorkflowEdit)
+	s.mux.HandleFunc("POST /workflows/{name}/rename", s.handleWorkflowRename)
 	s.mux.HandleFunc("POST /workflows/{name}/save", s.handleWorkflowSave)
 	s.mux.HandleFunc("POST /workflows/{name}/run", s.handleWorkflowRun)
+	s.mux.HandleFunc("DELETE /workflows/{name}", s.handleWorkflowDelete)
 
 	// Activity (live feed)
 	s.mux.HandleFunc("GET /activity", s.handleActivity)
@@ -189,6 +197,7 @@ func templateFuncs() template.FuncMap {
 				"workflow": `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/></svg>`,
 				"clock":    `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
 				"lock":     `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+				"package":  `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>`,
 			}
 			if svg, ok := icons[name]; ok {
 				return template.HTML(svg)
