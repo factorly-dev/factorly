@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-dev/factorly/internal/output"
 )
 
 type toolListItem struct {
@@ -613,6 +614,14 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 		tc.Auth = nil
 	}
 
+	// Parse output filter
+	fc := parseFilterForm(r)
+	if fc != nil {
+		tc.Filter = fc
+	} else {
+		tc.Filter = nil
+	}
+
 	if err := SaveTool(s.cfgPath, s.toolsDir, name, tc); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -732,6 +741,64 @@ func splitComma(s string) []string {
 		}
 	}
 	return result
+}
+
+func parseFilterForm(r *http.Request) *output.FilterConfig {
+	jsonPath := strings.TrimSpace(r.FormValue("filter_json_path"))
+	keepLines := splitComma(r.FormValue("filter_keep_lines"))
+	stripLines := splitComma(r.FormValue("filter_strip_lines"))
+	headLines := 0
+	tailLines := 0
+	maxLines := 0
+	if v := r.FormValue("filter_head_lines"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			headLines = n
+		}
+	}
+	if v := r.FormValue("filter_tail_lines"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			tailLines = n
+		}
+	}
+	if v := r.FormValue("filter_max_lines"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			maxLines = n
+		}
+	}
+
+	var replaces []output.ReplaceConfig
+	if raw := strings.TrimSpace(r.FormValue("filter_replace")); raw != "" {
+		for _, line := range strings.Split(raw, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			// Split on → (arrow) separator
+			parts := strings.SplitN(line, "→", 2)
+			if len(parts) == 2 {
+				replaces = append(replaces, output.ReplaceConfig{
+					Pattern:     strings.TrimSpace(parts[0]),
+					Replacement: strings.TrimSpace(parts[1]),
+				})
+			}
+		}
+	}
+
+	// Only create filter if at least one field is set
+	if jsonPath == "" && len(keepLines) == 0 && len(stripLines) == 0 &&
+		headLines == 0 && tailLines == 0 && maxLines == 0 && len(replaces) == 0 {
+		return nil
+	}
+
+	return &output.FilterConfig{
+		JSONPath:   jsonPath,
+		HeadLines:  headLines,
+		TailLines:  tailLines,
+		MaxLines:   maxLines,
+		KeepLines:  keepLines,
+		StripLines: stripLines,
+		Replace:    replaces,
+	}
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
