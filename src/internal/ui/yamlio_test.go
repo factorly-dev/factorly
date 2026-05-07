@@ -145,3 +145,89 @@ func TestSaveToolToDir_NoDuplicate(t *testing.T) {
 		t.Fatalf("expected tool file in dir: %v", err)
 	}
 }
+
+func TestSaveToolToDir_MultiToolFile(t *testing.T) {
+	toolsDir := t.TempDir()
+
+	// Write a multi-tool file
+	multiFile := filepath.Join(toolsDir, "git.yaml")
+	initial := []byte(`git.log:
+    type: cli
+    command: git
+    args:
+        - log
+git.status:
+    type: cli
+    command: git
+    args:
+        - status
+`)
+	if err := os.WriteFile(multiFile, initial, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Update git.log — should update in-place in git.yaml, not create git.log.yaml
+	tc := config.ToolConfig{
+		Type:    "cli",
+		Command: "git",
+		Args:    []string{"log", "--oneline"},
+	}
+	if err := saveToolToDir(toolsDir, "git.log", tc); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should NOT have created a new file
+	if _, err := os.Stat(filepath.Join(toolsDir, "git.log.yaml")); err == nil {
+		t.Fatal("should not have created git.log.yaml — tool exists in git.yaml")
+	}
+
+	// Verify git.yaml still has both tools
+	data, err := os.ReadFile(multiFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "git.log") {
+		t.Fatal("git.log should still be in git.yaml")
+	}
+	if !strings.Contains(content, "git.status") {
+		t.Fatal("git.status should still be in git.yaml")
+	}
+	if !strings.Contains(content, "--oneline") {
+		t.Fatal("git.log should have been updated with --oneline")
+	}
+}
+
+func TestDeleteToolFromDir_MultiToolFile(t *testing.T) {
+	toolsDir := t.TempDir()
+
+	// Write a multi-tool file
+	multiFile := filepath.Join(toolsDir, "git.yaml")
+	initial := []byte(`git.log:
+    type: cli
+    command: git
+git.status:
+    type: cli
+    command: git
+`)
+	if err := os.WriteFile(multiFile, initial, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete git.log — should remove from file, keep git.status
+	if err := deleteToolFromDir(toolsDir, "git.log"); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(multiFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if strings.Contains(content, "git.log") {
+		t.Fatal("git.log should have been removed")
+	}
+	if !strings.Contains(content, "git.status") {
+		t.Fatal("git.status should still be present")
+	}
+}

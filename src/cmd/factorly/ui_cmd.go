@@ -84,7 +84,7 @@ func runUI(cmd *cobra.Command, args []string) error {
 	srv, err := ui.New(ui.Options{
 		Config:       cfg,
 		CfgPath:      configPath,
-		ToolsDir:     cfg.ToolsDir,
+		ToolsDir:     resolveToolsDir(configPath, cfg.ToolsDir),
 		Registry:     reg,
 		Proxy:        p,
 		Vault:        vaultBackend,
@@ -204,6 +204,22 @@ func tokenValidation(next http.Handler, token string) http.Handler {
 
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	})
+}
+
+func resolveToolsDir(cfgPath, toolsDir string) string {
+	configDir := filepath.Dir(cfgPath)
+	if toolsDir != "" {
+		if filepath.IsAbs(toolsDir) {
+			return toolsDir
+		}
+		return filepath.Join(configDir, toolsDir)
+	}
+	// Auto-discover .factorly/tools/ convention
+	candidate := filepath.Join(configDir, "tools")
+	if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+		return candidate
+	}
+	return ""
 }
 
 func generateNonce() string {

@@ -38,6 +38,14 @@ func saveToolToDir(toolsDir, name string, tc config.ToolConfig) error {
 	if err := os.MkdirAll(toolsDir, 0o755); err != nil {
 		return err
 	}
+
+	// Find if tool exists in an existing file and update in-place
+	existingFile := findToolInDir(toolsDir, name)
+	if existingFile != "" {
+		return updateToolInFile(existingFile, name, tc)
+	}
+
+	// Otherwise write a new file
 	filename := toolFilename(name)
 	path := filepath.Join(toolsDir, filename)
 
@@ -49,13 +57,123 @@ func saveToolToDir(toolsDir, name string, tc config.ToolConfig) error {
 	return os.WriteFile(path, out, 0o644)
 }
 
-func deleteToolFromDir(toolsDir, name string) error {
-	filename := toolFilename(name)
-	path := filepath.Join(toolsDir, filename)
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+// findToolInDir returns the path of the file containing the named tool, or "".
+func findToolInDir(toolsDir, name string) string {
+	entries, err := os.ReadDir(toolsDir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := filepath.Ext(entry.Name())
+		if ext != ".yaml" && ext != ".yml" {
+			continue
+		}
+		path := filepath.Join(toolsDir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var tools map[string]any
+		if err := yaml.Unmarshal(data, &tools); err != nil {
+			continue
+		}
+		if _, exists := tools[name]; exists {
+			return path
+		}
+	}
+	return ""
+}
+
+// updateToolInFile updates a single tool within a multi-tool YAML file,
+// preserving other tools and field order.
+func updateToolInFile(path, name string, tc config.ToolConfig) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
 		return err
 	}
-	return nil
+
+	// Marshal new tool config as a node
+	toolBytes, err := yaml.Marshal(tc)
+	if err != nil {
+		return err
+	}
+	var toolNode yaml.Node
+	if err := yaml.Unmarshal(toolBytes, &toolNode); err != nil {
+		return err
+	}
+
+	// Parse existing file as node tree
+	var docNode yaml.Node
+	if err := yaml.Unmarshal(data, &docNode); err != nil {
+		return fmt.Errorf("parsing %s: %w", path, err)
+	}
+
+	root := docNode.Content[0] // top-level mapping
+	for i := 0; i < len(root.Content)-1; i += 2 {
+		if root.Content[i].Value == name {
+			root.Content[i+1] = toolNode.Content[0]
+			break
+		}
+	}
+
+	out, err := yaml.Marshal(&docNode)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o644)
+}
+
+func deleteToolFromDir(toolsDir, name string) error {
+	// First try the dedicated file
+	filename := toolFilename(name)
+	path := filepath.Join(toolsDir, filename)
+	if err := os.Remove(path); err == nil {
+		return nil
+	}
+
+	// Otherwise find and remove from a multi-tool file
+	existingFile := findToolInDir(toolsDir, name)
+	if existingFile == "" {
+		return nil
+	}
+	return removeToolFromFile(existingFile, name)
+}
+
+// removeToolFromFile removes a single tool from a multi-tool YAML file.
+// If the file becomes empty, it is deleted.
+func removeToolFromFile(path, name string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	var docNode yaml.Node
+	if err := yaml.Unmarshal(data, &docNode); err != nil {
+		return err
+	}
+
+	root := docNode.Content[0]
+	var newContent []*yaml.Node
+	for i := 0; i < len(root.Content)-1; i += 2 {
+		if root.Content[i].Value == name {
+			continue // skip this tool
+		}
+		newContent = append(newContent, root.Content[i], root.Content[i+1])
+	}
+
+	if len(newContent) == 0 {
+		return os.Remove(path)
+	}
+
+	root.Content = newContent
+	out, err := yaml.Marshal(&docNode)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o644)
 }
 
 func saveToolToConfig(cfgPath, name string, tc config.ToolConfig) error {

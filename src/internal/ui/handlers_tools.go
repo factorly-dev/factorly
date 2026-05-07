@@ -349,9 +349,25 @@ func (s *Server) handleToolFormPartial(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		</script>`)
-	case "workflow":
-		fmt.Fprint(w, `<div class="pt-4 border-t border-gray-100">
-			<p class="text-sm text-gray-500">Workflow steps can be configured after creation.</p>
+	case "mcp":
+		fmt.Fprint(w, `<div class="space-y-4 pt-4 border-t border-gray-100">
+			<div>
+				<label class="block text-sm font-medium text-gray-700 mb-1">Command</label>
+				<input type="text" name="command" placeholder="npx -y @modelcontextprotocol/server-github"
+					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+			</div>
+			<div>
+				<label class="block text-sm font-medium text-gray-700 mb-1">Args</label>
+				<input type="text" name="args" placeholder=""
+					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+				<p class="text-xs text-gray-400 mt-1">Space-separated arguments for the MCP server command.</p>
+			</div>
+			<div>
+				<label class="block text-sm font-medium text-gray-700 mb-1">URL (HTTP transport)</label>
+				<input type="text" name="url" placeholder="http://localhost:8080/mcp (optional, for HTTP transport)"
+					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+				<p class="text-xs text-gray-400 mt-1">Leave empty for stdio transport (command-based).</p>
+			</div>
 		</div>`)
 	default: // cli
 		fmt.Fprint(w, `<div class="space-y-4 pt-4 border-t border-gray-100">
@@ -404,6 +420,12 @@ func (s *Server) handleToolCreate(w http.ResponseWriter, r *http.Request) {
 		tc.BaseURL = r.FormValue("base_url")
 		tc.Method = r.FormValue("method")
 		tc.Path = r.FormValue("path")
+	case "mcp":
+		tc.Command = r.FormValue("command")
+		if args := r.FormValue("args"); args != "" {
+			tc.Args = splitArgs(args)
+		}
+		tc.URL = r.FormValue("url")
 	}
 
 	// Parse auth (for REST tools)

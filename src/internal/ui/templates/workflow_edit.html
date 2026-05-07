@@ -72,7 +72,11 @@
               {{if $step.If}}<span class="text-[9px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded shrink-0">if</span>{{end}}
               {{if $step.Require}}<span class="text-[9px] px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded shrink-0">req</span>{{end}}
 
-              <button type="button" onclick="event.preventDefault(); removeStep(this)" class="text-gray-300 hover:text-red-500 text-xs shrink-0 ml-1">✕</button>
+              <span class="flex gap-0.5 shrink-0 ml-1">
+                <button type="button" onclick="event.preventDefault(); moveStep(this, -1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move up">▲</button>
+                <button type="button" onclick="event.preventDefault(); moveStep(this, 1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move down">▼</button>
+              </span>
+              <button type="button" onclick="event.preventDefault(); removeStep(this)" class="text-gray-300 hover:text-red-500 text-xs shrink-0">✕</button>
             </summary>
 
             <div class="px-4 pb-4 pt-1 pl-11 space-y-3 bg-gray-50/50">
@@ -121,7 +125,7 @@
                   </div>
                   {{end}}
                 </div>
-                <button type="button" onclick="addParam(this, {{$i}})" class="mt-1 text-[10px] text-indigo-500 hover:text-indigo-700">+ param</button>
+                <button type="button" onclick="addParam(this)" class="mt-1 text-[10px] text-indigo-500 hover:text-indigo-700">+ param</button>
               </div>
             </div>
           </details>
@@ -203,7 +207,11 @@ function addStep() {
     <summary class="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-gray-50 transition-colors">
       <span class="step-num text-[10px] font-bold text-gray-400 w-4 text-right shrink-0">${idx + 1}</span>
       <span class="text-sm font-mono text-gray-400 flex-1">new step</span>
-      <button type="button" onclick="event.preventDefault(); removeStep(this)" class="text-gray-300 hover:text-red-500 text-xs shrink-0 ml-1">✕</button>
+      <span class="flex gap-0.5 shrink-0 ml-1">
+        <button type="button" onclick="event.preventDefault(); moveStep(this, -1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move up">▲</button>
+        <button type="button" onclick="event.preventDefault(); moveStep(this, 1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move down">▼</button>
+      </span>
+      <button type="button" onclick="event.preventDefault(); removeStep(this)" class="text-gray-300 hover:text-red-500 text-xs shrink-0">✕</button>
     </summary>
     <div class="px-4 pb-4 pt-1 pl-11 space-y-3 bg-gray-50/50">
       <div>
@@ -225,14 +233,16 @@ function addStep() {
       <div>
         <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Params</label>
         <div class="space-y-1 step-params" data-index="${idx}"></div>
-        <button type="button" onclick="addParam(this, ${idx})" class="mt-1 text-[10px] text-indigo-500 hover:text-indigo-700">+ param</button>
+        <button type="button" onclick="addParam(this)" class="mt-1 text-[10px] text-indigo-500 hover:text-indigo-700">+ param</button>
       </div>
     </div>
   `;
   list.appendChild(details);
 }
 
-function addParam(btn, stepIdx) {
+function addParam(btn) {
+  const stepRow = btn.closest('.step-row');
+  const stepIdx = stepRow.dataset.index;
   const container = btn.previousElementSibling;
   const row = document.createElement('div');
   row.className = 'param-row flex gap-1';
@@ -244,10 +254,9 @@ function addParam(btn, stepIdx) {
   container.appendChild(row);
 }
 
-function removeStep(btn) {
-  const row = btn.closest('.step-row');
-  row.remove();
-  const rows = document.querySelectorAll('.step-row');
+function reindexSteps() {
+  const list = document.getElementById('steps-list');
+  const rows = list.querySelectorAll('.step-row');
   rows.forEach((r, i) => {
     r.dataset.index = i;
     const num = r.querySelector('.step-num');
@@ -258,8 +267,96 @@ function removeStep(btn) {
     r.querySelectorAll('[name^="step_require_"]').forEach(el => el.name = 'step_require_' + i);
     r.querySelectorAll('[name^="step_param_key_"]').forEach(el => el.name = 'step_param_key_' + i + '[]');
     r.querySelectorAll('[name^="step_param_val_"]').forEach(el => el.name = 'step_param_val_' + i + '[]');
+    const params = r.querySelector('.step-params');
+    if (params) params.dataset.index = i;
   });
-  if (rows.length === 0) {
+}
+
+function moveStep(btn, direction) {
+  const row = btn.closest('.step-row');
+  const list = document.getElementById('steps-list');
+  const rows = Array.from(list.querySelectorAll('.step-row'));
+  const idx = rows.indexOf(row);
+  const targetIdx = idx + direction;
+  if (targetIdx < 0 || targetIdx >= rows.length) return;
+
+  const other = rows[targetIdx];
+
+  // Swap form field values between the two rows instead of moving DOM nodes
+  swapStepValues(row, other);
+
+  // Update summary labels to reflect new values
+  updateStepSummary(row);
+  updateStepSummary(other);
+}
+
+function swapStepValues(rowA, rowB) {
+  // Swap select values
+  const selA = rowA.querySelector('.step-tool');
+  const selB = rowB.querySelector('.step-tool');
+  if (selA && selB) {
+    const tmp = selA.value;
+    selA.value = selB.value;
+    selB.value = tmp;
+  }
+
+  // Swap text inputs by class/name prefix
+  const fields = ['step-store', 'step_if_', 'step_require_'];
+  const inputsA = rowA.querySelectorAll('input[type="text"]');
+  const inputsB = rowB.querySelectorAll('input[type="text"]');
+
+  // Match by name prefix pattern (skip params — handle separately)
+  const coreInputsA = Array.from(inputsA).filter(el => !el.name.includes('param'));
+  const coreInputsB = Array.from(inputsB).filter(el => !el.name.includes('param'));
+
+  for (let i = 0; i < Math.min(coreInputsA.length, coreInputsB.length); i++) {
+    const tmp = coreInputsA[i].value;
+    coreInputsA[i].value = coreInputsB[i].value;
+    coreInputsB[i].value = tmp;
+  }
+
+  // Swap params: replace innerHTML of step-params containers
+  const paramsA = rowA.querySelector('.step-params');
+  const paramsB = rowB.querySelector('.step-params');
+  if (paramsA && paramsB) {
+    const tmpHTML = paramsA.innerHTML;
+    paramsA.innerHTML = paramsB.innerHTML;
+    paramsB.innerHTML = tmpHTML;
+  }
+
+  // Reindex to fix param field names
+  reindexSteps();
+}
+
+function updateStepSummary(row) {
+  const sel = row.querySelector('.step-tool');
+  const summaryTool = row.querySelector('summary .font-mono');
+  if (sel && summaryTool) {
+    summaryTool.textContent = sel.value || 'new step';
+  }
+  // Update store indicator
+  const storeInput = row.querySelector('input[name^="step_store_"]');
+  const storeSummary = row.querySelectorAll('summary .font-mono');
+  // Find the store span (indigo-colored) in summary
+  const storeSpan = row.querySelector('summary .text-indigo-600');
+  const arrowSpan = storeSpan ? storeSpan.previousElementSibling : null;
+  if (storeInput && storeSpan) {
+    if (storeInput.value) {
+      storeSpan.textContent = storeInput.value;
+      storeSpan.classList.remove('hidden');
+      if (arrowSpan) arrowSpan.classList.remove('hidden');
+    } else {
+      storeSpan.classList.add('hidden');
+      if (arrowSpan) arrowSpan.classList.add('hidden');
+    }
+  }
+}
+
+function removeStep(btn) {
+  const row = btn.closest('.step-row');
+  row.remove();
+  reindexSteps();
+  if (document.querySelectorAll('.step-row').length === 0) {
     document.getElementById('steps-list').innerHTML = '<div class="px-4 py-8 text-center text-gray-400 text-sm" id="empty-state">No steps. Click "+ Add" to start.</div>';
   }
 }
