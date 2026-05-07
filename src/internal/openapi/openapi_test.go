@@ -264,6 +264,29 @@ func TestGenerateInvalidSpec(t *testing.T) {
 	}
 }
 
+func TestBuildToolName_SanitizesSlashes(t *testing.T) {
+	tests := []struct {
+		prefix string
+		method string
+		path   string
+		op     map[string]any
+		want   string
+	}{
+		{"github", "GET", "/repos", map[string]any{"operationId": "repos/list-for-user"}, "github.repos.list-for-user"},
+		{"github", "GET", "/actions/runs", map[string]any{"operationId": "actions/list-workflow-runs"}, "github.actions.list-workflow-runs"},
+		{"api", "POST", "/users", map[string]any{"operationId": "createUser"}, "api.createUser"},
+		{"api", "GET", "/pets/{petId}", map[string]any{}, "api.get_pets_petid"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			got := buildToolName(tt.prefix, tt.method, tt.path, tt.op)
+			if got != tt.want {
+				t.Errorf("buildToolName(%q, %q, %q, ...) = %q, want %q", tt.prefix, tt.method, tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSlugify(t *testing.T) {
 	tests := []struct {
 		input    string

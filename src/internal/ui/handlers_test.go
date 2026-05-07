@@ -799,6 +799,71 @@ func TestHandleAuthCreate_MissingName(t *testing.T) {
 	}
 }
 
+// --- Import handler tests ---
+
+func TestHandleImportPreview_EmptyURL(t *testing.T) {
+	srv, _ := testServer(t, nil)
+
+	form := url.Values{"spec_url": {""}, "prefix": {""}}
+	req := httptest.NewRequest("POST", "/tools/import/preview", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Please provide") {
+		t.Error("expected error message for empty URL")
+	}
+}
+
+func TestHandleImportPreview_InvalidURL(t *testing.T) {
+	srv, _ := testServer(t, nil)
+
+	form := url.Values{"spec_url": {"/nonexistent/path/spec.yaml"}, "prefix": {""}}
+	req := httptest.NewRequest("POST", "/tools/import/preview", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Error:") {
+		t.Error("expected error message for invalid path")
+	}
+}
+
+func TestHandleImportConfirm_NoSelection(t *testing.T) {
+	srv, _ := testServer(t, nil)
+
+	form := url.Values{"spec_url": {"http://example.com/spec.json"}, "prefix": {"test"}}
+	req := httptest.NewRequest("POST", "/tools/import/confirm", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestHandleImportPage(t *testing.T) {
+	srv, _ := testServer(t, nil)
+
+	req := httptest.NewRequest("GET", "/tools/import", nil)
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "OpenAPI") {
+		t.Error("expected OpenAPI mention on import page")
+	}
+}
+
 // --- Template rendering tests ---
 
 func TestAllTemplatesRender(t *testing.T) {

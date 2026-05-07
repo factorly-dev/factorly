@@ -217,7 +217,10 @@ func extractParameters(op map[string]any) []config.ParamConfig {
 
 func buildToolName(prefix, method, path string, op map[string]any) string {
 	if opID, ok := op["operationId"].(string); ok && opID != "" {
-		return prefix + "." + opID
+		// Sanitize: replace / and other non-safe chars with . for dot-separated naming
+		safe := strings.ReplaceAll(opID, "/", ".")
+		safe = strings.ReplaceAll(safe, " ", "_")
+		return prefix + "." + safe
 	}
 	// Fallback: method_path_slug
 	slug := slugify(path)

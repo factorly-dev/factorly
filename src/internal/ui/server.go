@@ -55,6 +55,7 @@ func New(opts Options) (*Server, error) {
 		"templates/tools.html",
 		"templates/tool_edit.html",
 		"templates/tool_new.html",
+		"templates/import.html",
 		"templates/templates.html",
 		"templates/template_detail.html",
 		"templates/workflows.html",
@@ -114,6 +115,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /tools/{name}/rename", s.handleToolRename)
 	s.mux.HandleFunc("POST /tools/{name}/try", s.handleToolTry)
 	s.mux.HandleFunc("DELETE /tools/{name}", s.handleToolDelete)
+
+	// Import
+	s.mux.HandleFunc("GET /tools/import", s.handleImport)
+	s.mux.HandleFunc("POST /tools/import/preview", s.handleImportPreview)
+	s.mux.HandleFunc("POST /tools/import/confirm", s.handleImportConfirm)
 
 	// Templates
 	s.mux.HandleFunc("GET /templates", s.handleTemplatesList)

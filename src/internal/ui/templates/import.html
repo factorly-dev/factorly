@@ -1,0 +1,27 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-6">Import from OpenAPI</h1>
+
+<div class="max-w-3xl">
+  <div class="bg-white rounded-lg border border-gray-200 p-5 mb-6">
+    <p class="text-sm text-gray-500 mb-4">Provide an OpenAPI 3.x spec URL or file path to generate REST tool definitions automatically.</p>
+    <form hx-post="/tools/import/preview" hx-target="#import-preview" hx-swap="innerHTML" class="space-y-3">
+      <div>
+        <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Spec URL or Path</label>
+        <input type="text" name="spec_url" required placeholder="https://api.example.com/openapi.json"
+               class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+      </div>
+      <div>
+        <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Name Prefix (optional)</label>
+        <input type="text" name="prefix" placeholder="auto-detected from spec title"
+               class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+        <p class="text-xs text-gray-400 mt-1">Tools will be named prefix.operation_id (e.g., github.list_repos)</p>
+      </div>
+      <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+        Preview Tools
+      </button>
+    </form>
+  </div>
+
+  <div id="import-preview"></div>
+</div>
+{{end}}
