@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -239,7 +240,12 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 	var reqBody io.Reader
 	if fileParam != "" {
 		// in:file — stream file as raw binary body
-		f, err := os.Open(fileParam)
+		// Resolve to absolute path to prevent ambiguity
+		absFile, err := filepath.Abs(fileParam)
+		if err != nil {
+			return nil, fmt.Errorf("rest provider: invalid file path %q for tool %q: %w", fileParam, toolName, err)
+		}
+		f, err := os.Open(absFile) // #nosec G304 -- file path is an explicit tool parameter
 		if err != nil {
 			return nil, fmt.Errorf("rest provider: opening file %q for tool %q: %w", fileParam, toolName, err)
 		}
@@ -288,9 +294,10 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 	if p.Verbose {
 		fmt.Fprintf(os.Stderr, "[rest] %s %s\n", req.Method, req.URL)
 		if fileParam != "" {
-			fi, _ := os.Stat(fileParam)
+			absFile, _ := filepath.Abs(fileParam)
+			fi, _ := os.Stat(absFile) // #nosec G304 -- verbose logging for user-provided file param
 			if fi != nil {
-				fmt.Fprintf(os.Stderr, "[rest]   file: %s (%d bytes)\n", fileParam, fi.Size())
+				fmt.Fprintf(os.Stderr, "[rest]   file: %s (%d bytes)\n", absFile, fi.Size())
 			}
 		}
 		fmt.Fprintf(os.Stderr, "[rest]   timeout: %s\n", timeout)

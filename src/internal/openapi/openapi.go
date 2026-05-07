@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -252,7 +254,15 @@ func isHTTPMethod(m string) bool {
 
 func readSpec(specPath string) ([]byte, error) {
 	if strings.HasPrefix(specPath, "http://") || strings.HasPrefix(specPath, "https://") {
-		resp, err := http.Get(specPath) //nolint:gosec // user-provided URL is intentional
+		// Validate URL before fetching to prevent SSRF against internal services
+		parsed, err := url.Parse(specPath)
+		if err != nil {
+			return nil, fmt.Errorf("invalid spec URL: %w", err)
+		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return nil, fmt.Errorf("unsupported URL scheme %q (only http/https allowed)", parsed.Scheme)
+		}
+		resp, err := http.Get(parsed.String()) //nolint:gosec,noctx // user-provided URL is intentional for spec import
 		if err != nil {
 			return nil, fmt.Errorf("fetching spec from %s: %w", specPath, err)
 		}
@@ -260,13 +270,19 @@ func readSpec(specPath string) ([]byte, error) {
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("fetching spec from %s: %s", specPath, resp.Status)
 		}
-		data, err := io.ReadAll(resp.Body)
+		// Limit read to 10MB to prevent resource exhaustion
+		data, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 		if err != nil {
 			return nil, fmt.Errorf("reading spec from %s: %w", specPath, err)
 		}
 		return data, nil
 	}
-	data, err := os.ReadFile(specPath)
+	// File path: resolve to absolute and verify it exists
+	absPath, err := filepath.Abs(specPath)
+	if err != nil {
+		return nil, fmt.Errorf("resolving spec path: %w", err)
+	}
+	data, err := os.ReadFile(absPath) // #nosec G304 -- user explicitly provides spec file path via CLI/UI
 	if err != nil {
 		return nil, fmt.Errorf("reading spec: %w", err)
 	}

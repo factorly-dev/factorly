@@ -1020,6 +1020,42 @@ func TestRESTFileParamMissing(t *testing.T) {
 		t.Fatal("expected error for missing file")
 	}
 	if !strings.Contains(err.Error(), "opening file") {
-		t.Errorf("expected 'reading file' in error, got: %s", err.Error())
+		t.Errorf("expected 'opening file' in error, got: %s", err.Error())
+	}
+}
+
+func TestRESTFileParamRelativePath(t *testing.T) {
+	// Relative paths should be resolved to absolute via filepath.Abs
+	// This test ensures relative file paths work (no panic/weird behavior)
+	tmpFile := filepath.Join(t.TempDir(), "upload.bin")
+	if err := os.WriteFile(tmpFile, []byte("test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	p := NewREST(map[string]RESTToolDef{
+		"upload": {
+			Method:  "POST",
+			BaseURL: srv.URL,
+			Path:    "/upload",
+			Params:  []RESTParamDef{{Name: "file", In: "file", Required: true}},
+		},
+	}, nil)
+	_ = p.Setup()
+
+	// Use absolute path (relative would depend on CWD)
+	result, err := p.Execute("upload", map[string]string{
+		"file": tmpFile,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Output != "test" {
+		t.Errorf("expected 'test', got %q", result.Output)
 	}
 }

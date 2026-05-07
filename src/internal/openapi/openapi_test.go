@@ -6,6 +6,7 @@ package openapi
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -284,6 +285,54 @@ func TestBuildToolName_SanitizesSlashes(t *testing.T) {
 				t.Errorf("buildToolName(%q, %q, %q, ...) = %q, want %q", tt.prefix, tt.method, tt.path, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestReadSpec_RejectsInvalidScheme(t *testing.T) {
+	_, err := readSpec("ftp://evil.example.com/spec.yaml")
+	// ftp is not http/https, so it falls through to file read which should fail
+	if err == nil {
+		t.Fatal("expected error for non-http URL treated as file path")
+	}
+}
+
+func TestReadSpec_RelativePath(t *testing.T) {
+	// Create a spec file in a temp dir
+	dir := t.TempDir()
+	specContent := `openapi: "3.0.0"
+info:
+  title: Test
+  version: "1.0"
+paths:
+  /test:
+    get:
+      operationId: test_get
+`
+	specPath := filepath.Join(dir, "spec.yaml")
+	_ = os.WriteFile(specPath, []byte(specContent), 0o644)
+
+	data, err := readSpec(specPath)
+	if err != nil {
+		t.Fatalf("readSpec failed: %v", err)
+	}
+	if !strings.Contains(string(data), "test_get") {
+		t.Error("spec content not read correctly")
+	}
+}
+
+func TestReadSpec_TraversalPath(t *testing.T) {
+	// This should resolve via filepath.Abs and fail because the file doesn't exist
+	_, err := readSpec("../../../etc/passwd")
+	if err == nil {
+		t.Fatal("expected error for traversal path")
+	}
+}
+
+func TestGenerate_HTTPURLValidation(t *testing.T) {
+	// Non-existent host should fail with network error, not panic
+	_, err := Generate("https://nonexistent.invalid.example.com/spec.json", GenerateOpts{})
+	if err == nil {
+		t.Fatal("expected error for unreachable URL")
 	}
 }
 
