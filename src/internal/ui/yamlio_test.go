@@ -231,3 +231,301 @@ git.status:
 		t.Fatal("git.status should still be present")
 	}
 }
+
+// --- upsertConfigMapEntry / deleteConfigMapEntry tests ---
+
+func TestUpsertConfigMapEntry_NewEntry(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	_ = os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644)
+
+	p := config.OAuthProviderConfig{
+		ClientID:     "abc",
+		ClientSecret: "secret",
+		AuthURL:      "https://auth.example.com",
+		TokenURL:     "https://token.example.com",
+		Scopes:       []string{"read", "write"},
+	}
+
+	if err := upsertConfigMapEntry(cfgPath, "oauth_providers", "github", p); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(cfgPath)
+	content := string(data)
+	if !strings.Contains(content, "oauth_providers") {
+		t.Fatal("oauth_providers section not created")
+	}
+	if !strings.Contains(content, "github") {
+		t.Fatal("github provider not found")
+	}
+	if !strings.Contains(content, "abc") {
+		t.Fatal("client_id not written")
+	}
+	// Verify tools section still exists
+	if !strings.Contains(content, "tools") {
+		t.Fatal("tools section was lost")
+	}
+}
+
+func TestUpsertConfigMapEntry_UpdateExisting(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	_ = os.WriteFile(cfgPath, []byte("oauth_providers:\n    github:\n        client_id: old\n        client_secret: old_secret\n"), 0o644)
+
+	p := config.OAuthProviderConfig{
+		ClientID:     "new_id",
+		ClientSecret: "new_secret",
+		AuthURL:      "https://auth.example.com",
+		TokenURL:     "https://token.example.com",
+	}
+
+	if err := upsertConfigMapEntry(cfgPath, "oauth_providers", "github", p); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(cfgPath)
+	content := string(data)
+	if strings.Contains(content, "old") {
+		t.Fatal("old values should be replaced")
+	}
+	if !strings.Contains(content, "new_id") {
+		t.Fatal("new client_id not found")
+	}
+}
+
+func TestDeleteConfigMapEntry(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	_ = os.WriteFile(cfgPath, []byte("oauth_providers:\n    github:\n        client_id: abc\n    google:\n        client_id: xyz\n"), 0o644)
+
+	if err := deleteConfigMapEntry(cfgPath, "oauth_providers", "github"); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(cfgPath)
+	content := string(data)
+	if strings.Contains(content, "github") {
+		t.Fatal("github should be removed")
+	}
+	if !strings.Contains(content, "google") {
+		t.Fatal("google should still be present")
+	}
+}
+
+func TestDeleteConfigMapEntry_LastEntry(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	_ = os.WriteFile(cfgPath, []byte("oauth_providers:\n    github:\n        client_id: abc\n"), 0o644)
+
+	if err := deleteConfigMapEntry(cfgPath, "oauth_providers", "github"); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(cfgPath)
+	content := string(data)
+	if strings.Contains(content, "github") {
+		t.Fatal("github should be removed")
+	}
+	// oauth_providers key should still exist (empty mapping)
+	if !strings.Contains(content, "oauth_providers") {
+		t.Fatal("oauth_providers key should remain")
+	}
+}
+
+func TestSaveOAuthProvider(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	_ = os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644)
+
+	p := config.OAuthProviderConfig{
+		ClientID:     "id123",
+		ClientSecret: "{{vault:MY_SECRET}}",
+		AuthURL:      "https://auth.example.com",
+		TokenURL:     "https://token.example.com",
+		Scopes:       []string{"read"},
+	}
+
+	if err := SaveOAuthProvider(cfgPath, "myapp", p); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(cfgPath)
+	content := string(data)
+
+	// Verify field order: client_id should come first (struct field order)
+	clientIdx := strings.Index(content, "client_id")
+	authIdx := strings.Index(content, "auth_url")
+	if clientIdx == -1 || authIdx == -1 {
+		t.Fatal("expected both client_id and auth_url")
+	}
+	if clientIdx > authIdx {
+		t.Error("client_id should appear before auth_url (struct field order)")
+	}
+}
+
+func TestDeleteOAuthProvider(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	_ = os.WriteFile(cfgPath, []byte("oauth_providers:\n    github:\n        client_id: x\n"), 0o644)
+
+	if err := DeleteOAuthProvider(cfgPath, "github"); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(cfgPath)
+	if strings.Contains(string(data), "github") {
+		t.Fatal("github should be deleted")
+	}
+}
+
+func TestSaveToolToConfig_PreservesOtherSections(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	_ = os.WriteFile(cfgPath, []byte("oauth_providers:\n    github:\n        client_id: abc\ntools:\n    echo:\n        type: cli\n        command: echo\n"), 0o644)
+
+	tc := config.ToolConfig{
+		Type:    "cli",
+		Command: "ls",
+	}
+	if err := saveToolToConfig(cfgPath, "ls.tool", tc); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(cfgPath)
+	content := string(data)
+	if !strings.Contains(content, "oauth_providers") {
+		t.Fatal("oauth_providers section was lost")
+	}
+	if !strings.Contains(content, "github") {
+		t.Fatal("github provider was lost")
+	}
+	if !strings.Contains(content, "ls.tool") {
+		t.Fatal("new tool not written")
+	}
+	if !strings.Contains(content, "echo") {
+		t.Fatal("existing tool was lost")
+	}
+}
+
+func TestDeleteToolFromConfig_NonExistent(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	original := "tools:\n    echo:\n        type: cli\n        command: echo\n"
+	_ = os.WriteFile(cfgPath, []byte(original), 0o644)
+
+	// Deleting a non-existent tool should be a no-op
+	if err := deleteToolFromConfig(cfgPath, "nonexistent"); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(cfgPath)
+	if !strings.Contains(string(data), "echo") {
+		t.Fatal("existing tool should not be affected")
+	}
+}
+
+func TestSaveToolToConfig_NoToolsSection(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	// Config with no tools section at all
+	_ = os.WriteFile(cfgPath, []byte("oauth_providers:\n    github:\n        client_id: x\n"), 0o644)
+
+	tc := config.ToolConfig{
+		Type:    "cli",
+		Command: "echo",
+	}
+	if err := saveToolToConfig(cfgPath, "echo", tc); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(cfgPath)
+	content := string(data)
+	if !strings.Contains(content, "tools") {
+		t.Fatal("tools section should be created")
+	}
+	if !strings.Contains(content, "echo") {
+		t.Fatal("echo tool should be present")
+	}
+	if !strings.Contains(content, "oauth_providers") {
+		t.Fatal("other sections should be preserved")
+	}
+}
+
+func TestRemoveToolFromFile_DeletesEmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "single.yaml")
+	_ = os.WriteFile(path, []byte("only.tool:\n    type: cli\n    command: echo\n"), 0o644)
+
+	if err := removeToolFromFile(path, "only.tool"); err != nil {
+		t.Fatal(err)
+	}
+
+	// File should be deleted since it's now empty
+	if _, err := os.Stat(path); err == nil {
+		t.Fatal("file should be deleted when last tool is removed")
+	}
+}
+
+func TestUpdateToolInFile_PreservesOrder(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ordered.yaml")
+	_ = os.WriteFile(path, []byte("first:\n    type: cli\n    command: first\nsecond:\n    type: cli\n    command: second\nthird:\n    type: cli\n    command: third\n"), 0o644)
+
+	tc := config.ToolConfig{
+		Type:    "cli",
+		Command: "updated_second",
+	}
+	if err := updateToolInFile(path, "second", tc); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	// Verify order preserved: first, second, third
+	firstIdx := strings.Index(content, "first:")
+	secondIdx := strings.Index(content, "second:")
+	thirdIdx := strings.Index(content, "third:")
+
+	if firstIdx > secondIdx || secondIdx > thirdIdx {
+		t.Errorf("order not preserved: first=%d second=%d third=%d", firstIdx, secondIdx, thirdIdx)
+	}
+
+	if !strings.Contains(content, "updated_second") {
+		t.Error("second tool should be updated")
+	}
+}
+
+func TestFindToolInDir(t *testing.T) {
+	dir := t.TempDir()
+
+	// Single-tool file
+	_ = os.WriteFile(filepath.Join(dir, "echo.yaml"), []byte("echo:\n    type: cli\n    command: echo\n"), 0o644)
+	// Multi-tool file
+	_ = os.WriteFile(filepath.Join(dir, "git.yaml"), []byte("git.log:\n    type: cli\n    command: git\ngit.status:\n    type: cli\n    command: git\n"), 0o644)
+
+	// Find in single-tool file
+	path := findToolInDir(dir, "echo")
+	if path == "" {
+		t.Fatal("should find echo")
+	}
+	if !strings.HasSuffix(path, "echo.yaml") {
+		t.Errorf("expected echo.yaml, got %s", path)
+	}
+
+	// Find in multi-tool file
+	path = findToolInDir(dir, "git.log")
+	if path == "" {
+		t.Fatal("should find git.log")
+	}
+	if !strings.HasSuffix(path, "git.yaml") {
+		t.Errorf("expected git.yaml, got %s", path)
+	}
+
+	// Not found
+	path = findToolInDir(dir, "nonexistent")
+	if path != "" {
+		t.Errorf("should not find nonexistent, got %s", path)
+	}
+}
