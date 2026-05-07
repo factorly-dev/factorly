@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -119,10 +120,23 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 	bodyParams := make(map[string]string)
 	var fileParam string // path to file for in:file
 
+	// Pre-scan path for {{param}} placeholders so we can auto-route
+	// params that match, even if they lack an explicit "in: path".
+	pathPlaceholders := make(map[string]bool)
+	if strings.Contains(def.Path, "{{") {
+		for _, m := range regexp.MustCompile(`\{\{(\w+)\}\}`).FindAllStringSubmatch(def.Path, -1) {
+			pathPlaceholders[m[1]] = true
+		}
+	}
+
 	for name, value := range params {
 		in := paramIndex[name]
 		if in == "" {
-			in = defaultParamLocation(def.Method)
+			if pathPlaceholders[name] {
+				in = "path"
+			} else {
+				in = defaultParamLocation(def.Method)
+			}
 		}
 		switch in {
 		case "path":

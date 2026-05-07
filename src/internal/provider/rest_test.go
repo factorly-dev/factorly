@@ -1059,3 +1059,41 @@ func TestRESTFileParamRelativePath(t *testing.T) {
 		t.Errorf("expected 'test', got %q", result.Output)
 	}
 }
+
+func TestRESTPathParamsAutoDetect(t *testing.T) {
+	// Params without "in: path" should auto-route to path if they match
+	// a {{param}} placeholder in the path template.
+	var receivedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	p := NewREST(map[string]RESTToolDef{
+		"repos.get": {
+			Method:  "GET",
+			BaseURL: srv.URL,
+			Path:    "/repos/{{owner}}/{{repo}}",
+			Params: []RESTParamDef{
+				{Name: "owner", Required: true}, // no In field
+				{Name: "repo", Required: true},  // no In field
+			},
+		},
+	}, nil)
+	_ = p.Setup()
+
+	result, err := p.Execute("repos.get", map[string]string{
+		"owner": "factorly-dev",
+		"repo":  "factorly",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Output != "ok" {
+		t.Errorf("expected 'ok', got %q", result.Output)
+	}
+	if receivedPath != "/repos/factorly-dev/factorly" {
+		t.Errorf("expected /repos/factorly-dev/factorly, got %s", receivedPath)
+	}
+}

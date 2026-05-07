@@ -82,6 +82,11 @@ func (p *WorkflowProvider) RegisterWorkflow(toolName string, steps []WorkflowSte
 	p.steps[toolName] = steps
 }
 
+// RemoveWorkflow removes a workflow's steps.
+func (p *WorkflowProvider) RemoveWorkflow(toolName string) {
+	delete(p.steps, toolName)
+}
+
 func (p *WorkflowProvider) Setup() error    { return nil }
 func (p *WorkflowProvider) Teardown() error { return nil }
 

@@ -13,41 +13,45 @@ import (
 	"time"
 
 	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-dev/factorly/internal/oauth"
 	"github.com/factorly-dev/factorly/internal/output"
 	"github.com/factorly-dev/factorly/internal/provider"
 	"github.com/factorly-dev/factorly/internal/proxy"
 	"github.com/factorly-dev/factorly/internal/registry"
+	"github.com/factorly-dev/factorly/internal/shadow"
 	"github.com/factorly-dev/factorly/internal/templates"
 	"github.com/factorly-dev/factorly/internal/vault"
 )
 
 // Server serves the Factorly web UI.
 type Server struct {
-	cfg          *config.Config
-	cfgPath      string
-	toolsDir     string
-	registry     *registry.Registry
-	proxy        *proxy.Proxy
-	vault        vault.Backend
-	projectVault vault.Backend
-	globalVault  vault.Backend
-	tmpls        map[string]*template.Template
-	mux          *http.ServeMux
-	mcpHandler   http.Handler
-	activity     *ActivityBroadcaster
+	cfg           *config.Config
+	cfgPath       string
+	toolsDir      string
+	registry      *registry.Registry
+	proxy         *proxy.Proxy
+	vault         vault.Backend
+	projectVault  vault.Backend
+	globalVault   vault.Backend
+	tmpls         map[string]*template.Template
+	mux           *http.ServeMux
+	mcpHandler    http.Handler
+	activity      *ActivityBroadcaster
+	confirmBroker *ConfirmBroker
 }
 
 // Options configures the UI server.
 type Options struct {
-	Config       *config.Config
-	CfgPath      string
-	ToolsDir     string
-	Registry     *registry.Registry
-	Proxy        *proxy.Proxy
-	Vault        vault.Backend
-	ProjectVault vault.Backend
-	GlobalVault  vault.Backend
-	Activity     *ActivityBroadcaster
+	Config        *config.Config
+	CfgPath       string
+	ToolsDir      string
+	Registry      *registry.Registry
+	Proxy         *proxy.Proxy
+	Vault         vault.Backend
+	ProjectVault  vault.Backend
+	GlobalVault   vault.Backend
+	Activity      *ActivityBroadcaster
+	ConfirmBroker *ConfirmBroker
 }
 
 // New creates a UI server.
@@ -83,17 +87,18 @@ func New(opts Options) (*Server, error) {
 	}
 
 	s := &Server{
-		cfg:          opts.Config,
-		cfgPath:      opts.CfgPath,
-		toolsDir:     opts.ToolsDir,
-		registry:     opts.Registry,
-		proxy:        opts.Proxy,
-		vault:        opts.Vault,
-		projectVault: opts.ProjectVault,
-		globalVault:  opts.GlobalVault,
-		activity:     opts.Activity,
-		tmpls:        tmpls,
-		mux:          http.NewServeMux(),
+		cfg:           opts.Config,
+		cfgPath:       opts.CfgPath,
+		toolsDir:      opts.ToolsDir,
+		registry:      opts.Registry,
+		proxy:         opts.Proxy,
+		vault:         opts.Vault,
+		projectVault:  opts.ProjectVault,
+		globalVault:   opts.GlobalVault,
+		activity:      opts.Activity,
+		confirmBroker: opts.ConfirmBroker,
+		tmpls:         tmpls,
+		mux:           http.NewServeMux(),
 	}
 
 	s.routes()
@@ -143,6 +148,11 @@ func (s *Server) routes() {
 	// Activity (live feed)
 	s.mux.HandleFunc("GET /activity", s.handleActivity)
 	s.mux.HandleFunc("GET /activity/stream", s.handleActivityStream)
+
+	// Confirm (shadow confirm prompts routed to browser)
+	s.mux.HandleFunc("GET /confirm/pending", s.handleConfirmPending)
+	s.mux.HandleFunc("GET /confirm/stream", s.handleConfirmSSE)
+	s.mux.HandleFunc("POST /confirm/{id}/{action}", s.handleConfirmRespond)
 
 	// History
 	s.mux.HandleFunc("GET /history", s.handleHistory)
@@ -233,21 +243,29 @@ func (s *Server) registerTool(name string, tc config.ToolConfig) {
 	}
 	s.registry.Register(tool)
 
-	// Also register with the appropriate provider so it can execute
-	s.registerProvider(name, tc)
+	// Update shadow policy if tool has oversight rules
+	s.updateShadowRule(name, tc)
+
+	// Register with the appropriate provider and track vault keys for audit
+	vaultKeys := s.registerProvider(name, tc)
+	if len(vaultKeys) > 0 {
+		tool.VaultKeys = dedup(vaultKeys)
+	}
 }
 
 // registerProvider adds the tool definition to the appropriate provider.
-func (s *Server) registerProvider(name string, tc config.ToolConfig) {
+// Returns vault keys that were accessed during resolution.
+func (s *Server) registerProvider(name string, tc config.ToolConfig) []string {
 	if s.proxy == nil {
-		return
+		return nil
 	}
+
+	var vaultKeys []string
 
 	switch tc.Type {
 	case "cli":
 		prov := s.proxy.Provider("cli")
 		if prov == nil {
-			// Create a new CLI provider if none exists
 			cp := provider.NewCLI(map[string]provider.CLIToolDef{})
 			_ = cp.Setup()
 			s.proxy.RegisterProvider("cli", cp)
@@ -255,9 +273,12 @@ func (s *Server) registerProvider(name string, tc config.ToolConfig) {
 		}
 		if cp, ok := prov.(*provider.CLIProvider); ok {
 			def := provider.CLIToolDef{
-				Command: tc.Command,
-				Args:    tc.Args,
-				Stdin:   tc.Stdin,
+				Command:     s.resolveRefT(tc.Command, &vaultKeys),
+				Args:        s.resolveRefsTracked(tc.Args, &vaultKeys),
+				Stdin:       s.resolveRefT(tc.Stdin, &vaultKeys),
+				Interactive: tc.Interactive,
+				Env:         s.resolveRefMapTracked(tc.Env, &vaultKeys),
+				EnvStrict:   tc.EnvIsolation == "strict",
 			}
 			if tc.Timeout != "" {
 				if d, err := time.ParseDuration(tc.Timeout); err == nil {
@@ -278,17 +299,30 @@ func (s *Server) registerProvider(name string, tc config.ToolConfig) {
 		if rp, ok := prov.(*provider.RESTProvider); ok {
 			def := provider.RESTToolDef{
 				Method:  tc.Method,
-				BaseURL: tc.BaseURL,
+				BaseURL: s.resolveRefT(tc.BaseURL, &vaultKeys),
 				Path:    tc.Path,
 				Body:    tc.Body,
-				Headers: tc.Headers,
+				Headers: s.resolveRefMapTracked(tc.Headers, &vaultKeys),
 			}
 			if tc.Auth != nil {
 				def.Auth = &provider.AuthDef{
 					Type:   tc.Auth.Type,
-					Token:  tc.Auth.Token,
+					Token:  s.resolveRefT(tc.Auth.Token, &vaultKeys),
 					Header: tc.Auth.Header,
-					Value:  tc.Auth.Value,
+					Value:  s.resolveRefT(tc.Auth.Value, &vaultKeys),
+				}
+				if tc.Auth.Type == "oauth" && s.cfg != nil {
+					oauthCfg := s.cfg.ResolveOAuthProvider(tc.Auth)
+					if oauthCfg != nil {
+						def.Auth.OAuthProvider = &oauth.ProviderConfig{
+							ClientID:     s.resolveRefT(oauthCfg.ClientID, &vaultKeys),
+							ClientSecret: s.resolveRefT(oauthCfg.ClientSecret, &vaultKeys),
+							AuthURL:      oauthCfg.AuthURL,
+							TokenURL:     oauthCfg.TokenURL,
+							Scopes:       oauthCfg.Scopes,
+						}
+						def.Auth.TokenKey = config.OAuthTokenKey(tc.Auth)
+					}
 				}
 			}
 			for _, p := range tc.Parameters {
@@ -306,7 +340,37 @@ func (s *Server) registerProvider(name string, tc config.ToolConfig) {
 			}
 			rp.AddTool(name, def)
 		}
+
+	case "workflow":
+		prov := s.proxy.Provider("workflow")
+		if prov == nil {
+			return nil // workflow provider needs proxy ref, can't create standalone
+		}
+		if wp, ok := prov.(*provider.WorkflowProvider); ok {
+			steps := make([]provider.WorkflowStep, len(tc.Steps))
+			for i, st := range tc.Steps {
+				ws := provider.WorkflowStep{
+					Tool:    st.Tool,
+					Params:  st.Params,
+					Store:   st.Store,
+					If:      st.If,
+					Require: st.Require,
+				}
+				for _, sc := range st.Switch {
+					ws.Switch = append(ws.Switch, provider.WorkflowSwitchCase{
+						Condition: sc.Condition,
+						Tool:      sc.Tool,
+						Params:    sc.Params,
+						Store:     sc.Store,
+					})
+				}
+				steps[i] = ws
+			}
+			wp.RegisterWorkflow(name, steps)
+		}
 	}
+
+	return vaultKeys
 }
 
 // unregisterTool removes a tool from the live registry and provider.
@@ -323,11 +387,60 @@ func (s *Server) unregisterTool(name string) {
 					p.RemoveTool(name)
 				case *provider.RESTProvider:
 					p.RemoveTool(name)
+				case *provider.WorkflowProvider:
+					p.RemoveWorkflow(name)
 				}
 			}
 		}
 	}
+	// Remove shadow rule
+	if s.proxy != nil {
+		if policy := s.proxy.Shadow(); policy != nil {
+			policy.RemoveRule(name)
+		}
+	}
 	s.registry.Unregister(name)
+}
+
+// updateShadowRule syncs shadow/oversight config to the live shadow policy.
+func (s *Server) updateShadowRule(name string, tc config.ToolConfig) {
+	if s.proxy == nil {
+		return
+	}
+	policy := s.proxy.Shadow()
+	if policy == nil {
+		return
+	}
+
+	if tc.Shadow == nil {
+		policy.RemoveRule(name)
+		return
+	}
+
+	confirmList, confirmAll := tc.Shadow.ConfirmList()
+	rule := &shadow.Rule{
+		Deny:       tc.Shadow.Deny,
+		Confirm:    confirmList,
+		ConfirmAll: confirmAll,
+		LogParams:  tc.Shadow.LogParams,
+	}
+	if tc.Shadow.RateLimit != "" {
+		rl, _ := shadow.ParseRateLimit(tc.Shadow.RateLimit)
+		rule.RateLimit = rl
+	}
+	policy.SetRule(name, rule)
+}
+
+func dedup(s []string) []string {
+	seen := make(map[string]bool, len(s))
+	out := make([]string, 0, len(s))
+	for _, v := range s {
+		if !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func templateFuncs() template.FuncMap {

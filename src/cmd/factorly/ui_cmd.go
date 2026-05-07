@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -50,13 +51,23 @@ func runUI(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// When MCP is enabled, use MCP elicitation for shadow confirm prompts
-	// so they appear in the agent's UI rather than blocking on CLI stdin
-	var confirmOpts []shadow.ConfirmFunc
+	// Set up confirm broker for routing shadow confirm prompts to the browser
+	confirmBroker := ui.NewConfirmBroker()
+	confirmFn := shadow.ConfirmFunc(confirmBroker.Request)
 	if uiMCP {
-		confirmOpts = append(confirmOpts, mcpElicitConfirm)
+		// When MCP is enabled, try MCP elicitation first (for agent calls),
+		// fall back to browser confirm for direct UI calls
+		mcpFn := shadow.ConfirmFunc(mcpElicitConfirm)
+		confirmFn = func(ctx context.Context, toolName string, params map[string]string) bool {
+			// If there's an MCP session, use elicitation
+			if mcpserver.ClientSessionFromContext(ctx) != nil {
+				return mcpFn(ctx, toolName, params)
+			}
+			// Otherwise route to browser
+			return confirmBroker.Request(ctx, toolName, params)
+		}
 	}
-	p, err := bootstrapProviders(cfg, reg, confirmOpts...)
+	p, err := bootstrapProviders(cfg, reg, confirmFn)
 	if err != nil {
 		return err
 	}
@@ -91,15 +102,16 @@ func runUI(cmd *cobra.Command, args []string) error {
 	})
 
 	srv, err := ui.New(ui.Options{
-		Config:       cfg,
-		CfgPath:      configPath,
-		ToolsDir:     resolveToolsDir(configPath, cfg.ToolsDir),
-		Registry:     reg,
-		Proxy:        p,
-		Vault:        vaultBackend,
-		ProjectVault: projectVault,
-		GlobalVault:  globalVault,
-		Activity:     activity,
+		Config:        cfg,
+		CfgPath:       configPath,
+		ToolsDir:      resolveToolsDir(configPath, cfg.ToolsDir),
+		Registry:      reg,
+		Proxy:         p,
+		Vault:         vaultBackend,
+		ProjectVault:  projectVault,
+		GlobalVault:   globalVault,
+		Activity:      activity,
+		ConfirmBroker: confirmBroker,
 	})
 	if err != nil {
 		return err

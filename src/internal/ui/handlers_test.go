@@ -1,3 +1,6 @@
+// Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+// SPDX-License-Identifier: gpl
+
 package ui
 
 import (
@@ -10,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/factorly-dev/factorly/internal/provider"
 	"github.com/factorly-dev/factorly/internal/proxy"
 	"github.com/factorly-dev/factorly/internal/registry"
@@ -84,7 +88,7 @@ func testServerWithProxy(t *testing.T, cfg *config.Config) (*Server, string) {
 
 	reg := registry.New()
 	providers := make(map[string]provider.Provider)
-	p := proxy.New(reg, providers, nil)
+	p := proxy.New(reg, providers, logger.NopLogger{})
 
 	srv, err := New(Options{
 		Config:   cfg,
@@ -1068,6 +1072,245 @@ func TestToolSave_UpdatesProvider(t *testing.T) {
 	tool, _ := srv.registry.Get("my.tool")
 	if tool.Description != "updated" {
 		t.Errorf("registry not updated: %q", tool.Description)
+	}
+}
+
+// --- Integration: create → execute flow ---
+
+func TestIntegration_CreateRESTTool_ThenTryIt(t *testing.T) {
+	// Start a mock API server
+	mockAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","path":"` + r.URL.Path + `"}`))
+	}))
+	defer mockAPI.Close()
+
+	srv, _ := testServerWithProxy(t, nil)
+
+	// 1. Create a REST tool via POST
+	form := url.Values{
+		"name":     {"test.api"},
+		"type":     {"rest"},
+		"method":   {"GET"},
+		"base_url": {mockAPI.URL},
+		"path":     {"/items"},
+	}
+	req := httptest.NewRequest("POST", "/tools/_new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("create: expected 302, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// 2. Verify it's in registry
+	if _, err := srv.registry.Get("test.api"); err != nil {
+		t.Fatalf("tool not in registry: %v", err)
+	}
+
+	// 3. Verify it's in the REST provider
+	prov := srv.proxy.Provider("rest")
+	if prov == nil {
+		t.Fatal("rest provider should exist")
+	}
+
+	// 4. Try It — execute via the proxy
+	tryForm := url.Values{}
+	req = httptest.NewRequest("POST", "/tools/test.api/try", strings.NewReader(tryForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("try: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "ok") {
+		t.Errorf("try result should contain API response, got: %s", body)
+	}
+}
+
+func TestIntegration_CreateRESTTool_WithPathParams(t *testing.T) {
+	var receivedPath string
+	mockAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"path":"` + r.URL.Path + `"}`))
+	}))
+	defer mockAPI.Close()
+
+	cfg := &config.Config{
+		Tools: make(map[string]config.ToolConfig),
+	}
+	srv, _ := testServerWithProxy(t, cfg)
+
+	// Manually add a tool with path params (simulating import)
+	tc := config.ToolConfig{
+		Type:    "rest",
+		Method:  "GET",
+		BaseURL: mockAPI.URL,
+		Path:    "/repos/{{owner}}/{{repo}}",
+		Parameters: []config.ParamConfig{
+			{Name: "owner", Required: true},
+			{Name: "repo", Required: true},
+		},
+	}
+	srv.cfg.Tools["repos.get"] = tc
+	srv.registerTool("repos.get", tc)
+
+	// Try It with params
+	tryForm := url.Values{
+		"param_owner": {"factorly-dev"},
+		"param_repo":  {"factorly"},
+	}
+	req := httptest.NewRequest("POST", "/tools/repos.get/try", strings.NewReader(tryForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("try: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if receivedPath != "/repos/factorly-dev/factorly" {
+		t.Errorf("expected /repos/factorly-dev/factorly, got %s", receivedPath)
+	}
+}
+
+func TestIntegration_CreateCLITool_ThenTryIt(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+
+	form := url.Values{
+		"name":    {"test.echo"},
+		"type":    {"cli"},
+		"command": {"echo"},
+		"args":    {"hello world"},
+	}
+	req := httptest.NewRequest("POST", "/tools/_new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("create: expected 302, got %d", w.Code)
+	}
+
+	// Try It
+	req = httptest.NewRequest("POST", "/tools/test.echo/try", strings.NewReader(url.Values{}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("try: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "hello world") {
+		t.Errorf("try result should contain 'hello world', got: %s", body)
+	}
+}
+
+func TestIntegration_SaveToolUpdatesProvider(t *testing.T) {
+	// Create a mock server that echoes the path
+	mockAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(r.URL.Path))
+	}))
+	defer mockAPI.Close()
+
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"my.api": {Type: "rest", Method: "GET", BaseURL: mockAPI.URL, Path: "/old"},
+		},
+	}
+	srv, _ := testServerWithProxy(t, cfg)
+	srv.registerTool("my.api", cfg.Tools["my.api"])
+
+	// Save with new path
+	form := url.Values{
+		"description": {"updated"},
+		"method":      {"GET"},
+		"base_url":    {mockAPI.URL},
+		"path":        {"/new"},
+	}
+	req := httptest.NewRequest("POST", "/tools/my.api", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("save: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Try It — should hit /new, not /old
+	req = httptest.NewRequest("POST", "/tools/my.api/try", strings.NewReader(url.Values{}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("try: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "/new") {
+		t.Errorf("expected /new in response, got: %s", body)
+	}
+	if strings.Contains(body, "/old") {
+		t.Errorf("should not contain /old, got: %s", body)
+	}
+}
+
+func TestIntegration_VaultRefResolution(t *testing.T) {
+	v := newMockVault()
+	_ = v.Set("API_KEY", "secret-123")
+
+	cfg := &config.Config{
+		Tools: make(map[string]config.ToolConfig),
+	}
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	_ = os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644)
+
+	reg := registry.New()
+	providers := make(map[string]provider.Provider)
+	p := proxy.New(reg, providers, logger.NopLogger{})
+
+	srv, err := New(Options{
+		Config:   cfg,
+		CfgPath:  cfgPath,
+		Vault:    v,
+		Registry: reg,
+		Proxy:    p,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Register a CLI tool with a vault ref in the command
+	tc := config.ToolConfig{
+		Type:    "cli",
+		Command: "echo",
+		Args:    []string{"{{vault:API_KEY}}"},
+	}
+	srv.cfg.Tools["test.vault"] = tc
+	srv.registerTool("test.vault", tc)
+
+	// Verify vault key is tracked on the registry tool
+	tool, _ := srv.registry.Get("test.vault")
+	if len(tool.VaultKeys) == 0 {
+		t.Fatal("expected vault keys to be tracked")
+	}
+	found := false
+	for _, k := range tool.VaultKeys {
+		if k == "API_KEY" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected 'API_KEY' in vault keys, got %v", tool.VaultKeys)
 	}
 }
 

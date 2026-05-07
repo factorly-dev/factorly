@@ -64,6 +64,16 @@ func New(rules map[string]*Rule, confirmFn ConfirmFunc, rateStorePath string) *P
 	}
 }
 
+// SetRule adds or updates a shadow rule for a tool at runtime.
+func (p *Policy) SetRule(toolName string, rule *Rule) {
+	p.rules[toolName] = rule
+}
+
+// RemoveRule removes a shadow rule for a tool at runtime.
+func (p *Policy) RemoveRule(toolName string) {
+	delete(p.rules, toolName)
+}
+
 // Check evaluates shadow rules for a tool call. Returns the action taken
 // and an error if the call should be blocked.
 func (p *Policy) Check(ctx context.Context, toolName string, params map[string]string, iface string) (Action, error) {
