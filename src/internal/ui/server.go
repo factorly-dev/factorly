@@ -139,8 +139,11 @@ func (s *Server) routes() {
 
 	// Auth
 	s.mux.HandleFunc("GET /auth", s.handleAuth)
+	s.mux.HandleFunc("POST /auth/_new", s.handleAuthCreate)
+	s.mux.HandleFunc("POST /auth/{provider}", s.handleAuthUpdate)
 	s.mux.HandleFunc("POST /auth/{provider}/refresh", s.handleAuthRefresh)
-	s.mux.HandleFunc("DELETE /auth/{provider}", s.handleAuthLogout)
+	s.mux.HandleFunc("DELETE /auth/{provider}", s.handleAuthDelete)
+	s.mux.HandleFunc("DELETE /auth/{provider}/token", s.handleAuthLogout)
 
 	// Vault
 	s.mux.HandleFunc("GET /vault", s.handleVault)

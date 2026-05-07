@@ -1,10 +1,59 @@
 {{define "content"}}
-<h1 class="text-2xl font-bold mb-6">Auth Providers</h1>
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Auth Providers</h1>
+  <button type="button" onclick="document.getElementById('auth-new-form').classList.toggle('hidden')"
+          class="px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">+ New Provider</button>
+</div>
+
+<!-- Create form (hidden by default) -->
+<form id="auth-new-form" method="POST" action="/auth/_new" class="hidden bg-white rounded-lg border border-gray-200 p-5 mb-6 max-w-2xl">
+  <div class="space-y-3">
+    <div>
+      <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Provider Name</label>
+      <input type="text" name="name" required placeholder="github"
+             class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Client ID</label>
+        <input type="text" name="client_id" required placeholder="client id or {{"{{vault:GITHUB_CLIENT_ID}}"}}"
+               class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+      </div>
+      <div>
+        <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Client Secret</label>
+        <input type="text" name="client_secret" required placeholder="secret or {{"{{vault:GITHUB_CLIENT_SECRET}}"}}"
+               class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Auth URL</label>
+        <input type="text" name="auth_url" required placeholder="https://github.com/login/oauth/authorize"
+               class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+      </div>
+      <div>
+        <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Token URL</label>
+        <input type="text" name="token_url" required placeholder="https://github.com/login/oauth/access_token"
+               class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+      </div>
+    </div>
+    <div>
+      <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Scopes</label>
+      <input type="text" name="scopes" placeholder="repo, read:org (comma-separated)"
+             class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+    </div>
+    <div class="flex items-center gap-2 pt-2">
+      <button type="submit" class="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">Create Provider</button>
+      <button type="button" onclick="document.getElementById('auth-new-form').classList.add('hidden')"
+              class="px-4 py-1.5 text-gray-500 text-sm hover:text-gray-700">Cancel</button>
+    </div>
+  </div>
+</form>
 
 {{if not .Providers}}
 <div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-400">
   <p class="text-lg mb-2">No OAuth providers configured</p>
-  <p class="text-sm">Add <code class="bg-gray-100 px-1 rounded">oauth_providers:</code> to your config to manage OAuth authentication.</p>
+  <p class="text-sm">Click "+ New Provider" above to add an OAuth provider.</p>
 </div>
 {{else}}
 
@@ -14,7 +63,7 @@
   </div>
   <div id="auth-list">
     {{range .Providers}}
-    <div class="px-5 py-4 border-b border-gray-100 last:border-b-0">
+    <div class="auth-provider px-5 py-4 border-b border-gray-100 last:border-b-0">
       <div class="flex items-center justify-between mb-1">
         <div class="flex items-center gap-2">
           <span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold
@@ -35,12 +84,17 @@
                   class="text-indigo-500 hover:text-indigo-700 text-xs font-medium">refresh</button>
           {{end}}
           {{if .HasToken}}
-          <button hx-delete="/auth/{{.Name}}"
+          <button hx-delete="/auth/{{.Name}}/token"
                   hx-target="#auth-list"
                   hx-swap="innerHTML"
                   hx-confirm="Logout from {{.Name}}?"
-                  class="text-red-400 hover:text-red-600 text-xs">logout</button>
+                  class="text-gray-400 hover:text-red-600 text-xs">logout</button>
           {{end}}
+          <button type="button" onclick="this.closest('.auth-provider').querySelector('.auth-edit').classList.toggle('hidden')"
+                  class="text-gray-400 hover:text-indigo-600 text-xs">edit</button>
+          <button hx-delete="/auth/{{.Name}}"
+                  hx-confirm="Delete provider '{{.Name}}' and its token?"
+                  class="text-gray-300 hover:text-red-500 text-xs">delete</button>
         </div>
       </div>
 
@@ -59,6 +113,44 @@
         {{end}}
       </div>
       {{end}}
+
+      <!-- Inline edit form -->
+      <form method="POST" action="/auth/{{.Name}}" class="auth-edit hidden mt-3 pt-3 border-t border-gray-100 space-y-2">
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[10px] font-medium text-gray-400 uppercase mb-0.5">Client ID</label>
+            <input type="text" name="client_id" value="{{.ClientID}}"
+                   class="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+          </div>
+          <div>
+            <label class="block text-[10px] font-medium text-gray-400 uppercase mb-0.5">Client Secret</label>
+            <input type="text" name="client_secret" value="{{.ClientSecret}}"
+                   class="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[10px] font-medium text-gray-400 uppercase mb-0.5">Auth URL</label>
+            <input type="text" name="auth_url" value="{{.AuthURL}}"
+                   class="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+          </div>
+          <div>
+            <label class="block text-[10px] font-medium text-gray-400 uppercase mb-0.5">Token URL</label>
+            <input type="text" name="token_url" value="{{.TokenURL}}"
+                   class="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+          </div>
+        </div>
+        <div>
+          <label class="block text-[10px] font-medium text-gray-400 uppercase mb-0.5">Scopes</label>
+          <input type="text" name="scopes" value="{{joinList .Scopes}}"
+                 class="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+        </div>
+        <div class="flex items-center gap-2 pt-1">
+          <button type="submit" class="px-3 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700">Save</button>
+          <button type="button" onclick="this.closest('.auth-edit').classList.add('hidden')"
+                  class="px-3 py-1 text-gray-500 text-xs hover:text-gray-700">Cancel</button>
+        </div>
+      </form>
     </div>
     {{end}}
   </div>

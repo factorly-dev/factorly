@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/factorly-dev/factorly/internal/config"
@@ -15,14 +16,18 @@ import (
 )
 
 type authProviderView struct {
-	Name        string
-	Status      string // "valid", "expired_refreshable", "expired", "missing"
-	StatusLabel string
-	StatusColor string // "green", "amber", "red"
-	Expiry      string
-	Scopes      []string
-	Tools       []string
-	HasToken    bool
+	Name         string
+	Status       string // "valid", "expired_refreshable", "expired", "missing"
+	StatusLabel  string
+	StatusColor  string // "green", "amber", "red"
+	Expiry       string
+	Scopes       []string
+	Tools        []string
+	HasToken     bool
+	ClientID     string
+	ClientSecret string
+	AuthURL      string
+	TokenURL     string
 }
 
 func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +38,97 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		"Nav":       "auth",
 		"Providers": providers,
 	})
+}
+
+func (s *Server) handleAuthCreate(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	name := r.FormValue("name")
+	if name == "" {
+		http.Error(w, "name is required", http.StatusBadRequest)
+		return
+	}
+
+	p := config.OAuthProviderConfig{
+		ClientID:     r.FormValue("client_id"),
+		ClientSecret: r.FormValue("client_secret"),
+		AuthURL:      r.FormValue("auth_url"),
+		TokenURL:     r.FormValue("token_url"),
+	}
+	if scopes := r.FormValue("scopes"); scopes != "" {
+		for _, s := range strings.Split(scopes, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				p.Scopes = append(p.Scopes, s)
+			}
+		}
+	}
+
+	if err := SaveOAuthProvider(s.cfgPath, name, p); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if s.cfg.OAuthProviders == nil {
+		s.cfg.OAuthProviders = make(map[string]config.OAuthProviderConfig)
+	}
+	s.cfg.OAuthProviders[name] = p
+
+	http.Redirect(w, r, "/auth", http.StatusFound)
+}
+
+func (s *Server) handleAuthUpdate(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("provider")
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	p := config.OAuthProviderConfig{
+		ClientID:     r.FormValue("client_id"),
+		ClientSecret: r.FormValue("client_secret"),
+		AuthURL:      r.FormValue("auth_url"),
+		TokenURL:     r.FormValue("token_url"),
+	}
+	if scopes := r.FormValue("scopes"); scopes != "" {
+		for _, s := range strings.Split(scopes, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				p.Scopes = append(p.Scopes, s)
+			}
+		}
+	}
+
+	if err := SaveOAuthProvider(s.cfgPath, name, p); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.cfg.OAuthProviders[name] = p
+
+	http.Redirect(w, r, "/auth", http.StatusFound)
+}
+
+func (s *Server) handleAuthDelete(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("provider")
+
+	if err := DeleteOAuthProvider(s.cfgPath, name); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Also delete token from vault
+	tokenKey := name + "_oauth"
+	if s.vault != nil {
+		_ = s.vault.Delete(tokenKey)
+	}
+
+	delete(s.cfg.OAuthProviders, name)
+
+	w.Header().Set("HX-Redirect", "/auth")
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
@@ -160,9 +256,13 @@ func (s *Server) buildAuthProviderViews() []authProviderView {
 	for name, pCfg := range s.cfg.OAuthProviders {
 		tokenKey := name + "_oauth"
 		view := authProviderView{
-			Name:   name,
-			Scopes: pCfg.Scopes,
-			Tools:  s.findToolsUsingProvider(name),
+			Name:         name,
+			Scopes:       pCfg.Scopes,
+			Tools:        s.findToolsUsingProvider(name),
+			ClientID:     pCfg.ClientID,
+			ClientSecret: pCfg.ClientSecret,
+			AuthURL:      pCfg.AuthURL,
+			TokenURL:     pCfg.TokenURL,
 		}
 		s.populateTokenStatus(&view, tokenKey)
 		views = append(views, view)
@@ -284,7 +384,7 @@ func (s *Server) renderAuthList(w http.ResponseWriter, providers []authProviderV
 			fmt.Fprintf(w, `<span class="text-[10px] text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded border border-gray-200 select-all">factorly auth login %s</span>`, p.Name)
 		}
 		if p.HasToken {
-			fmt.Fprintf(w, `<button hx-delete="/auth/%s" hx-target="#auth-list" hx-swap="innerHTML" hx-confirm="Logout from %s?" class="text-red-400 hover:text-red-600 text-xs">logout</button>`, p.Name, p.Name)
+			fmt.Fprintf(w, `<button hx-delete="/auth/%s/token" hx-target="#auth-list" hx-swap="innerHTML" hx-confirm="Logout from %s?" class="text-gray-400 hover:text-red-600 text-xs">logout</button>`, p.Name, p.Name)
 		}
 
 		fmt.Fprint(w, `</div></div>`)

@@ -266,6 +266,111 @@ func deleteToolFromConfig(cfgPath, name string) error {
 	return os.WriteFile(cfgPath, out, 0o644)
 }
 
+// SaveOAuthProvider writes an OAuth provider config to the main config file.
+func SaveOAuthProvider(cfgPath, name string, p config.OAuthProviderConfig) error {
+	return upsertConfigMapEntry(cfgPath, "oauth_providers", name, p)
+}
+
+// DeleteOAuthProvider removes an OAuth provider from the main config file.
+func DeleteOAuthProvider(cfgPath, name string) error {
+	return deleteConfigMapEntry(cfgPath, "oauth_providers", name)
+}
+
+// upsertConfigMapEntry adds or updates an entry in a top-level mapping in a YAML config file.
+func upsertConfigMapEntry(cfgPath, mapKey, entryName string, value any) error {
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return err
+	}
+
+	valBytes, err := yaml.Marshal(value)
+	if err != nil {
+		return err
+	}
+	var valNode yaml.Node
+	if err := yaml.Unmarshal(valBytes, &valNode); err != nil {
+		return err
+	}
+
+	var docNode yaml.Node
+	if err := yaml.Unmarshal(data, &docNode); err != nil {
+		return fmt.Errorf("parsing config: %w", err)
+	}
+
+	root := docNode.Content[0]
+	var mapNode *yaml.Node
+	for i := 0; i < len(root.Content)-1; i += 2 {
+		if root.Content[i].Value == mapKey {
+			mapNode = root.Content[i+1]
+			break
+		}
+	}
+	if mapNode == nil {
+		root.Content = append(root.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: mapKey},
+			&yaml.Node{Kind: yaml.MappingNode},
+		)
+		mapNode = root.Content[len(root.Content)-1]
+	}
+	mapNode.Style = 0
+
+	found := false
+	for i := 0; i < len(mapNode.Content)-1; i += 2 {
+		if mapNode.Content[i].Value == entryName {
+			mapNode.Content[i+1] = valNode.Content[0]
+			found = true
+			break
+		}
+	}
+	if !found {
+		mapNode.Content = append(mapNode.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: entryName},
+			valNode.Content[0],
+		)
+	}
+
+	out, err := yaml.Marshal(&docNode)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(cfgPath, out, 0o644)
+}
+
+// deleteConfigMapEntry removes an entry from a top-level mapping in a YAML config file.
+func deleteConfigMapEntry(cfgPath, mapKey, entryName string) error {
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return err
+	}
+
+	var docNode yaml.Node
+	if err := yaml.Unmarshal(data, &docNode); err != nil {
+		return err
+	}
+
+	root := docNode.Content[0]
+	for i := 0; i < len(root.Content)-1; i += 2 {
+		if root.Content[i].Value == mapKey {
+			mapNode := root.Content[i+1]
+			var newContent []*yaml.Node
+			for j := 0; j < len(mapNode.Content)-1; j += 2 {
+				if mapNode.Content[j].Value == entryName {
+					continue
+				}
+				newContent = append(newContent, mapNode.Content[j], mapNode.Content[j+1])
+			}
+			mapNode.Content = newContent
+			break
+		}
+	}
+
+	out, err := yaml.Marshal(&docNode)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(cfgPath, out, 0o644)
+}
+
 func toolFilename(name string) string {
 	// Convert tool name to filename: github.list_repos → github.list_repos.yaml
 	// Replace path separators for safety
