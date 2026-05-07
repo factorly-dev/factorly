@@ -62,6 +62,10 @@ func (r *Registry) Register(tool *Tool) {
 	r.tools[tool.Name] = tool
 }
 
+func (r *Registry) Unregister(name string) {
+	delete(r.tools, name)
+}
+
 func (r *Registry) Get(name string) (*Tool, error) {
 	t, ok := r.tools[name]
 	if !ok {

@@ -504,8 +504,9 @@ func (s *Server) handleToolCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reload config
+	// Reload config and registry
 	s.cfg.Tools[name] = tc
+	s.registerTool(name, tc)
 
 	http.Redirect(w, r, "/tools/"+name, http.StatusFound)
 }
@@ -618,6 +619,7 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.cfg.Tools[name] = tc
+	s.registerTool(name, tc)
 
 	// Return inline confirmation for htmx
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -654,6 +656,7 @@ func (s *Server) handleToolRename(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		delete(s.cfg.Tools, name)
+		s.unregisterTool(name)
 	}
 
 	if err := SaveTool(s.cfgPath, s.toolsDir, newName, tc); err != nil {
@@ -661,6 +664,7 @@ func (s *Server) handleToolRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.cfg.Tools[newName] = tc
+	s.registerTool(newName, tc)
 
 	// Redirect to the (possibly new) tool page
 	w.Header().Set("HX-Redirect", "/tools/"+newName)
@@ -676,6 +680,7 @@ func (s *Server) handleToolDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	delete(s.cfg.Tools, name)
+	s.unregisterTool(name)
 
 	// Return empty response for htmx (redirects via HX-Redirect header)
 	w.Header().Set("HX-Redirect", "/tools")

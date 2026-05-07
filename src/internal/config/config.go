@@ -221,19 +221,26 @@ func Load(path string) (*Config, error) {
 			return nil, err
 		}
 
-		// Always scan .factorly/tools/ if it exists (convention for templates and modular configs)
+		// Scan .factorly/tools/ if it exists, unless already loaded via tools_dir
 		toolsSubDir := filepath.Join(configDir, "tools")
-		if info, err := os.Stat(toolsSubDir); err == nil && info.IsDir() {
-			vlog("loading tool files from %s", toolsSubDir)
-			subDirTools, err := loadDir(toolsSubDir)
-			if err != nil {
-				return nil, err
-			}
-			if len(subDirTools) > 0 {
-				vlog("  found %d tools in %s", len(subDirTools), toolsSubDir)
-			}
-			if err := mergeTools(cfg.Tools, subDirTools); err != nil {
-				return nil, err
+		resolvedToolsDir := cfg.ToolsDir
+		if resolvedToolsDir != "" && !filepath.IsAbs(resolvedToolsDir) {
+			resolvedToolsDir = filepath.Join(configDir, resolvedToolsDir)
+		}
+		alreadyLoaded := resolvedToolsDir != "" && filepath.Clean(resolvedToolsDir) == filepath.Clean(toolsSubDir)
+		if !alreadyLoaded {
+			if info, err := os.Stat(toolsSubDir); err == nil && info.IsDir() {
+				vlog("loading tool files from %s", toolsSubDir)
+				subDirTools, err := loadDir(toolsSubDir)
+				if err != nil {
+					return nil, err
+				}
+				if len(subDirTools) > 0 {
+					vlog("  found %d tools in %s", len(subDirTools), toolsSubDir)
+				}
+				if err := mergeTools(cfg.Tools, subDirTools); err != nil {
+					return nil, err
+				}
 			}
 		}
 	} else {

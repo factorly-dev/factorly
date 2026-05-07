@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-dev/factorly/internal/output"
 	"github.com/factorly-dev/factorly/internal/proxy"
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/factorly-dev/factorly/internal/templates"
@@ -185,6 +186,58 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) Start(addr string) error {
 	fmt.Fprintf(os.Stderr, "Factorly UI running at http://%s\n", addr)
 	return http.ListenAndServe(addr, s.mux)
+}
+
+// registerTool adds or updates a tool in the live registry so it can be
+// executed via Try It and MCP without restarting the server.
+func (s *Server) registerTool(name string, tc config.ToolConfig) {
+	if s.registry == nil {
+		return
+	}
+	params := make([]registry.Parameter, len(tc.Parameters))
+	for i, p := range tc.Parameters {
+		params[i] = registry.Parameter{
+			Name:        p.Name,
+			Description: p.Description,
+			Required:    p.Required,
+			Type:        p.Type,
+			Default:     p.Default,
+			Min:         p.Min,
+			Max:         p.Max,
+			MinLength:   p.MinLength,
+			MaxLength:   p.MaxLength,
+			Pattern:     p.Pattern,
+			Enum:        p.Enum,
+		}
+	}
+	tool := &registry.Tool{
+		Name:        name,
+		Type:        tc.Type,
+		Description: tc.Description,
+		Parameters:  params,
+		ProviderKey: tc.Type,
+		MaxOutput:   tc.MaxOutput,
+		Compress:    tc.Compress,
+		Filter:      output.CompileFilter(tc.Filter),
+	}
+	if tc.Shadow != nil {
+		var overrides []string
+		overrides = append(overrides, tc.Shadow.AllowPatterns...)
+		overrides = append(overrides, tc.Shadow.AllowPaths...)
+		overrides = append(overrides, tc.Shadow.AllowURLs...)
+		if len(overrides) > 0 {
+			tool.AllowOverrides = overrides
+		}
+	}
+	s.registry.Register(tool)
+}
+
+// unregisterTool removes a tool from the live registry.
+func (s *Server) unregisterTool(name string) {
+	if s.registry == nil {
+		return
+	}
+	s.registry.Unregister(name)
 }
 
 func templateFuncs() template.FuncMap {

@@ -175,9 +175,10 @@ func (s *Server) handleImportConfirm(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		// Update in-memory config
+		// Update in-memory config and registry
 		for name, tc := range filtered {
 			s.cfg.Tools[name] = tc
+			s.registerTool(name, tc)
 		}
 	} else {
 		// Save each tool to main config
@@ -190,6 +191,7 @@ func (s *Server) handleImportConfirm(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			s.cfg.Tools[name] = tc
+			s.registerTool(name, tc)
 		}
 	}
 
