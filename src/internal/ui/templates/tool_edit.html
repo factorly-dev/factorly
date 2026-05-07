@@ -46,6 +46,13 @@
           class="text-red-400 hover:text-red-600 text-sm">Delete</button>
 </div>
 
+{{if .Tool.Hidden}}
+<div class="mb-6 flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+  <span class="text-gray-400 text-xs">{{icon "lock"}}</span>
+  <span class="text-xs text-gray-500">Hidden from MCP listing and tools list. Still callable directly and by workflows.</span>
+</div>
+{{end}}
+
 {{if .Tool.Shadow}}
 <div class="mb-6 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
   <span class="text-amber-600 text-xs">{{icon "shield"}}</span>
@@ -320,6 +327,12 @@
               <input type="text" name="compress" value="{{joinList .Tool.Compress}}" placeholder="all, json, logs"
                      class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
             </div>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" name="hidden" {{if .Tool.Hidden}}checked{{end}}
+                     class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-200">
+              <span class="text-[10px] font-medium text-gray-400 uppercase">Hidden</span>
+              <span class="text-[9px] text-gray-400">— not listed in MCP or tools, but callable directly and by workflows</span>
+            </label>
           </div>
         </details>
       </div>

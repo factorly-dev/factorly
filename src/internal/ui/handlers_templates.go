@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/templates"
 	"gopkg.in/yaml.v3"
 )
@@ -94,6 +95,15 @@ func (s *Server) handleTemplateInstall(w http.ResponseWriter, r *http.Request) {
 		if err := os.WriteFile(s.cfgPath, out, 0o644); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+	}
+
+	// Parse installed tools and register at runtime
+	var installedTools map[string]config.ToolConfig
+	if err := yaml.Unmarshal([]byte(toolYAML), &installedTools); err == nil {
+		for toolName, tc := range installedTools {
+			s.cfg.Tools[toolName] = tc
+			s.registerTool(toolName, tc)
 		}
 	}
 

@@ -24,6 +24,7 @@ type toolListItem struct {
 	Type        string
 	Description string
 	Shadow      *config.ShadowConfig
+	Hidden      bool
 }
 
 func (s *Server) handleToolsList(w http.ResponseWriter, r *http.Request) {
@@ -37,6 +38,7 @@ func (s *Server) handleToolsList(w http.ResponseWriter, r *http.Request) {
 			Type:        tc.Type,
 			Description: tc.Description,
 			Shadow:      tc.Shadow,
+			Hidden:      tc.Hidden,
 		})
 	}
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
@@ -526,6 +528,7 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tc.Description = r.FormValue("description")
+	tc.Hidden = r.FormValue("hidden") == "on"
 	tc.Stdin = r.FormValue("stdin")
 	tc.Timeout = r.FormValue("timeout")
 	tc.Body = r.FormValue("body")
@@ -836,8 +839,9 @@ func (s *Server) getSidebarTools() []toolListItem {
 			continue
 		}
 		tools = append(tools, toolListItem{
-			Name: name,
-			Type: tc.Type,
+			Name:   name,
+			Type:   tc.Type,
+			Hidden: tc.Hidden,
 		})
 	}
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
@@ -851,8 +855,9 @@ func (s *Server) getSidebarWorkflows() []toolListItem {
 			continue
 		}
 		workflows = append(workflows, toolListItem{
-			Name: name,
-			Type: tc.Type,
+			Name:   name,
+			Type:   tc.Type,
+			Hidden: tc.Hidden,
 		})
 	}
 	sort.Slice(workflows, func(i, j int) bool { return workflows[i].Name < workflows[j].Name })

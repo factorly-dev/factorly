@@ -104,7 +104,7 @@ func New(reg *registry.Registry, p *proxy.Proxy, agentReg ...*agent.Registry) *s
 		server.WithHooks(hooks),
 	)
 
-	for _, tool := range reg.List() {
+	for _, tool := range reg.ListVisible() {
 		// Hide denied tools from MCP clients
 		if p.Shadow() != nil && p.Shadow().IsDenied(tool.Name) {
 			continue

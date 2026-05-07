@@ -29,6 +29,7 @@ type Tool struct {
 	Name           string
 	Type           string
 	Description    string
+	Hidden         bool // hidden from MCP listing and tools list
 	Parameters     []Parameter
 	ProviderKey    string
 	MaxOutput      int
@@ -74,10 +75,25 @@ func (r *Registry) Get(name string) (*Tool, error) {
 	return t, nil
 }
 
+// List returns all tools including hidden ones (for internal use like workflows).
 func (r *Registry) List() []*Tool {
 	tools := make([]*Tool, 0, len(r.tools))
 	for _, t := range r.tools {
 		tools = append(tools, t)
+	}
+	sort.Slice(tools, func(i, j int) bool {
+		return tools[i].Name < tools[j].Name
+	})
+	return tools
+}
+
+// ListVisible returns only non-hidden tools (for MCP listing and CLI tools list).
+func (r *Registry) ListVisible() []*Tool {
+	tools := make([]*Tool, 0, len(r.tools))
+	for _, t := range r.tools {
+		if !t.Hidden {
+			tools = append(tools, t)
+		}
 	}
 	sort.Slice(tools, func(i, j int) bool {
 		return tools[i].Name < tools[j].Name

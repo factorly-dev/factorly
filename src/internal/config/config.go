@@ -45,6 +45,7 @@ type OAuthProviderConfig struct {
 type ToolConfig struct {
 	Type         string            `yaml:"type"`
 	Description  string            `yaml:"description"`
+	Hidden       bool              `yaml:"hidden,omitempty"` // hidden from MCP listing and tools list, but callable directly and by workflows
 	Command      string            `yaml:"command,omitempty"`
 	Args         []string          `yaml:"args,omitempty"`
 	Stdin        string            `yaml:"stdin,omitempty"`

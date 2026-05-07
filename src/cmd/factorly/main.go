@@ -185,7 +185,7 @@ func runToolsList(cmd *cobra.Command, args []string) error {
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tTYPE\tDESCRIPTION\tPARAMETERS")
-	for _, t := range reg.List() {
+	for _, t := range reg.ListVisible() {
 		if shadowPolicy != nil && shadowPolicy.IsDenied(t.Name) {
 			continue
 		}
@@ -545,6 +545,7 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 			Name:        name,
 			Type:        toolCfg.Type,
 			Description: toolCfg.Description,
+			Hidden:      toolCfg.Hidden,
 			Parameters:  params,
 			ProviderKey: toolCfg.Type,
 			MaxOutput:   toolCfg.MaxOutput,
@@ -928,27 +929,18 @@ func initResolver(cfg *config.Config) (*vault.Resolver, error) {
 		vlog("registered external vault backend: %s", name)
 	}
 
-	// Try to open local vault
-	// resolveVaultPath() respects --vault-path, --global, FACTORLY_VAULT_PATH,
-	// project vault, and global vault — in that priority order.
-	resolvedPath := resolveVaultPath()
-	if _, err := os.Stat(resolvedPath); err == nil {
-		var backend vault.Backend
-		var openErr error
-
-		backend, openErr = getCachedVault()
-		if openErr != nil {
-			if len(cfg.VaultBackends) > 0 {
-				vlog("local vault failed to open: %v (external backends available)", openErr)
-			} else {
-				return nil, fmt.Errorf("vault required but failed to open: %w", openErr)
-			}
+	// Try to open vault (project vault, global vault, or fallback)
+	backend, openErr := getCachedVault()
+	if openErr != nil {
+		if len(cfg.VaultBackends) > 0 {
+			vlog("local vault failed to open: %v (external backends available)", openErr)
 		} else {
-			resolver.Register("vault", backend)
-			vlog("vault opened successfully")
+			vlog("warning: vault references found but vault unavailable: %v — refs will not be resolved", openErr)
+			return resolver, nil
 		}
-	} else if len(cfg.VaultBackends) == 0 {
-		return nil, fmt.Errorf("vault required but no vault found at %s (run 'factorly vault set' to create one)", resolvedPath)
+	} else {
+		resolver.Register("vault", backend)
+		vlog("vault opened successfully")
 	}
 
 	return resolver, nil

@@ -226,6 +226,7 @@ func (s *Server) registerTool(name string, tc config.ToolConfig) {
 		Name:        name,
 		Type:        tc.Type,
 		Description: tc.Description,
+		Hidden:      tc.Hidden,
 		Parameters:  params,
 		ProviderKey: tc.Type,
 		MaxOutput:   tc.MaxOutput,
