@@ -561,3 +561,103 @@ func TestFindToolInDir(t *testing.T) {
 		t.Errorf("should not find nonexistent, got %s", path)
 	}
 }
+
+func TestDeleteTool_RemovesFromLooseFiles(t *testing.T) {
+	// Simulate .factorly/ with a loose multi-tool file and a tools/ dir
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	toolsDir := filepath.Join(dir, "tools")
+	_ = os.MkdirAll(toolsDir, 0o755)
+
+	// Main config with empty tools
+	_ = os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644)
+
+	// Loose file in config dir with multiple tools (like echo.yaml containing echo + env)
+	looseFile := filepath.Join(dir, "multi.yaml")
+	_ = os.WriteFile(looseFile, []byte("echo:\n    type: cli\n    command: echo\nenv:\n    type: cli\n    command: env\n"), 0o644)
+
+	// Same tool also in tools dir
+	_ = os.WriteFile(filepath.Join(toolsDir, "env.yaml"), []byte("env:\n    type: cli\n    command: env\n"), 0o644)
+
+	// Delete should remove from both locations
+	if err := DeleteTool(cfgPath, toolsDir, "env"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify removed from loose file
+	data, err := os.ReadFile(looseFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if strings.Contains(content, "env:") {
+		t.Error("env should be removed from loose file")
+	}
+	if !strings.Contains(content, "echo:") {
+		t.Error("echo should still be in loose file")
+	}
+
+	// Verify removed from tools dir
+	if _, err := os.Stat(filepath.Join(toolsDir, "env.yaml")); err == nil {
+		t.Error("env.yaml should be deleted from tools dir")
+	}
+}
+
+func TestSaveTool_CleansLooseFileDuplicates(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	toolsDir := filepath.Join(dir, "tools")
+	_ = os.MkdirAll(toolsDir, 0o755)
+
+	_ = os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644)
+
+	// Tool exists in a loose file
+	looseFile := filepath.Join(dir, "misc.yaml")
+	_ = os.WriteFile(looseFile, []byte("my.tool:\n    type: cli\n    command: old\n"), 0o644)
+
+	// Save should remove from loose file and write to tools dir
+	tc := config.ToolConfig{
+		Type:    "cli",
+		Command: "new",
+	}
+	if err := SaveTool(cfgPath, toolsDir, "my.tool", tc); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify removed from loose file (file should be deleted since it's now empty)
+	if _, err := os.Stat(looseFile); err == nil {
+		data, _ := os.ReadFile(looseFile)
+		if strings.Contains(string(data), "my.tool") {
+			t.Error("my.tool should be removed from loose file")
+		}
+	}
+
+	// Verify saved in tools dir
+	saved := findToolInDir(toolsDir, "my.tool")
+	if saved == "" {
+		t.Error("my.tool should be in tools dir")
+	}
+}
+
+func TestDeleteTool_LooseFileOnly(t *testing.T) {
+	// Tool only exists in a loose file, not in tools_dir or factorly.yaml
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	toolsDir := filepath.Join(dir, "tools")
+	_ = os.MkdirAll(toolsDir, 0o755)
+
+	_ = os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "standalone.yaml"), []byte("lonely:\n    type: cli\n    command: echo\n"), 0o644)
+
+	if err := DeleteTool(cfgPath, toolsDir, "lonely"); err != nil {
+		t.Fatal(err)
+	}
+
+	// File should be deleted (was the only tool)
+	if _, err := os.Stat(filepath.Join(dir, "standalone.yaml")); err == nil {
+		data, _ := os.ReadFile(filepath.Join(dir, "standalone.yaml"))
+		if strings.Contains(string(data), "lonely") {
+			t.Error("lonely should be removed")
+		}
+	}
+}

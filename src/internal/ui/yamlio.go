@@ -17,21 +17,67 @@ import (
 // individual file and removes any inline definition to avoid duplicates.
 // Otherwise appends/updates in the main config file.
 func SaveTool(cfgPath, toolsDir, name string, tc config.ToolConfig) error {
+	// Always clean from other locations to prevent duplicates
+	_ = deleteToolFromConfig(cfgPath, name)
+	removeToolFromLooseFiles(cfgPath, name)
 	if toolsDir != "" {
-		// Remove from inline config to prevent duplicate errors
-		_ = deleteToolFromConfig(cfgPath, name)
 		return saveToolToDir(toolsDir, name, tc)
 	}
 	return saveToolToConfig(cfgPath, name, tc)
 }
 
-// DeleteTool removes a tool from disk (both inline and dir file).
+// DeleteTool removes a tool from disk (inline, loose files, and dir file).
 func DeleteTool(cfgPath, toolsDir, name string) error {
 	_ = deleteToolFromConfig(cfgPath, name)
+	removeToolFromLooseFiles(cfgPath, name)
 	if toolsDir != "" {
 		return deleteToolFromDir(toolsDir, name)
 	}
 	return nil
+}
+
+// removeToolFromLooseFiles removes a tool from any loose YAML files in the
+// config directory (e.g., .factorly/*.yaml other than factorly.yaml).
+func removeToolFromLooseFiles(cfgPath, name string) {
+	configDir := filepath.Dir(cfgPath)
+	configBase := filepath.Base(cfgPath)
+
+	entries, err := os.ReadDir(configDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		entryName := entry.Name()
+		// Skip the main config file and non-YAML files
+		if entryName == configBase {
+			continue
+		}
+		ext := filepath.Ext(entryName)
+		if ext != ".yaml" && ext != ".yml" {
+			continue
+		}
+		path := filepath.Join(configDir, entryName)
+		if findToolInFile(path, name) {
+			_ = removeToolFromFile(path, name)
+		}
+	}
+}
+
+// findToolInFile checks if a YAML file contains a tool with the given name.
+func findToolInFile(path, name string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var tools map[string]any
+	if err := yaml.Unmarshal(data, &tools); err != nil {
+		return false
+	}
+	_, exists := tools[name]
+	return exists
 }
 
 func saveToolToDir(toolsDir, name string, tc config.ToolConfig) error {
