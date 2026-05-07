@@ -16,6 +16,7 @@ import (
 
 	"github.com/factorly-dev/factorly/internal/proxy"
 	factorlyServer "github.com/factorly-dev/factorly/internal/server"
+	"github.com/factorly-dev/factorly/internal/shadow"
 	"github.com/factorly-dev/factorly/internal/ui"
 	"github.com/factorly-dev/factorly/internal/vault"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -49,7 +50,13 @@ func runUI(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	p, err := bootstrapProviders(cfg, reg)
+	// When MCP is enabled, use MCP elicitation for shadow confirm prompts
+	// so they appear in the agent's UI rather than blocking on CLI stdin
+	var confirmOpts []shadow.ConfirmFunc
+	if uiMCP {
+		confirmOpts = append(confirmOpts, mcpElicitConfirm)
+	}
+	p, err := bootstrapProviders(cfg, reg, confirmOpts...)
 	if err != nil {
 		return err
 	}
