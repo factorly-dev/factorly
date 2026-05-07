@@ -256,6 +256,9 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 
 	q := parsedURL.Query()
 	for name, value := range queryParams {
+		if value == "" {
+			continue // skip empty optional query params
+		}
 		q.Set(name, value)
 	}
 	parsedURL.RawQuery = q.Encode()

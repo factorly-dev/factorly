@@ -119,13 +119,23 @@ func (s *Server) handleAuthDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Also delete token from vault
+	// Delete token from vault
 	tokenKey := name + "_oauth"
 	if s.vault != nil {
 		_ = s.vault.Delete(tokenKey)
 	}
 
 	delete(s.cfg.OAuthProviders, name)
+
+	// Remove auth references from tools that used this provider
+	for toolName, tc := range s.cfg.Tools {
+		if tc.Auth != nil && tc.Auth.Type == "oauth" && tc.Auth.Provider == name {
+			tc.Auth = nil
+			s.cfg.Tools[toolName] = tc
+			_ = SaveTool(s.cfgPath, s.toolsDir, toolName, tc)
+			s.registerTool(toolName, tc)
+		}
+	}
 
 	w.Header().Set("HX-Redirect", "/auth")
 	w.WriteHeader(http.StatusOK)

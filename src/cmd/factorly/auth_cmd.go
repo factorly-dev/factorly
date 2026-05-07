@@ -42,7 +42,7 @@ var authLoginCmd = &cobra.Command{
 		}
 
 		// Open vault to resolve refs in client_id/secret and to store tokens
-		backend, err := getCachedLocalVault()
+		backend, err := getCachedVault()
 		if err != nil {
 			return err
 		}
@@ -95,7 +95,7 @@ var authStatusCmd = &cobra.Command{
 			return err
 		}
 
-		backend, err := getCachedLocalVault()
+		backend, err := getCachedVault()
 		if err != nil {
 			return err
 		}
@@ -158,7 +158,7 @@ var authLogoutCmd = &cobra.Command{
 			return err
 		}
 
-		backend, err := getCachedLocalVault()
+		backend, err := getCachedVault()
 		if err != nil {
 			return err
 		}

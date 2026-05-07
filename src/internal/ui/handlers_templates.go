@@ -107,5 +107,19 @@ func (s *Server) handleTemplateInstall(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Install OAuth provider if the template requires one
+	if oauthProviders := tmpl.ToOAuthProvider(); oauthProviders != nil {
+		for provName, provCfg := range oauthProviders {
+			if err := SaveOAuthProvider(s.cfgPath, provName, provCfg); err != nil {
+				http.Error(w, fmt.Sprintf("saving oauth provider: %v", err), http.StatusInternalServerError)
+				return
+			}
+			if s.cfg.OAuthProviders == nil {
+				s.cfg.OAuthProviders = make(map[string]config.OAuthProviderConfig)
+			}
+			s.cfg.OAuthProviders[provName] = provCfg
+		}
+	}
+
 	http.Redirect(w, r, "/tools", http.StatusFound)
 }
