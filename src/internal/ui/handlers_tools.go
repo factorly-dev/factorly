@@ -76,6 +76,62 @@ func (s *Server) handleToolEdit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleToolTryPanel(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	tc, ok := s.cfg.Tools[name]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	fmt.Fprint(w, `<div class="bg-white rounded-lg border border-gray-200 p-5 sticky top-6">
+		<div class="flex items-center justify-between mb-4">
+			<h2 class="text-xs font-medium text-gray-500 uppercase tracking-wide">Try it</h2>`)
+	fmt.Fprintf(w, `<span class="text-[10px] text-gray-400 font-mono">%s</span>
+		</div>`, template.HTMLEscapeString(name))
+
+	fmt.Fprintf(w, `<form hx-post="/tools/%s/try" hx-target="#try-result" hx-swap="innerHTML" hx-indicator="#try-spinner">`, template.HTMLEscapeString(name))
+
+	if len(tc.Parameters) > 0 {
+		fmt.Fprint(w, `<div class="space-y-3 mb-4">`)
+		for _, p := range tc.Parameters {
+			fmt.Fprintf(w, `<div>
+				<label class="block text-xs text-gray-600 mb-1 font-medium">%s`, template.HTMLEscapeString(p.Name))
+			if p.Required {
+				fmt.Fprint(w, ` <span class="text-red-400">*</span>`)
+			}
+			if p.Type != "" {
+				fmt.Fprintf(w, ` <span class="text-gray-300 font-normal">%s</span>`, template.HTMLEscapeString(p.Type))
+			}
+			fmt.Fprint(w, `</label>`)
+			if p.Description != "" {
+				fmt.Fprintf(w, `<p class="text-[10px] text-gray-400 mb-1">%s</p>`, template.HTMLEscapeString(p.Description))
+			}
+			fmt.Fprintf(w, `<input type="text" name="param_%s" value="%s"
+				class="w-full px-3 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200"`,
+				template.HTMLEscapeString(p.Name), template.HTMLEscapeString(p.Default))
+			if p.Required {
+				fmt.Fprint(w, ` required`)
+			}
+			fmt.Fprint(w, `></div>`)
+		}
+		fmt.Fprint(w, `</div>`)
+	} else {
+		fmt.Fprint(w, `<p class="text-xs text-gray-400 mb-4">No parameters.</p>`)
+	}
+
+	fmt.Fprint(w, `<button type="submit"
+		class="w-full px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm inline-flex items-center justify-center gap-2">Send</button>
+		<span id="try-spinner" class="htmx-indicator block mt-2 text-center text-xs text-gray-400">
+			<span class="inline-block animate-pulse">●</span> running...
+		</span>
+	</form>
+	<div id="try-result" class="mt-4"></div>
+	</div>`)
+}
+
 func (s *Server) handleToolTry(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 

@@ -46,7 +46,10 @@ func saveToolToDir(toolsDir, name string, tc config.ToolConfig) error {
 	}
 
 	// Otherwise write a new file
-	filename := toolFilename(name)
+	filename, err := toolFilename(name)
+	if err != nil {
+		return err
+	}
 	path := filepath.Join(toolsDir, filename)
 
 	data := map[string]config.ToolConfig{name: tc}
@@ -128,7 +131,10 @@ func updateToolInFile(path, name string, tc config.ToolConfig) error {
 
 func deleteToolFromDir(toolsDir, name string) error {
 	// First try the dedicated file
-	filename := toolFilename(name)
+	filename, err := toolFilename(name)
+	if err != nil {
+		return err
+	}
 	path := filepath.Join(toolsDir, filename)
 	if err := os.Remove(path); err == nil {
 		return nil
@@ -371,9 +377,23 @@ func deleteConfigMapEntry(cfgPath, mapKey, entryName string) error {
 	return os.WriteFile(cfgPath, out, 0o644)
 }
 
-func toolFilename(name string) string {
-	// Convert tool name to filename: github.list_repos → github.list_repos.yaml
-	// Replace path separators for safety
-	safe := strings.ReplaceAll(name, "/", "_")
-	return safe + ".yaml"
+// safePath sanitizes a user-provided name for use as a single path component.
+// It rejects traversal attempts (..), path separators, and empty/dot-only names.
+func safePath(name string) (string, error) {
+	s := strings.TrimSpace(name)
+	if s == "" || s == "." || s == ".." {
+		return "", fmt.Errorf("invalid name: %q", name)
+	}
+	if strings.ContainsAny(s, "/\\") || strings.Contains(s, "..") {
+		return "", fmt.Errorf("invalid name: %q (contains path separator or traversal)", name)
+	}
+	return s, nil
+}
+
+func toolFilename(name string) (string, error) {
+	safe, err := safePath(name)
+	if err != nil {
+		return "", err
+	}
+	return safe + ".yaml", nil
 }

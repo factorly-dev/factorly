@@ -191,14 +191,20 @@ func tokenValidation(next http.Handler, token string) http.Handler {
 				Value:    token,
 				Path:     "/",
 				HttpOnly: true,
+				Secure:   r.TLS != nil,
 				SameSite: http.SameSiteStrictMode,
 			})
-			// Redirect to strip token from URL
-			clean := r.URL
-			q := clean.Query()
+			// Redirect to strip token from URL (local path only, no open redirect)
+			redirectPath := r.URL.EscapedPath()
+			if redirectPath == "" {
+				redirectPath = "/"
+			}
+			q := r.URL.Query()
 			q.Del("token")
-			clean.RawQuery = q.Encode()
-			http.Redirect(w, r, clean.String(), http.StatusFound)
+			if encoded := q.Encode(); encoded != "" {
+				redirectPath += "?" + encoded
+			}
+			http.Redirect(w, r, redirectPath, http.StatusFound)
 			return
 		}
 

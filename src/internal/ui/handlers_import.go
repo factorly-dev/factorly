@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -164,7 +165,12 @@ func (s *Server) handleImportConfirm(w http.ResponseWriter, r *http.Request) {
 		if filename == "" {
 			filename = "imported"
 		}
-		path := fmt.Sprintf("%s/%s.yaml", s.toolsDir, filename)
+		safe, err := safePath(filename)
+		if err != nil {
+			http.Error(w, "invalid prefix: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		path := filepath.Join(s.toolsDir, safe+".yaml")
 		if err := writeFileCreate(path, out); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -191,8 +197,7 @@ func (s *Server) handleImportConfirm(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeFileCreate(path string, data []byte) error {
-	dir := path[:strings.LastIndex(path, "/")]
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)

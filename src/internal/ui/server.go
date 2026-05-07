@@ -113,6 +113,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /tools/_new", s.handleToolCreate)
 	s.mux.HandleFunc("POST /tools/{name}", s.handleToolSave)
 	s.mux.HandleFunc("POST /tools/{name}/rename", s.handleToolRename)
+	s.mux.HandleFunc("GET /tools/{name}/try-panel", s.handleToolTryPanel)
 	s.mux.HandleFunc("POST /tools/{name}/try", s.handleToolTry)
 	s.mux.HandleFunc("DELETE /tools/{name}", s.handleToolDelete)
 

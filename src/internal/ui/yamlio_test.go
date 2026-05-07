@@ -497,6 +497,35 @@ func TestUpdateToolInFile_PreservesOrder(t *testing.T) {
 	}
 }
 
+func TestSafePath(t *testing.T) {
+	tests := []struct {
+		input string
+		ok    bool
+	}{
+		{"github.list_repos", true},
+		{"my-tool", true},
+		{"echo", true},
+		{"", false},
+		{".", false},
+		{"..", false},
+		{"../etc/passwd", false},
+		{"foo/bar", false},
+		{"foo\\bar", false},
+		{"foo..bar", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			_, err := safePath(tt.input)
+			if tt.ok && err != nil {
+				t.Errorf("safePath(%q) should succeed, got error: %v", tt.input, err)
+			}
+			if !tt.ok && err == nil {
+				t.Errorf("safePath(%q) should fail, got nil error", tt.input)
+			}
+		})
+	}
+}
+
 func TestFindToolInDir(t *testing.T) {
 	dir := t.TempDir()
 

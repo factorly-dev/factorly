@@ -52,7 +52,9 @@
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
   <!-- Config panel -->
   <div>
-    <form hx-post="/tools/{{.Tool.Name}}" hx-target="#save-status" hx-swap="innerHTML" class="space-y-4">
+    <form hx-post="/tools/{{.Tool.Name}}" hx-target="#save-status" hx-swap="innerHTML"
+          hx-on::after-request="if(event.detail.successful) setTimeout(() => htmx.ajax('GET', '/tools/{{.Tool.Name}}/try-panel', {target:'#try-panel', swap:'innerHTML'}), 300)"
+          class="space-y-4">
 
       {{if eq .Tool.Type "cli"}}
       <!-- CLI: terminal preview -->
@@ -276,7 +278,7 @@
   </div>
 
   <!-- Try it panel -->
-  <div>
+  <div id="try-panel">
     <div class="bg-white rounded-lg border border-gray-200 p-5 sticky top-6">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xs font-medium text-gray-500 uppercase tracking-wide">Try it</h2>
