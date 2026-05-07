@@ -526,7 +526,7 @@ func TestJSONPathArrayWildcard(t *testing.T) {
 }
 
 func TestJSONPathAnthropicUseCase(t *testing.T) {
-	input := `{"id":"msg_123","content":[{"type":"text","text":"Hello world"}],"model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":5}}`
+	input := `{"id":"msg_123","content":[{"type":"text","text":"Hello world"}],"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5}}`
 	f := &Filter{JSONPath: mustParseJP(t, "$.content[0].text")}
 	got := f.Apply(input)
 	if got != "Hello world" {

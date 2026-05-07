@@ -192,7 +192,7 @@ The `type` field controls how body parameters are serialized in JSON:
 
 | Type | JSON output | Example |
 |------|------------|---------|
-| `string` (default) | Quoted | `"claude-sonnet-4-20250514"` |
+| `string` (default) | Quoted | `"claude-sonnet-4-6"` |
 | `integer` | Unquoted number | `1024` |
 | `number` | Unquoted number | `0.95` |
 | `boolean` | Unquoted | `true` |
@@ -260,7 +260,7 @@ tools:
         description: The question for Claude
         required: true
       - name: model
-        default: claude-sonnet-4-20250514
+        default: claude-sonnet-4-6
       - name: max_tokens
         default: "1024"
 ```

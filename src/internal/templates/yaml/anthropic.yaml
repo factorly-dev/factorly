@@ -12,7 +12,7 @@ anthropic.messages:
     value: "{{vault:ANTHROPIC_API_KEY}}"
   parameters:
     - name: model
-      description: Model to use (e.g., claude-sonnet-4-20250514)
+      description: Model to use (e.g., claude-sonnet-4-6)
       type: string
       required: true
       in: body
@@ -50,7 +50,7 @@ anthropic.ask:
       default: "You are a helpful assistant."
     - name: model
       description: Model to use
-      default: claude-sonnet-4-20250514
+      default: claude-sonnet-4-6
     - name: max_tokens
       description: Maximum tokens to generate
       default: "1024"
