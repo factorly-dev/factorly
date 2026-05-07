@@ -10,9 +10,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/output"
+	"github.com/factorly-dev/factorly/internal/provider"
 	"github.com/factorly-dev/factorly/internal/proxy"
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/factorly-dev/factorly/internal/templates"
@@ -230,12 +232,100 @@ func (s *Server) registerTool(name string, tc config.ToolConfig) {
 		}
 	}
 	s.registry.Register(tool)
+
+	// Also register with the appropriate provider so it can execute
+	s.registerProvider(name, tc)
 }
 
-// unregisterTool removes a tool from the live registry.
+// registerProvider adds the tool definition to the appropriate provider.
+func (s *Server) registerProvider(name string, tc config.ToolConfig) {
+	if s.proxy == nil {
+		return
+	}
+
+	switch tc.Type {
+	case "cli":
+		prov := s.proxy.Provider("cli")
+		if prov == nil {
+			// Create a new CLI provider if none exists
+			cp := provider.NewCLI(map[string]provider.CLIToolDef{})
+			_ = cp.Setup()
+			s.proxy.RegisterProvider("cli", cp)
+			prov = cp
+		}
+		if cp, ok := prov.(*provider.CLIProvider); ok {
+			def := provider.CLIToolDef{
+				Command: tc.Command,
+				Args:    tc.Args,
+				Stdin:   tc.Stdin,
+			}
+			if tc.Timeout != "" {
+				if d, err := time.ParseDuration(tc.Timeout); err == nil {
+					def.Timeout = d
+				}
+			}
+			cp.AddTool(name, def)
+		}
+
+	case "rest":
+		prov := s.proxy.Provider("rest")
+		if prov == nil {
+			rp := provider.NewREST(map[string]provider.RESTToolDef{}, nil)
+			_ = rp.Setup()
+			s.proxy.RegisterProvider("rest", rp)
+			prov = rp
+		}
+		if rp, ok := prov.(*provider.RESTProvider); ok {
+			def := provider.RESTToolDef{
+				Method:  tc.Method,
+				BaseURL: tc.BaseURL,
+				Path:    tc.Path,
+				Body:    tc.Body,
+				Headers: tc.Headers,
+			}
+			if tc.Auth != nil {
+				def.Auth = &provider.AuthDef{
+					Type:   tc.Auth.Type,
+					Token:  tc.Auth.Token,
+					Header: tc.Auth.Header,
+					Value:  tc.Auth.Value,
+				}
+			}
+			for _, p := range tc.Parameters {
+				def.Params = append(def.Params, provider.RESTParamDef{
+					Name:     p.Name,
+					In:       p.In,
+					Required: p.Required,
+					Type:     p.Type,
+				})
+			}
+			if tc.Timeout != "" {
+				if d, err := time.ParseDuration(tc.Timeout); err == nil {
+					def.Timeout = d
+				}
+			}
+			rp.AddTool(name, def)
+		}
+	}
+}
+
+// unregisterTool removes a tool from the live registry and provider.
 func (s *Server) unregisterTool(name string) {
 	if s.registry == nil {
 		return
+	}
+	// Remove from provider
+	if s.proxy != nil {
+		if tc, ok := s.cfg.Tools[name]; ok {
+			if prov := s.proxy.Provider(tc.Type); prov != nil {
+				switch p := prov.(type) {
+				case *provider.CLIProvider:
+					p.RemoveTool(name)
+				case *provider.RESTProvider:
+					p.RemoveTool(name)
+				}
+			}
+		}
 	}
 	s.registry.Unregister(name)
 }

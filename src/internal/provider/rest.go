@@ -72,6 +72,16 @@ func (p *RESTProvider) Setup() error {
 	return nil
 }
 
+// AddTool registers a new tool definition at runtime.
+func (p *RESTProvider) AddTool(name string, def RESTToolDef) {
+	p.tools[name] = def
+}
+
+// RemoveTool removes a tool definition at runtime.
+func (p *RESTProvider) RemoveTool(name string) {
+	delete(p.tools, name)
+}
+
 func (p *RESTProvider) Teardown() error {
 	if p.client != nil {
 		p.client.CloseIdleConnections()

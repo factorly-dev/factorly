@@ -76,6 +76,11 @@ func (p *Proxy) RegisterProvider(key string, prov provider.Provider) {
 	p.providers[key] = prov
 }
 
+// Provider returns a registered provider by key, or nil if not found.
+func (p *Proxy) Provider(key string) provider.Provider {
+	return p.providers[key]
+}
+
 // Shadow returns the shadow policy, or nil if none is configured.
 func (p *Proxy) Shadow() *shadow.Policy {
 	return p.shadow

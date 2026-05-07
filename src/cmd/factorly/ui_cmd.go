@@ -26,6 +26,7 @@ var (
 	uiPort     int
 	uiMCP      bool
 	uiMCPToken string
+	uiNoLaunch bool
 )
 
 var uiCmd = &cobra.Command{
@@ -39,6 +40,7 @@ func init() {
 	uiCmd.Flags().IntVar(&uiPort, "port", 3741, "port for the UI server")
 	uiCmd.Flags().BoolVar(&uiMCP, "mcp", false, "also serve MCP endpoint at /mcp")
 	uiCmd.Flags().StringVar(&uiMCPToken, "mcp-token", "", "bearer token for MCP endpoint (required when --mcp is set)")
+	uiCmd.Flags().BoolVar(&uiNoLaunch, "no-launch", false, "don't open the browser automatically")
 }
 
 func runUI(cmd *cobra.Command, args []string) error {
@@ -139,8 +141,9 @@ func runUI(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "MCP endpoint at http://localhost:%d/mcp (token: %s)\n", uiPort, uiMCPToken)
 	}
 
-	// Open browser with token
-	go openBrowser(url)
+	if !uiNoLaunch {
+		go openBrowser(url)
+	}
 
 	return http.ListenAndServe(addr, handler)
 }

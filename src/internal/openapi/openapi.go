@@ -73,6 +73,13 @@ func Generate(specPath string, opts GenerateOpts) (map[string]config.ToolConfig,
 			description := extractDescription(op)
 			params := extractParameters(op)
 
+			// Merge path-level parameters (shared across methods)
+			pathLevelParams := extractParameters(methods)
+			params = mergeParams(pathLevelParams, params)
+
+			// Ensure all path placeholders have a corresponding parameter
+			params = ensurePathParams(path, params)
+
 			tc := config.ToolConfig{
 				Type:        "rest",
 				Description: description,
@@ -214,6 +221,52 @@ func extractParameters(op map[string]any) []config.ParamConfig {
 		})
 	}
 
+	return params
+}
+
+// mergeParams merges path-level params with operation-level params.
+// Operation-level params take precedence (override by name).
+func mergeParams(pathLevel, opLevel []config.ParamConfig) []config.ParamConfig {
+	if len(pathLevel) == 0 {
+		return opLevel
+	}
+	seen := make(map[string]bool)
+	for _, p := range opLevel {
+		seen[p.Name] = true
+	}
+	var merged []config.ParamConfig
+	for _, p := range pathLevel {
+		if !seen[p.Name] {
+			merged = append(merged, p)
+		}
+	}
+	return append(merged, opLevel...)
+}
+
+// ensurePathParams checks for {param} placeholders in the path and adds
+// any missing parameters as required path params.
+func ensurePathParams(path string, params []config.ParamConfig) []config.ParamConfig {
+	re := regexp.MustCompile(`\{([^}]+)\}`)
+	matches := re.FindAllStringSubmatch(path, -1)
+	if len(matches) == 0 {
+		return params
+	}
+
+	existing := make(map[string]bool)
+	for _, p := range params {
+		existing[p.Name] = true
+	}
+
+	for _, m := range matches {
+		name := m[1]
+		if !existing[name] {
+			params = append(params, config.ParamConfig{
+				Name:     name,
+				Required: true,
+				In:       "path",
+			})
+		}
+	}
 	return params
 }
 

@@ -35,6 +35,16 @@ func (p *CLIProvider) Setup() error {
 	return nil
 }
 
+// AddTool registers a new tool definition at runtime.
+func (p *CLIProvider) AddTool(name string, def CLIToolDef) {
+	p.tools[name] = def
+}
+
+// RemoveTool removes a tool definition at runtime.
+func (p *CLIProvider) RemoveTool(name string) {
+	delete(p.tools, name)
+}
+
 func (p *CLIProvider) Teardown() error {
 	return nil
 }

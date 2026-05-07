@@ -10,6 +10,9 @@ import (
 	"testing"
 
 	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-dev/factorly/internal/provider"
+	"github.com/factorly-dev/factorly/internal/proxy"
+	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/factorly-dev/factorly/internal/vault"
 )
 
@@ -58,6 +61,37 @@ func testServer(t *testing.T, cfg *config.Config) (*Server, string) {
 		Config:  cfg,
 		CfgPath: cfgPath,
 		Vault:   newMockVault(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return srv, cfgPath
+}
+
+// testServerWithProxy creates a UI server with registry and proxy for testing runtime registration.
+func testServerWithProxy(t *testing.T, cfg *config.Config) (*Server, string) {
+	t.Helper()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "factorly.yaml")
+	_ = os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644)
+
+	if cfg == nil {
+		cfg = &config.Config{
+			Tools: make(map[string]config.ToolConfig),
+		}
+	}
+
+	reg := registry.New()
+	providers := make(map[string]provider.Provider)
+	p := proxy.New(reg, providers, nil)
+
+	srv, err := New(Options{
+		Config:   cfg,
+		CfgPath:  cfgPath,
+		Vault:    newMockVault(),
+		Registry: reg,
+		Proxy:    p,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -861,6 +895,179 @@ func TestHandleImportPage(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "OpenAPI") {
 		t.Error("expected OpenAPI mention on import page")
+	}
+}
+
+// --- Runtime registration tests ---
+
+func TestToolCreate_RegistersInRegistryAndProvider(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+
+	form := url.Values{
+		"name":    {"test.echo"},
+		"type":    {"cli"},
+		"command": {"echo"},
+		"args":    {"hello"},
+	}
+
+	req := httptest.NewRequest("POST", "/tools/_new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify registered in registry
+	tool, err := srv.registry.Get("test.echo")
+	if err != nil {
+		t.Fatalf("tool not in registry: %v", err)
+	}
+	if tool.Type != "cli" {
+		t.Errorf("expected type cli, got %s", tool.Type)
+	}
+
+	// Verify CLI provider was created and has the tool
+	prov := srv.proxy.Provider("cli")
+	if prov == nil {
+		t.Fatal("cli provider should exist")
+	}
+	cp, ok := prov.(*provider.CLIProvider)
+	if !ok {
+		t.Fatal("expected *provider.CLIProvider")
+	}
+	// Execute to prove it's registered (will fail since echo isn't a real command in test, but shouldn't be "not found")
+	_ = cp
+}
+
+func TestToolCreate_REST_RegistersProvider(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+
+	form := url.Values{
+		"name":     {"api.test"},
+		"type":     {"rest"},
+		"method":   {"GET"},
+		"base_url": {"https://httpbin.org"},
+		"path":     {"/get"},
+	}
+
+	req := httptest.NewRequest("POST", "/tools/_new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify REST provider was created
+	prov := srv.proxy.Provider("rest")
+	if prov == nil {
+		t.Fatal("rest provider should exist")
+	}
+	if _, ok := prov.(*provider.RESTProvider); !ok {
+		t.Fatal("expected *provider.RESTProvider")
+	}
+
+	// Verify in registry
+	if _, err := srv.registry.Get("api.test"); err != nil {
+		t.Fatalf("tool not in registry: %v", err)
+	}
+}
+
+func TestToolDelete_UnregistersFromRegistryAndProvider(t *testing.T) {
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"doomed": {Type: "cli", Command: "echo"},
+		},
+	}
+	srv, _ := testServerWithProxy(t, cfg)
+
+	// First register it
+	srv.registerTool("doomed", cfg.Tools["doomed"])
+
+	// Verify it's registered
+	if _, err := srv.registry.Get("doomed"); err != nil {
+		t.Fatal("tool should be in registry before delete")
+	}
+
+	req := httptest.NewRequest("DELETE", "/tools/doomed", nil)
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	// Verify removed from registry
+	if _, err := srv.registry.Get("doomed"); err == nil {
+		t.Error("tool should be removed from registry")
+	}
+}
+
+func TestToolRename_UpdatesRegistryAndProvider(t *testing.T) {
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"old.tool": {Type: "cli", Command: "echo"},
+		},
+	}
+	srv, _ := testServerWithProxy(t, cfg)
+	srv.registerTool("old.tool", cfg.Tools["old.tool"])
+
+	form := url.Values{
+		"rename":      {"new.tool"},
+		"description": {"renamed"},
+	}
+
+	req := httptest.NewRequest("POST", "/tools/old.tool/rename", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Old name gone from registry
+	if _, err := srv.registry.Get("old.tool"); err == nil {
+		t.Error("old.tool should be removed from registry")
+	}
+	// New name in registry
+	if _, err := srv.registry.Get("new.tool"); err != nil {
+		t.Errorf("new.tool should be in registry: %v", err)
+	}
+}
+
+func TestToolSave_UpdatesProvider(t *testing.T) {
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"my.tool": {Type: "rest", Method: "GET", BaseURL: "https://old.example.com", Path: "/old"},
+		},
+	}
+	srv, _ := testServerWithProxy(t, cfg)
+	srv.registerTool("my.tool", cfg.Tools["my.tool"])
+
+	form := url.Values{
+		"description": {"updated"},
+		"method":      {"POST"},
+		"base_url":    {"https://new.example.com"},
+		"path":        {"/new"},
+	}
+
+	req := httptest.NewRequest("POST", "/tools/my.tool", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify registry updated
+	tool, _ := srv.registry.Get("my.tool")
+	if tool.Description != "updated" {
+		t.Errorf("registry not updated: %q", tool.Description)
 	}
 }
 

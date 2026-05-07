@@ -288,6 +288,85 @@ func TestBuildToolName_SanitizesSlashes(t *testing.T) {
 	}
 }
 
+func TestGeneratePathParams(t *testing.T) {
+	spec := `
+openapi: "3.0.0"
+info:
+  title: Test API
+  version: "1.0"
+paths:
+  /users/{username}/repos/{repo_id}:
+    get:
+      operationId: getUserRepo
+      description: Get a user repo
+`
+	path := writeSpec(t, spec)
+	tools, err := Generate(path, GenerateOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tc, ok := tools["test_api.getUserRepo"]
+	if !ok {
+		t.Fatal("tool not found")
+	}
+
+	// Should have both path params
+	paramNames := make(map[string]bool)
+	for _, p := range tc.Parameters {
+		paramNames[p.Name] = true
+		if p.Name == "username" || p.Name == "repo_id" {
+			if !p.Required {
+				t.Errorf("path param %q should be required", p.Name)
+			}
+		}
+	}
+	if !paramNames["username"] {
+		t.Error("missing path param 'username'")
+	}
+	if !paramNames["repo_id"] {
+		t.Error("missing path param 'repo_id'")
+	}
+}
+
+func TestGeneratePathParamsWithExplicit(t *testing.T) {
+	spec := `
+openapi: "3.0.0"
+info:
+  title: Test API
+  version: "1.0"
+paths:
+  /users/{username}:
+    get:
+      operationId: getUser
+      parameters:
+        - name: username
+          in: path
+          required: true
+          description: The user's login name
+`
+	path := writeSpec(t, spec)
+	tools, err := Generate(path, GenerateOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tc := tools["test_api.getUser"]
+	// Should have exactly one username param (not duplicated)
+	count := 0
+	for _, p := range tc.Parameters {
+		if p.Name == "username" {
+			count++
+			if p.Description != "The user's login name" {
+				t.Errorf("description should come from explicit param, got %q", p.Description)
+			}
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected 1 username param, got %d", count)
+	}
+}
+
 func TestReadSpec_RejectsInvalidScheme(t *testing.T) {
 	_, err := readSpec("ftp://evil.example.com/spec.yaml")
 	// ftp is not http/https, so it falls through to file read which should fail
