@@ -269,6 +269,74 @@ func TestHasVaultRefsWithDefault(t *testing.T) {
 	}
 }
 
+func TestRedact(t *testing.T) {
+	r := NewResolver()
+	r.Register("vault", &mockBackend{secrets: map[string]string{
+		"TOKEN":  "sk_live_secret_99999",
+		"DB_URL": "postgres://admin:pass@db:5432",
+	}})
+
+	tests := []struct {
+		name     string
+		input    string
+		refs     []string
+		expected string
+	}{
+		{
+			name:     "redacts bearer token in header",
+			input:    "Authorization: Bearer sk_live_secret_99999",
+			refs:     []string{"{{vault:TOKEN}}"},
+			expected: "Authorization: Bearer ****",
+		},
+		{
+			name:     "redacts inline vault ref in URL path",
+			input:    "https://api.telegram.org/botsk_live_secret_99999/getMe",
+			refs:     []string{"/bot{{vault:TOKEN}}/getMe"},
+			expected: "https://api.telegram.org/bot****/getMe",
+		},
+		{
+			name:     "redacts multiple secrets",
+			input:    "token=sk_live_secret_99999 db=postgres://admin:pass@db:5432",
+			refs:     []string{"{{vault:TOKEN}}", "{{vault:DB_URL}}"},
+			expected: "token=**** db=****",
+		},
+		{
+			name:     "no refs, no redaction",
+			input:    "GET /public/endpoint",
+			refs:     nil,
+			expected: "GET /public/endpoint",
+		},
+		{
+			name:     "unresolvable ref leaves string unchanged",
+			input:    "key=plaintext",
+			refs:     []string{"{{vault:NONEXISTENT}}"},
+			expected: "key=plaintext",
+		},
+		{
+			name:     "ref that resolves to same value (no vault match) unchanged",
+			input:    "value={{vault:MISSING}}",
+			refs:     []string{"{{vault:MISSING}}"},
+			expected: "value={{vault:MISSING}}",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := r.Redact(tt.input, tt.refs)
+			if result != tt.expected {
+				t.Errorf("Redact(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestRedact_NilResolver(t *testing.T) {
+	var r *Resolver
+	result := r.Redact("secret data", []string{"{{vault:KEY}}"})
+	if result != "secret data" {
+		t.Errorf("nil resolver should return input unchanged, got %q", result)
+	}
+}
+
 // mapBackend is a simple in-memory backend for testing.
 type mapBackend struct {
 	data map[string]string

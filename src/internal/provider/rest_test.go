@@ -1360,3 +1360,81 @@ func TestRESTBodyType_DefaultIsJSON(t *testing.T) {
 		t.Errorf("expected JSON object, got %q", capturedBody)
 	}
 }
+
+func TestRESTVerboseRedactsSecrets(t *testing.T) {
+	secret := "sk_live_test_secret_12345"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:  "GET",
+			BaseURL: srv.URL,
+			Path:    "/data",
+			Auth:    &AuthDef{Type: "bearer", Token: secret},
+			RedactSecrets: func(s string) string {
+				return strings.ReplaceAll(s, secret, "****")
+			},
+		},
+	}, nil)
+	p.Verbose = true
+	_ = p.Setup()
+
+	// Capture stderr
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	_, _ = p.Execute("test", map[string]string{})
+
+	_ = w.Close()
+	os.Stderr = oldStderr
+	captured, _ := io.ReadAll(r)
+	stderr := string(captured)
+
+	if strings.Contains(stderr, secret) {
+		t.Errorf("SECRET LEAKED in verbose output: %s", stderr)
+	}
+	if !strings.Contains(stderr, "****") {
+		t.Errorf("expected redacted value in output, got: %s", stderr)
+	}
+	if !strings.Contains(stderr, "[rest] GET") {
+		t.Errorf("expected verbose request line, got: %s", stderr)
+	}
+}
+
+func TestRESTVerboseNoRedactWithoutSecrets(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:  "GET",
+			BaseURL: srv.URL,
+			Path:    "/public",
+			// No RedactSecrets — no vault refs
+		},
+	}, nil)
+	p.Verbose = true
+	_ = p.Setup()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	_, _ = p.Execute("test", map[string]string{})
+
+	_ = w.Close()
+	os.Stderr = oldStderr
+	captured, _ := io.ReadAll(r)
+	stderr := string(captured)
+
+	if !strings.Contains(stderr, "/public") {
+		t.Errorf("expected full URL in output without redaction, got: %s", stderr)
+	}
+}

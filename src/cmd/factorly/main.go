@@ -621,6 +621,18 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			cliTools[name] = def
 			vlog("  registered cli tool: %s", name)
 		case "rest":
+			var vaultRefs []string
+			collectRef := func(original string) {
+				if vault.HasVaultRefs(original) {
+					vaultRefs = append(vaultRefs, original)
+				}
+			}
+			collectRef(toolCfg.BaseURL)
+			collectRef(toolCfg.Path)
+			if toolCfg.Auth != nil {
+				collectRef(toolCfg.Auth.Token)
+				collectRef(toolCfg.Auth.Value)
+			}
 			restDef := provider.RESTToolDef{
 				Method:   toolCfg.Method,
 				BaseURL:  resolveVaultRefTracked(resolver, toolCfg.BaseURL, &vaultKeys),
@@ -638,6 +650,8 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 				}
 				if toolCfg.Auth.Type == "oauth" {
 					oauthCfg := cfg.ResolveOAuthProvider(toolCfg.Auth)
+					collectRef(oauthCfg.ClientID)
+					collectRef(oauthCfg.ClientSecret)
 					authDef.OAuthProvider = &oauth.ProviderConfig{
 						ClientID:     resolveVaultRefTracked(resolver, oauthCfg.ClientID, &vaultKeys),
 						ClientSecret: resolveVaultRefTracked(resolver, oauthCfg.ClientSecret, &vaultKeys),
@@ -663,6 +677,13 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 					restDef.Timeout = d
 				} else {
 					vlog("warning: invalid timeout %q for rest tool %s: %v", toolCfg.Timeout, name, err)
+				}
+			}
+			if len(vaultRefs) > 0 && resolver != nil {
+				refs := vaultRefs // capture for closure
+				res := resolver   // capture for closure
+				restDef.RedactSecrets = func(s string) string {
+					return res.Redact(s, refs)
 				}
 			}
 			restTools[name] = restDef

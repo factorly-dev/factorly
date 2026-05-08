@@ -46,15 +46,16 @@ type AuthDef struct {
 }
 
 type RESTToolDef struct {
-	Method   string
-	BaseURL  string
-	Path     string
-	Body     string // JSON body template with {{param}} placeholders
-	BodyType string // "json" (default), "form", "raw"
-	Headers  map[string]string
-	Auth     *AuthDef
-	Params   []RESTParamDef
-	Timeout  time.Duration
+	Method        string
+	BaseURL       string
+	Path          string
+	Body          string // JSON body template with {{param}} placeholders
+	BodyType      string // "json" (default), "form", "raw"
+	Headers       map[string]string
+	Auth          *AuthDef
+	Params        []RESTParamDef
+	Timeout       time.Duration
+	RedactSecrets func(s string) string // redacts resolved vault values from a string for verbose logging
 }
 
 type RESTProvider struct {
@@ -335,24 +336,37 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 		}
 	}
 
-	// Verbose logging
+	// Verbose logging (redact secrets)
 	if p.Verbose {
-		fmt.Fprintf(os.Stderr, "[rest] %s %s\n", req.Method, req.URL)
+		redact := func(s string) string {
+			// Redact vault-resolved secrets
+			if def.RedactSecrets != nil {
+				s = def.RedactSecrets(s)
+			}
+			// Always redact auth credentials (hardcoded or vault-resolved)
+			if def.Auth != nil {
+				if def.Auth.Token != "" {
+					s = strings.ReplaceAll(s, def.Auth.Token, "****")
+				}
+				if def.Auth.Value != "" {
+					s = strings.ReplaceAll(s, def.Auth.Value, "****")
+				}
+			}
+			return s
+		}
+
+		fmt.Fprintf(os.Stderr, "[rest] %s %s\n", req.Method, redact(req.URL.String()))
 		for k, vals := range req.Header {
 			for _, v := range vals {
-				fmt.Fprintf(os.Stderr, "[rest]   header: %s: %s\n", k, v)
+				fmt.Fprintf(os.Stderr, "[rest]   header: %s: %s\n", k, redact(v))
 			}
 		}
 		if bodyContent != "" {
-			preview := bodyContent
-			if len(preview) > 500 {
-				preview = preview[:500] + "..."
-			}
 			bt := def.BodyType
 			if bt == "" {
 				bt = "json"
 			}
-			fmt.Fprintf(os.Stderr, "[rest]   body (%s, %d bytes): %s\n", bt, len(bodyContent), preview)
+			fmt.Fprintf(os.Stderr, "[rest]   body (%s, %d bytes): %s\n", bt, len(bodyContent), redact(bodyContent))
 		}
 		if fileParam != "" {
 			absFile, _ := filepath.Abs(fileParam)

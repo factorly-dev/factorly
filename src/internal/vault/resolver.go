@@ -113,6 +113,36 @@ func (r *Resolver) ResolveTracked(s string) (string, []string, error) {
 	return result, accessed, resolveErr
 }
 
+// Redact resolves vault refs in originalRefs and replaces the individual
+// secret values (what the vault backend returned) with "****" in s.
+// Used for safe verbose logging.
+func (r *Resolver) Redact(s string, originalRefs []string) string {
+	if r == nil {
+		return s
+	}
+	for _, ref := range originalRefs {
+		// Extract each secret value from the ref
+		refPattern.ReplaceAllStringFunc(ref, func(match string) string {
+			parts := refPattern.FindStringSubmatch(match)
+			if len(parts) < 3 {
+				return match
+			}
+			backend, key := parts[1], parts[2]
+			b, ok := r.backends[backend]
+			if !ok {
+				return match
+			}
+			val, err := b.Get(key)
+			if err != nil || val == "" {
+				return match
+			}
+			s = strings.ReplaceAll(s, val, "****")
+			return match
+		})
+	}
+	return s
+}
+
 // HasVaultRefs returns true if the string contains any {{backend:key}} references
 // that require vault access. Excludes {{env:VAR}} since env vars are resolved
 // at config load time — unresolved env refs mean the var isn't set, not that

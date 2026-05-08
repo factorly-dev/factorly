@@ -319,6 +319,18 @@ func (s *Server) registerRESTProvider(name string, tc config.ToolConfig, vaultKe
 	if !ok {
 		return
 	}
+	var vaultRefs []string
+	collectRef := func(v string) {
+		if vault.HasVaultRefs(v) {
+			vaultRefs = append(vaultRefs, v)
+		}
+	}
+	collectRef(tc.BaseURL)
+	collectRef(tc.Path)
+	if tc.Auth != nil {
+		collectRef(tc.Auth.Token)
+		collectRef(tc.Auth.Value)
+	}
 	def := provider.RESTToolDef{
 		Method:   tc.Method,
 		BaseURL:  s.resolveRefT(tc.BaseURL, vaultKeys),
@@ -337,6 +349,8 @@ func (s *Server) registerRESTProvider(name string, tc config.ToolConfig, vaultKe
 		if tc.Auth.Type == "oauth" && s.cfg != nil {
 			oauthCfg := s.cfg.ResolveOAuthProvider(tc.Auth)
 			if oauthCfg != nil {
+				collectRef(oauthCfg.ClientID)
+				collectRef(oauthCfg.ClientSecret)
 				def.Auth.OAuthProvider = &oauth.ProviderConfig{
 					ClientID:     s.resolveRefT(oauthCfg.ClientID, vaultKeys),
 					ClientSecret: s.resolveRefT(oauthCfg.ClientSecret, vaultKeys),
@@ -359,6 +373,13 @@ func (s *Server) registerRESTProvider(name string, tc config.ToolConfig, vaultKe
 	if tc.Timeout != "" {
 		if d, err := time.ParseDuration(tc.Timeout); err == nil {
 			def.Timeout = d
+		}
+	}
+	if len(vaultRefs) > 0 && s.resolver != nil {
+		refs := vaultRefs // capture for closure
+		res := s.resolver // capture for closure
+		def.RedactSecrets = func(str string) string {
+			return res.Redact(str, refs)
 		}
 	}
 	rp.AddTool(name, def)
