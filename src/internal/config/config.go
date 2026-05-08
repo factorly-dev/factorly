@@ -515,9 +515,6 @@ func validate(cfg *Config) error {
 			}
 		}
 		if tool.Type == "workflow" {
-			if len(tool.Steps) == 0 {
-				return fmt.Errorf("config: workflow tool %q has no steps", name)
-			}
 			for i, step := range tool.Steps {
 				if step.Tool == "" && len(step.Switch) == 0 {
 					return fmt.Errorf("config: workflow tool %q step %d missing tool name", name, i+1)

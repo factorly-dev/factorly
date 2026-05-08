@@ -880,8 +880,8 @@ tools:
     description: Empty workflow
 `)
 	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for workflow with no steps")
+	if err != nil {
+		t.Fatalf("workflow with no steps should be valid, got: %v", err)
 	}
 }
 

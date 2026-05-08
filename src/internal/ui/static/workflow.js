@@ -1,59 +1,6 @@
 // Copyright 2026 Jordan Sherer <hi@jordansherer.com>
 // SPDX-License-Identifier: gpl
 
-function addStep() {
-  const list = document.getElementById('steps-list');
-  const rows = list.querySelectorAll('.step-row');
-  const idx = rows.length;
-
-  const empty = document.getElementById('empty-state');
-  if (empty) empty.remove();
-
-  let options = '';
-  const firstSelect = list.querySelector('.step-tool');
-  if (firstSelect) options = firstSelect.innerHTML;
-
-  const details = document.createElement('details');
-  details.className = 'step-row border-b border-gray-100 last:border-b-0';
-  details.dataset.index = idx;
-  details.open = true;
-  details.innerHTML = `
-    <summary class="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-gray-50 transition-colors">
-      <span class="step-num text-[10px] font-bold text-gray-400 w-4 text-right shrink-0">${idx + 1}</span>
-      <span class="text-sm font-mono text-gray-400 flex-1">new step</span>
-      <span class="flex gap-0.5 shrink-0 ml-1">
-        <button type="button" onclick="event.preventDefault(); moveStep(this, -1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move up">▲</button>
-        <button type="button" onclick="event.preventDefault(); moveStep(this, 1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move down">▼</button>
-      </span>
-      <button type="button" onclick="event.preventDefault(); removeStep(this)" class="text-gray-300 hover:text-red-500 text-xs shrink-0">✕</button>
-    </summary>
-    <div class="px-4 pb-4 pt-1 pl-11 space-y-3 bg-gray-50/50">
-      <div>
-        <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Tool</label>
-        <select name="step_tool_${idx}" class="step-tool w-full px-2 py-1.5 text-sm font-mono border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200">${options}</select>
-      </div>
-      <div>
-        <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Store output as</label>
-        <input type="text" name="step_store_${idx}" placeholder="variable name" class="step-store w-full px-2 py-1.5 text-sm font-mono border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200">
-      </div>
-      <div>
-        <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">If (skip when false)</label>
-        <input type="text" name="step_if_${idx}" placeholder="e.g. changes != ''" class="w-full px-2 py-1.5 text-sm font-mono border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200">
-      </div>
-      <div>
-        <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Require (stop when false)</label>
-        <input type="text" name="step_require_${idx}" placeholder="e.g. contains(output, 'PASS')" class="w-full px-2 py-1.5 text-sm font-mono border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200">
-      </div>
-      <div>
-        <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Params</label>
-        <div class="space-y-1 step-params" data-index="${idx}"></div>
-        <button type="button" onclick="addParam(this)" class="mt-1 text-[10px] text-indigo-500 hover:text-indigo-700">+ param</button>
-      </div>
-    </div>
-  `;
-  list.appendChild(details);
-}
-
 function addParam(btn) {
   const stepRow = btn.closest('.step-row');
   const stepIdx = stepRow.dataset.index;

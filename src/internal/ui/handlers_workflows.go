@@ -107,6 +107,63 @@ func (s *Server) handleWorkflowEdit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleWorkflowAddStep(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	tc, ok := s.cfg.Tools[name]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Count existing steps to determine the new index
+	idx := len(tc.Steps)
+	// If steps were added client-side, use query param
+	if qIdx := r.URL.Query().Get("index"); qIdx != "" {
+		if n, err := strconv.Atoi(qIdx); err == nil {
+			idx = n
+		}
+	}
+
+	var available []string
+	for n, t := range s.cfg.Tools {
+		if t.Type != "workflow" {
+			available = append(available, n)
+		}
+	}
+	sort.Strings(available)
+
+	s.renderPartial(w, "workflow_step", map[string]any{
+		"Index":          idx,
+		"WorkflowName":   name,
+		"AvailableTools": available,
+	})
+}
+
+func (s *Server) handleWorkflowStepParams(w http.ResponseWriter, r *http.Request) {
+	toolName := r.URL.Query().Get("tool")
+	stepIdx := r.URL.Query().Get("index")
+	if stepIdx == "" {
+		stepIdx = "0"
+	}
+
+	tc, ok := s.cfg.Tools[toolName]
+	if !ok || len(tc.Parameters) == 0 {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		return // empty response clears the params area
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	for _, p := range tc.Parameters {
+		fmt.Fprintf(w, `<div class="param-row flex gap-1">
+			<input type="text" name="step_param_key_%s[]" value="%s" placeholder="key"
+			       class="w-1/3 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
+			<input type="text" name="step_param_val_%s[]" value="%s" placeholder="value"
+			       class="flex-1 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
+			<button type="button" onclick="this.closest('.param-row').remove()" class="text-gray-300 hover:text-red-500 text-xs px-1">✕</button>
+		</div>`, stepIdx, template.HTMLEscapeString(p.Name), stepIdx, template.HTMLEscapeString(p.Default))
+	}
+}
+
 func (s *Server) handleWorkflowSave(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := r.ParseForm(); err != nil {
@@ -161,7 +218,24 @@ func (s *Server) handleWorkflowSave(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Parse workflow input parameters
+	var wfParams []config.ParamConfig
+	for i := 0; ; i++ {
+		pname := r.FormValue(fmt.Sprintf("wf_param_name_%d", i))
+		if pname == "" {
+			break
+		}
+		wfParams = append(wfParams, config.ParamConfig{
+			Name:        pname,
+			Type:        r.FormValue(fmt.Sprintf("wf_param_type_%d", i)),
+			Required:    r.FormValue(fmt.Sprintf("wf_param_required_%d", i)) == "on",
+			Default:     r.FormValue(fmt.Sprintf("wf_param_default_%d", i)),
+			Description: r.FormValue(fmt.Sprintf("wf_param_desc_%d", i)),
+		})
+	}
+
 	tc.Description = r.FormValue("description")
+	tc.Parameters = wfParams
 	tc.Steps = steps
 
 	if err := SaveTool(s.cfgPath, s.toolsDir, name, tc); err != nil {
