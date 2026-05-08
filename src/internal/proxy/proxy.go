@@ -115,6 +115,13 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		}
 	}
 
+	// Evaluate {{expr:...}} in param values (e.g., {{expr:now()}})
+	for k, v := range params {
+		if strings.Contains(v, "{{expr:") {
+			params[k] = provider.SubstituteExpr(v)
+		}
+	}
+
 	agentID := agent.AgentID(ctx)
 
 	// Parameter validation and coercion

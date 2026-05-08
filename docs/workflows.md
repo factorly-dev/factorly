@@ -35,7 +35,7 @@ factorly call daily.summary
 1. Workflow receives input parameters from the caller
 2. Steps execute sequentially, each through the full proxy pipeline (parameter validation → shadow policy → execute → output filter → log)
 3. `store:` saves step output as a named variable for later steps
-4. `{{var}}` in step params is substituted from stored outputs + input params
+4. `{{var}}` in step params is substituted from stored outputs + input params. Use `{{expr:func(...)}}` for [value expressions](expressions.md#value-expressions-in-step-params).
 5. On failure, remaining steps are skipped
 6. State is persisted to `.factorly/workflows/<run-id>.json` after each step
 7. Output includes the full execution trace as JSON
@@ -47,7 +47,7 @@ factorly call daily.summary
 | Field | Required | Description |
 |-------|----------|-------------|
 | `tool` | Yes* | Tool name to call (must exist in config) |
-| `params` | No | Parameters to pass — supports `{{var}}` substitution |
+| `params` | No | Parameters to pass — supports `{{var}}` and `{{expr:...}}` substitution |
 | `store` | No | Save step output as a named variable |
 | `if` | No | [Expression](expressions.md) — skip step when false, continue workflow |
 | `require` | No | [Expression](expressions.md) — stop workflow when false |

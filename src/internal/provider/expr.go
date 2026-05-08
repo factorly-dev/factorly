@@ -5,13 +5,34 @@ package provider
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/ohler55/ojg/jp"
 	"github.com/ohler55/ojg/oj"
 )
+
+// EvalExpr evaluates an expression and returns its string result.
+// Used for {{expr:...}} substitution in workflow step params.
+func EvalExpr(expr string, vars map[string]string) string {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return ""
+	}
+	tokens := tokenize(expr)
+	node := parse(tokens)
+	if node == nil {
+		return ""
+	}
+	val, err := evaluate(node, vars)
+	if err != nil {
+		return ""
+	}
+	return toString(val)
+}
 
 // EvalCondition evaluates a condition expression against workflow variables.
 // Returns true if the expression is truthy. Errors are treated as false (fail-closed).
@@ -410,8 +431,125 @@ func evalCall(name string, args []node, vars map[string]string) any {
 			expr, _ := evaluate(args[1], vars)
 			return evalJSONPath(toString(data), toString(expr))
 		}
+	case "now":
+		return evalNow(args, vars)
+	case "default":
+		if len(args) >= 2 {
+			val, _ := evaluate(args[0], vars)
+			s := toString(val)
+			if s != "" {
+				return s
+			}
+			fallback, _ := evaluate(args[1], vars)
+			return toString(fallback)
+		}
+	case "upper":
+		if len(args) >= 1 {
+			val, _ := evaluate(args[0], vars)
+			return strings.ToUpper(toString(val))
+		}
+	case "lower":
+		if len(args) >= 1 {
+			val, _ := evaluate(args[0], vars)
+			return strings.ToLower(toString(val))
+		}
+	case "trim":
+		if len(args) >= 1 {
+			val, _ := evaluate(args[0], vars)
+			return strings.TrimSpace(toString(val))
+		}
+	case "len":
+		if len(args) >= 1 {
+			val, _ := evaluate(args[0], vars)
+			return evalLen(toString(val))
+		}
+	case "substr":
+		return evalSubstr(args, vars)
+	case "join":
+		if len(args) >= 2 {
+			val, _ := evaluate(args[0], vars)
+			sep, _ := evaluate(args[1], vars)
+			return evalJoin(toString(val), toString(sep))
+		}
+	case "replace":
+		if len(args) >= 3 {
+			val, _ := evaluate(args[0], vars)
+			old, _ := evaluate(args[1], vars)
+			new, _ := evaluate(args[2], vars)
+			return strings.ReplaceAll(toString(val), toString(old), toString(new))
+		}
 	}
 	return false
+}
+
+func evalNow(args []node, vars map[string]string) string {
+	t := time.Now().UTC()
+	if len(args) >= 1 {
+		offset, _ := evaluate(args[0], vars)
+		if d, err := time.ParseDuration(toString(offset)); err == nil {
+			t = t.Add(d)
+		}
+	}
+	return t.Format(time.RFC3339)
+}
+
+func evalLen(s string) int {
+	// Try as JSON array
+	var arr []any
+	if json.Unmarshal([]byte(s), &arr) == nil {
+		return len(arr)
+	}
+	// Try as JSON object
+	var obj map[string]any
+	if json.Unmarshal([]byte(s), &obj) == nil {
+		return len(obj)
+	}
+	return len(s)
+}
+
+func evalSubstr(args []node, vars map[string]string) string {
+	if len(args) < 2 {
+		return ""
+	}
+	val, _ := evaluate(args[0], vars)
+	s := toString(val)
+	startVal, _ := evaluate(args[1], vars)
+	start, _ := strconv.Atoi(fmt.Sprint(startVal))
+	if start < 0 {
+		start = 0
+	}
+	if start >= len(s) {
+		return ""
+	}
+	end := len(s)
+	if len(args) >= 3 {
+		endVal, _ := evaluate(args[2], vars)
+		if e, err := strconv.Atoi(fmt.Sprint(endVal)); err == nil && e < end {
+			end = e
+		}
+	}
+	if end > len(s) {
+		end = len(s)
+	}
+	return s[start:end]
+}
+
+func evalJoin(s, sep string) string {
+	var arr []any
+	if json.Unmarshal([]byte(s), &arr) != nil {
+		return s
+	}
+	parts := make([]string, len(arr))
+	for i, v := range arr {
+		switch val := v.(type) {
+		case string:
+			parts[i] = val
+		default:
+			b, _ := json.Marshal(val)
+			parts[i] = string(b)
+		}
+	}
+	return strings.Join(parts, sep)
 }
 
 func evalJSONPath(data, path string) any {

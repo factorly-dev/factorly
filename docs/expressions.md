@@ -243,14 +243,96 @@ Use `condition: "true"` as a default/else case.
 
 Each switch case supports `tool`, `params`, and `store` (same as a regular step). If no condition matches, the switch step is skipped.
 
+## Value expressions in step params
+
+Use `{{expr:...}}` in step param values to transform variables before passing them to the next step. The expression is evaluated and its **string result** is substituted.
+
+```yaml
+steps:
+  - tool: calendar.list_events
+    params:
+      timeMin: "{{expr:now()}}"
+      timeMax: "{{expr:now('24h')}}"
+    store: events
+
+  - tool: slack.post
+    params:
+      message: "Next event: {{expr:jsonpath(events, '$.items[0].summary')}}"
+      count: "{{expr:len(events)}}"
+```
+
+The `{{expr:...}}` prefix distinguishes expressions from simple variable substitution (`{{variable}}`). Both can be mixed in the same string:
+
+```yaml
+params:
+  message: "Hello {{name}}, you have {{expr:len(items)}} items"
+```
+
+### Value functions
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `now()` | Current UTC timestamp (RFC3339) | `now()` → `2026-05-08T12:00:00Z` |
+| `now(offset)` | Timestamp with offset | `now('24h')`, `now('-1h')`, `now('30m')` |
+| `jsonpath(var, path)` | Extract from JSON | `jsonpath(data, '$.items[0].name')` |
+| `default(var, fallback)` | Value or fallback if empty | `default(title, 'Untitled')` |
+| `upper(val)` | Uppercase | `upper(name)` → `JORDAN` |
+| `lower(val)` | Lowercase | `lower(name)` → `jordan` |
+| `trim(val)` | Strip whitespace | `trim(output)` |
+| `len(val)` | Length (array, object, or string) | `len(items)` → `3` |
+| `substr(val, start)` | Substring from position | `substr(id, 0, 8)` |
+| `substr(val, start, end)` | Substring with end | `substr(hash, 0, 7)` |
+| `join(val, sep)` | Join JSON array | `join(tags, ', ')` → `go, rust` |
+| `replace(val, old, new)` | String replacement | `replace(output, '\n', ' ')` |
+
+These functions also work in `if:`/`require:` conditions and `switch:` cases — they return values that can be compared:
+
+```yaml
+if: "len(items) > 0"
+if: "jsonpath(data, '$.status') == 'ok'"
+if: "lower(env) == 'prod'"
+```
+
+### `now()` offsets
+
+The offset uses Go duration syntax: `h` (hours), `m` (minutes), `s` (seconds). Prefix with `-` for past.
+
+| Offset | Result |
+|--------|--------|
+| `now()` | Current time |
+| `now('24h')` | 24 hours from now |
+| `now('-1h')` | 1 hour ago |
+| `now('30m')` | 30 minutes from now |
+| `now('1h30m')` | 90 minutes from now |
+
+### `len()` behavior
+
+| Input | Result |
+|-------|--------|
+| JSON array `["a","b"]` | `2` |
+| JSON object `{"a":1}` | `1` |
+| Plain string `"hello"` | `5` |
+| Empty `""` | `0` |
+
+### `join()` behavior
+
+Parses the value as a JSON array and joins elements with the separator. Non-array values pass through unchanged.
+
+```yaml
+# tags = ["go", "rust", "python"]
+join(tags, ', ')  # → "go, rust, python"
+join(tags, ' | ') # → "go | rust | python"
+```
+
 ## Error handling
 
-Expressions that fail to parse or evaluate return false (fail-closed). This means:
+Expressions that fail to parse or evaluate return false (fail-closed) in conditions, or empty string in value expressions. This means:
 
-- Typos in variable names → falsy (step skipped)
-- Malformed expressions → falsy
-- Invalid JSON in jsonpath → falsy
-- Division by zero, overflow → falsy
+- Typos in variable names → falsy / empty
+- Malformed expressions → falsy / empty
+- Invalid JSON in jsonpath → falsy / empty
+- Division by zero, overflow → falsy / empty
+- Invalid `now()` offset → current time (no offset applied)
 
 No panics, no workflow crashes from bad expressions.
 

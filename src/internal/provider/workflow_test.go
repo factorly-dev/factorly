@@ -803,3 +803,115 @@ func TestWorkflowRequireWithParams(t *testing.T) {
 		t.Error("expected skipped")
 	}
 }
+
+func TestWorkflowExprSubstitution(t *testing.T) {
+	var capturedParams map[string]string
+	exec := &mockWorkflowExecutor{
+		results: map[string]*Result{
+			"fetch": {Output: `{"items":[{"name":"first"}]}`},
+		},
+	}
+	// Override to capture params
+	origExec := exec
+	wp := NewWorkflowProvider(&paramCapturingExecutor{
+		executor:       origExec,
+		capturedParams: &capturedParams,
+		captureFor:     "process",
+	}, false)
+	wp.RegisterWorkflow("test", []WorkflowStep{
+		{Tool: "fetch", Store: "data"},
+		{Tool: "process", Params: map[string]string{
+			"title": `{{expr:jsonpath(data, '$.items[0].name')}}`,
+			"upper": `{{expr:upper(input)}}`,
+		}},
+	})
+	_ = wp.Setup()
+
+	result, err := wp.Execute("test", map[string]string{"input": "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError() {
+		t.Fatal(result.Error)
+	}
+	if capturedParams["title"] != "first" {
+		t.Errorf("expected jsonpath result 'first', got %q", capturedParams["title"])
+	}
+	if capturedParams["upper"] != "HELLO" {
+		t.Errorf("expected upper 'HELLO', got %q", capturedParams["upper"])
+	}
+}
+
+// paramCapturingExecutor wraps a mock executor and captures params for a specific tool.
+type paramCapturingExecutor struct {
+	executor       *mockWorkflowExecutor
+	capturedParams *map[string]string
+	captureFor     string
+}
+
+func (p *paramCapturingExecutor) ExecuteWithContext(ctx context.Context, toolName string, params map[string]string, iface string) (*Result, error) {
+	if toolName == p.captureFor {
+		captured := make(map[string]string)
+		for k, v := range params {
+			captured[k] = v
+		}
+		*p.capturedParams = captured
+	}
+	return p.executor.ExecuteWithContext(ctx, toolName, params, iface)
+}
+
+func TestWorkflowExprNow(t *testing.T) {
+	var capturedParams map[string]string
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(&paramCapturingExecutor{
+		executor:       exec,
+		capturedParams: &capturedParams,
+		captureFor:     "api_call",
+	}, false)
+	wp.RegisterWorkflow("test", []WorkflowStep{
+		{Tool: "api_call", Params: map[string]string{
+			"timestamp": `{{expr:now()}}`,
+		}},
+	})
+	_ = wp.Setup()
+
+	_, err := wp.Execute("test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capturedParams["timestamp"] == "" || capturedParams["timestamp"] == "{{expr:now()}}" {
+		t.Errorf("expected resolved timestamp, got %q", capturedParams["timestamp"])
+	}
+}
+
+func TestWorkflowExprMixedWithVars(t *testing.T) {
+	var capturedParams map[string]string
+	exec := &mockWorkflowExecutor{
+		results: map[string]*Result{
+			"step1": {Output: "world"},
+		},
+	}
+	wp := NewWorkflowProvider(&paramCapturingExecutor{
+		executor:       exec,
+		capturedParams: &capturedParams,
+		captureFor:     "step2",
+	}, false)
+	wp.RegisterWorkflow("test", []WorkflowStep{
+		{Tool: "step1", Store: "greeting"},
+		{Tool: "step2", Params: map[string]string{
+			"msg": `hello {{greeting}} {{expr:upper(greeting)}}`,
+		}},
+	})
+	_ = wp.Setup()
+
+	result, err := wp.Execute("test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError() {
+		t.Fatal(result.Error)
+	}
+	if capturedParams["msg"] != "hello world WORLD" {
+		t.Errorf("expected 'hello world WORLD', got %q", capturedParams["msg"])
+	}
+}

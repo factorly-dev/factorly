@@ -5,7 +5,9 @@ package provider
 
 import (
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestExprStringEquality(t *testing.T) {
@@ -719,5 +721,339 @@ func TestExprRealWorldConditions(t *testing.T) {
 	vars["approval"] = ""
 	if EvalCondition("branch == 'main' and tests == 'pass' and approval == 'yes'", vars) {
 		t.Error("missing approval should block deploy")
+	}
+}
+
+// --- EvalExpr tests ---
+
+func TestEvalExprNow(t *testing.T) {
+	result := EvalExpr("now()", nil)
+	if result == "" {
+		t.Fatal("now() should return a timestamp")
+	}
+	if _, err := time.Parse(time.RFC3339, result); err != nil {
+		t.Errorf("now() should return RFC3339, got %q: %v", result, err)
+	}
+}
+
+func TestEvalExprNowWithOffset(t *testing.T) {
+	result := EvalExpr("now('24h')", nil)
+	if result == "" {
+		t.Fatal("now('24h') should return a timestamp")
+	}
+	ts, err := time.Parse(time.RFC3339, result)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	diff := ts.Sub(time.Now().UTC())
+	if diff < 23*time.Hour || diff > 25*time.Hour {
+		t.Errorf("expected ~24h in future, got %v", diff)
+	}
+}
+
+func TestEvalExprNowNegativeOffset(t *testing.T) {
+	result := EvalExpr("now('-1h')", nil)
+	ts, _ := time.Parse(time.RFC3339, result)
+	diff := time.Now().UTC().Sub(ts)
+	if diff < 50*time.Minute || diff > 70*time.Minute {
+		t.Errorf("expected ~1h in past, got %v", diff)
+	}
+}
+
+func TestEvalExprNowMinutes(t *testing.T) {
+	result := EvalExpr("now('30m')", nil)
+	ts, err := time.Parse(time.RFC3339, result)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	diff := ts.Sub(time.Now().UTC())
+	if diff < 25*time.Minute || diff > 35*time.Minute {
+		t.Errorf("expected ~30m in future, got %v", diff)
+	}
+}
+
+func TestEvalExprNowCombined(t *testing.T) {
+	result := EvalExpr("now('1h30m')", nil)
+	ts, err := time.Parse(time.RFC3339, result)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	diff := ts.Sub(time.Now().UTC())
+	if diff < 85*time.Minute || diff > 95*time.Minute {
+		t.Errorf("expected ~90m in future, got %v", diff)
+	}
+}
+
+func TestEvalExprNowInvalidOffset(t *testing.T) {
+	// Invalid offset should fall back to current time (no offset applied)
+	result := EvalExpr("now('garbage')", nil)
+	ts, err := time.Parse(time.RFC3339, result)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	diff := time.Since(ts)
+	if diff < -5*time.Second || diff > 5*time.Second {
+		t.Errorf("invalid offset should return ~now, got %v diff", diff)
+	}
+}
+
+func TestEvalExprNowZeroOffset(t *testing.T) {
+	result := EvalExpr("now('0s')", nil)
+	ts, err := time.Parse(time.RFC3339, result)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	diff := time.Since(ts)
+	if diff < -5*time.Second || diff > 5*time.Second {
+		t.Errorf("zero offset should return ~now, got %v diff", diff)
+	}
+}
+
+func TestEvalExprDefault(t *testing.T) {
+	vars := map[string]string{"title": "Hello"}
+	if r := EvalExpr("default(title, 'Untitled')", vars); r != "Hello" {
+		t.Errorf("expected 'Hello', got %q", r)
+	}
+	vars["title"] = ""
+	if r := EvalExpr("default(title, 'Untitled')", vars); r != "Untitled" {
+		t.Errorf("expected 'Untitled', got %q", r)
+	}
+}
+
+func TestEvalExprDefaultMissing(t *testing.T) {
+	if r := EvalExpr("default(missing, 'fallback')", map[string]string{}); r != "fallback" {
+		t.Errorf("expected 'fallback', got %q", r)
+	}
+}
+
+func TestEvalExprUpper(t *testing.T) {
+	vars := map[string]string{"name": "jordan"}
+	if r := EvalExpr("upper(name)", vars); r != "JORDAN" {
+		t.Errorf("expected 'JORDAN', got %q", r)
+	}
+}
+
+func TestEvalExprLower(t *testing.T) {
+	vars := map[string]string{"name": "JORDAN"}
+	if r := EvalExpr("lower(name)", vars); r != "jordan" {
+		t.Errorf("expected 'jordan', got %q", r)
+	}
+}
+
+func TestEvalExprTrim(t *testing.T) {
+	vars := map[string]string{"output": "  hello world  \n"}
+	if r := EvalExpr("trim(output)", vars); r != "hello world" {
+		t.Errorf("expected 'hello world', got %q", r)
+	}
+}
+
+func TestEvalExprLen(t *testing.T) {
+	vars := map[string]string{"items": `["a","b","c"]`}
+	if r := EvalExpr("len(items)", vars); r != "3" {
+		t.Errorf("expected '3', got %q", r)
+	}
+}
+
+func TestEvalExprLenString(t *testing.T) {
+	vars := map[string]string{"name": "hello"}
+	if r := EvalExpr("len(name)", vars); r != "5" {
+		t.Errorf("expected '5', got %q", r)
+	}
+}
+
+func TestEvalExprLenObject(t *testing.T) {
+	vars := map[string]string{"data": `{"a":1,"b":2}`}
+	if r := EvalExpr("len(data)", vars); r != "2" {
+		t.Errorf("expected '2', got %q", r)
+	}
+}
+
+func TestEvalExprSubstr(t *testing.T) {
+	vars := map[string]string{"id": "abcdefghij"}
+	if r := EvalExpr("substr(id, 0, 4)", vars); r != "abcd" {
+		t.Errorf("expected 'abcd', got %q", r)
+	}
+}
+
+func TestEvalExprSubstrNoEnd(t *testing.T) {
+	vars := map[string]string{"id": "abcdefghij"}
+	if r := EvalExpr("substr(id, 5)", vars); r != "fghij" {
+		t.Errorf("expected 'fghij', got %q", r)
+	}
+}
+
+func TestEvalExprJoin(t *testing.T) {
+	vars := map[string]string{"tags": `["go","rust","python"]`}
+	if r := EvalExpr("join(tags, ', ')", vars); r != "go, rust, python" {
+		t.Errorf("expected 'go, rust, python', got %q", r)
+	}
+}
+
+func TestEvalExprReplace(t *testing.T) {
+	vars := map[string]string{"output": "hello\nworld\n"}
+	if r := EvalExpr("replace(output, '\n', ' ')", vars); !strings.Contains(r, "hello") {
+		t.Errorf("expected replaced output, got %q", r)
+	}
+}
+
+func TestEvalExprJSONPath(t *testing.T) {
+	vars := map[string]string{"data": `{"items":[{"name":"first"},{"name":"second"}]}`}
+	if r := EvalExpr("jsonpath(data, '$.items[0].name')", vars); r != "first" {
+		t.Errorf("expected 'first', got %q", r)
+	}
+}
+
+func TestEvalExprEmpty(t *testing.T) {
+	if r := EvalExpr("", nil); r != "" {
+		t.Errorf("expected empty, got %q", r)
+	}
+}
+
+func TestEvalExprLiteral(t *testing.T) {
+	if r := EvalExpr("'hello'", nil); r != "hello" {
+		t.Errorf("expected 'hello', got %q", r)
+	}
+}
+
+// --- Edge case tests for expression functions ---
+
+func TestEvalExprUpperEmpty(t *testing.T) {
+	vars := map[string]string{"x": ""}
+	if r := EvalExpr("upper(x)", vars); r != "" {
+		t.Errorf("expected empty, got %q", r)
+	}
+}
+
+func TestEvalExprUpperAlready(t *testing.T) {
+	vars := map[string]string{"x": "ABC"}
+	if r := EvalExpr("upper(x)", vars); r != "ABC" {
+		t.Errorf("expected 'ABC', got %q", r)
+	}
+}
+
+func TestEvalExprLowerEmpty(t *testing.T) {
+	vars := map[string]string{"x": ""}
+	if r := EvalExpr("lower(x)", vars); r != "" {
+		t.Errorf("expected empty, got %q", r)
+	}
+}
+
+func TestEvalExprTrimEmpty(t *testing.T) {
+	vars := map[string]string{"x": ""}
+	if r := EvalExpr("trim(x)", vars); r != "" {
+		t.Errorf("expected empty, got %q", r)
+	}
+}
+
+func TestEvalExprTrimNoWhitespace(t *testing.T) {
+	vars := map[string]string{"x": "clean"}
+	if r := EvalExpr("trim(x)", vars); r != "clean" {
+		t.Errorf("expected 'clean', got %q", r)
+	}
+}
+
+func TestEvalExprLenEmptyArray(t *testing.T) {
+	vars := map[string]string{"items": `[]`}
+	if r := EvalExpr("len(items)", vars); r != "0" {
+		t.Errorf("expected '0', got %q", r)
+	}
+}
+
+func TestEvalExprLenEmptyString(t *testing.T) {
+	vars := map[string]string{"x": ""}
+	if r := EvalExpr("len(x)", vars); r != "0" {
+		t.Errorf("expected '0', got %q", r)
+	}
+}
+
+func TestEvalExprSubstrOutOfBounds(t *testing.T) {
+	vars := map[string]string{"x": "abc"}
+	if r := EvalExpr("substr(x, 10)", vars); r != "" {
+		t.Errorf("expected empty for out of bounds start, got %q", r)
+	}
+}
+
+func TestEvalExprSubstrEndBeyondLength(t *testing.T) {
+	vars := map[string]string{"x": "abc"}
+	if r := EvalExpr("substr(x, 0, 100)", vars); r != "abc" {
+		t.Errorf("expected 'abc' when end > len, got %q", r)
+	}
+}
+
+func TestEvalExprSubstrEmpty(t *testing.T) {
+	vars := map[string]string{"x": ""}
+	if r := EvalExpr("substr(x, 0, 5)", vars); r != "" {
+		t.Errorf("expected empty, got %q", r)
+	}
+}
+
+func TestEvalExprJoinEmptyArray(t *testing.T) {
+	vars := map[string]string{"items": `[]`}
+	if r := EvalExpr("join(items, ', ')", vars); r != "" {
+		t.Errorf("expected empty, got %q", r)
+	}
+}
+
+func TestEvalExprJoinSingleItem(t *testing.T) {
+	vars := map[string]string{"items": `["only"]`}
+	if r := EvalExpr("join(items, ', ')", vars); r != "only" {
+		t.Errorf("expected 'only', got %q", r)
+	}
+}
+
+func TestEvalExprJoinNonArray(t *testing.T) {
+	vars := map[string]string{"x": "not json"}
+	if r := EvalExpr("join(x, ', ')", vars); r != "not json" {
+		t.Errorf("expected passthrough for non-array, got %q", r)
+	}
+}
+
+func TestEvalExprReplaceNoMatch(t *testing.T) {
+	vars := map[string]string{"x": "hello"}
+	if r := EvalExpr("replace(x, 'z', 'a')", vars); r != "hello" {
+		t.Errorf("expected 'hello' unchanged, got %q", r)
+	}
+}
+
+func TestEvalExprReplaceMultiple(t *testing.T) {
+	vars := map[string]string{"x": "aaa"}
+	if r := EvalExpr("replace(x, 'a', 'b')", vars); r != "bbb" {
+		t.Errorf("expected 'bbb', got %q", r)
+	}
+}
+
+func TestEvalExprReplaceEmpty(t *testing.T) {
+	vars := map[string]string{"x": ""}
+	if r := EvalExpr("replace(x, 'a', 'b')", vars); r != "" {
+		t.Errorf("expected empty, got %q", r)
+	}
+}
+
+func TestEvalExprJSONPathNoMatch(t *testing.T) {
+	vars := map[string]string{"data": `{"a":1}`}
+	if r := EvalExpr("jsonpath(data, '$.nonexistent')", vars); r != "" {
+		t.Errorf("expected empty for no match, got %q", r)
+	}
+}
+
+func TestEvalExprJSONPathNested(t *testing.T) {
+	vars := map[string]string{"data": `{"a":{"b":{"c":"deep"}}}`}
+	if r := EvalExpr("jsonpath(data, '$.a.b.c')", vars); r != "deep" {
+		t.Errorf("expected 'deep', got %q", r)
+	}
+}
+
+func TestEvalExprJSONPathArrayResult(t *testing.T) {
+	vars := map[string]string{"data": `{"items":[{"id":1},{"id":2}]}`}
+	r := EvalExpr("jsonpath(data, '$.items[*].id')", vars)
+	if !strings.Contains(r, "1") || !strings.Contains(r, "2") {
+		t.Errorf("expected array with 1 and 2, got %q", r)
+	}
+}
+
+func TestEvalExprDefaultBothEmpty(t *testing.T) {
+	vars := map[string]string{"x": ""}
+	if r := EvalExpr("default(x, '')", vars); r != "" {
+		t.Errorf("expected empty, got %q", r)
 	}
 }

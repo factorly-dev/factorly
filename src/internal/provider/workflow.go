@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -321,8 +322,25 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 	}, nil
 }
 
+var exprPattern = regexp.MustCompile(`\{\{expr:(.+?)\}\}`)
+
+// SubstituteExpr evaluates {{expr:...}} patterns in a string without
+// variable context. Used by the proxy to resolve expressions in param
+// values for any tool call (not just workflows).
+func SubstituteExpr(s string) string {
+	return exprPattern.ReplaceAllStringFunc(s, func(match string) string {
+		expr := match[7 : len(match)-2]
+		return EvalExpr(expr, nil)
+	})
+}
+
 func substituteVars(tmpl string, vars map[string]string) string {
-	result := tmpl
+	// First: evaluate {{expr:...}} patterns
+	result := exprPattern.ReplaceAllStringFunc(tmpl, func(match string) string {
+		expr := match[7 : len(match)-2] // strip {{expr: and }}
+		return EvalExpr(expr, vars)
+	})
+	// Then: simple {{var}} substitution (backward compatible)
 	for k, v := range vars {
 		result = strings.ReplaceAll(result, "{{"+k+"}}", v)
 	}
