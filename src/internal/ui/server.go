@@ -260,118 +260,131 @@ func (s *Server) registerProvider(name string, tc config.ToolConfig) []string {
 	if s.proxy == nil {
 		return nil
 	}
-
 	var vaultKeys []string
-
 	switch tc.Type {
 	case "cli":
-		prov := s.proxy.Provider("cli")
-		if prov == nil {
-			cp := provider.NewCLI(map[string]provider.CLIToolDef{})
-			_ = cp.Setup()
-			s.proxy.RegisterProvider("cli", cp)
-			prov = cp
-		}
-		if cp, ok := prov.(*provider.CLIProvider); ok {
-			def := provider.CLIToolDef{
-				Command:     s.resolveRefT(tc.Command, &vaultKeys),
-				Args:        s.resolveRefsTracked(tc.Args, &vaultKeys),
-				Stdin:       s.resolveRefT(tc.Stdin, &vaultKeys),
-				Interactive: tc.Interactive,
-				Env:         s.resolveRefMapTracked(tc.Env, &vaultKeys),
-				EnvStrict:   tc.EnvIsolation == "strict",
-			}
-			if tc.Timeout != "" {
-				if d, err := time.ParseDuration(tc.Timeout); err == nil {
-					def.Timeout = d
-				}
-			}
-			cp.AddTool(name, def)
-		}
-
+		s.registerCLIProvider(name, tc, &vaultKeys)
 	case "rest":
-		prov := s.proxy.Provider("rest")
-		if prov == nil {
-			rp := provider.NewREST(map[string]provider.RESTToolDef{}, nil)
-			_ = rp.Setup()
-			s.proxy.RegisterProvider("rest", rp)
-			prov = rp
-		}
-		if rp, ok := prov.(*provider.RESTProvider); ok {
-			def := provider.RESTToolDef{
-				Method:  tc.Method,
-				BaseURL: s.resolveRefT(tc.BaseURL, &vaultKeys),
-				Path:    tc.Path,
-				Body:    tc.Body,
-				Headers: s.resolveRefMapTracked(tc.Headers, &vaultKeys),
-			}
-			if tc.Auth != nil {
-				def.Auth = &provider.AuthDef{
-					Type:   tc.Auth.Type,
-					Token:  s.resolveRefT(tc.Auth.Token, &vaultKeys),
-					Header: tc.Auth.Header,
-					Value:  s.resolveRefT(tc.Auth.Value, &vaultKeys),
-				}
-				if tc.Auth.Type == "oauth" && s.cfg != nil {
-					oauthCfg := s.cfg.ResolveOAuthProvider(tc.Auth)
-					if oauthCfg != nil {
-						def.Auth.OAuthProvider = &oauth.ProviderConfig{
-							ClientID:     s.resolveRefT(oauthCfg.ClientID, &vaultKeys),
-							ClientSecret: s.resolveRefT(oauthCfg.ClientSecret, &vaultKeys),
-							AuthURL:      oauthCfg.AuthURL,
-							TokenURL:     oauthCfg.TokenURL,
-							Scopes:       oauthCfg.Scopes,
-						}
-						def.Auth.TokenKey = config.OAuthTokenKey(tc.Auth)
-					}
-				}
-			}
-			for _, p := range tc.Parameters {
-				def.Params = append(def.Params, provider.RESTParamDef{
-					Name:     p.Name,
-					In:       p.In,
-					Required: p.Required,
-					Type:     p.Type,
-				})
-			}
-			if tc.Timeout != "" {
-				if d, err := time.ParseDuration(tc.Timeout); err == nil {
-					def.Timeout = d
-				}
-			}
-			rp.AddTool(name, def)
-		}
-
+		s.registerRESTProvider(name, tc, &vaultKeys)
 	case "workflow":
-		prov := s.proxy.Provider("workflow")
-		if prov == nil {
-			return nil // workflow provider needs proxy ref, can't create standalone
-		}
-		if wp, ok := prov.(*provider.WorkflowProvider); ok {
-			steps := make([]provider.WorkflowStep, len(tc.Steps))
-			for i, st := range tc.Steps {
-				ws := provider.WorkflowStep{
-					Tool:    st.Tool,
-					Params:  st.Params,
-					Store:   st.Store,
-					If:      st.If,
-					Require: st.Require,
-				}
-				for _, sc := range st.Switch {
-					ws.Switch = append(ws.Switch, provider.WorkflowSwitchCase{
-						Condition: sc.Condition,
-						Tool:      sc.Tool,
-						Params:    sc.Params,
-						Store:     sc.Store,
-					})
-				}
-				steps[i] = ws
-			}
-			wp.RegisterWorkflow(name, steps)
+		s.registerWorkflowProvider(name, tc)
+	}
+	return vaultKeys
+}
+
+func (s *Server) registerCLIProvider(name string, tc config.ToolConfig, vaultKeys *[]string) {
+	prov := s.proxy.Provider("cli")
+	if prov == nil {
+		cp := provider.NewCLI(map[string]provider.CLIToolDef{})
+		_ = cp.Setup()
+		s.proxy.RegisterProvider("cli", cp)
+		prov = cp
+	}
+	cp, ok := prov.(*provider.CLIProvider)
+	if !ok {
+		return
+	}
+	def := provider.CLIToolDef{
+		Command:     s.resolveRefT(tc.Command, vaultKeys),
+		Args:        s.resolveRefsTracked(tc.Args, vaultKeys),
+		Stdin:       s.resolveRefT(tc.Stdin, vaultKeys),
+		Interactive: tc.Interactive,
+		Env:         s.resolveRefMapTracked(tc.Env, vaultKeys),
+		EnvStrict:   tc.EnvIsolation == "strict",
+	}
+	if tc.Timeout != "" {
+		if d, err := time.ParseDuration(tc.Timeout); err == nil {
+			def.Timeout = d
 		}
 	}
+	cp.AddTool(name, def)
+}
 
-	return vaultKeys
+func (s *Server) registerRESTProvider(name string, tc config.ToolConfig, vaultKeys *[]string) {
+	prov := s.proxy.Provider("rest")
+	if prov == nil {
+		rp := provider.NewREST(map[string]provider.RESTToolDef{}, nil)
+		_ = rp.Setup()
+		s.proxy.RegisterProvider("rest", rp)
+		prov = rp
+	}
+	rp, ok := prov.(*provider.RESTProvider)
+	if !ok {
+		return
+	}
+	def := provider.RESTToolDef{
+		Method:  tc.Method,
+		BaseURL: s.resolveRefT(tc.BaseURL, vaultKeys),
+		Path:    tc.Path,
+		Body:    tc.Body,
+		Headers: s.resolveRefMapTracked(tc.Headers, vaultKeys),
+	}
+	if tc.Auth != nil {
+		def.Auth = &provider.AuthDef{
+			Type:   tc.Auth.Type,
+			Token:  s.resolveRefT(tc.Auth.Token, vaultKeys),
+			Header: tc.Auth.Header,
+			Value:  s.resolveRefT(tc.Auth.Value, vaultKeys),
+		}
+		if tc.Auth.Type == "oauth" && s.cfg != nil {
+			oauthCfg := s.cfg.ResolveOAuthProvider(tc.Auth)
+			if oauthCfg != nil {
+				def.Auth.OAuthProvider = &oauth.ProviderConfig{
+					ClientID:     s.resolveRefT(oauthCfg.ClientID, vaultKeys),
+					ClientSecret: s.resolveRefT(oauthCfg.ClientSecret, vaultKeys),
+					AuthURL:      oauthCfg.AuthURL,
+					TokenURL:     oauthCfg.TokenURL,
+					Scopes:       oauthCfg.Scopes,
+				}
+				def.Auth.TokenKey = config.OAuthTokenKey(tc.Auth)
+			}
+		}
+	}
+	for _, p := range tc.Parameters {
+		def.Params = append(def.Params, provider.RESTParamDef{
+			Name:     p.Name,
+			In:       p.In,
+			Required: p.Required,
+			Type:     p.Type,
+		})
+	}
+	if tc.Timeout != "" {
+		if d, err := time.ParseDuration(tc.Timeout); err == nil {
+			def.Timeout = d
+		}
+	}
+	rp.AddTool(name, def)
+}
+
+func (s *Server) registerWorkflowProvider(name string, tc config.ToolConfig) {
+	prov := s.proxy.Provider("workflow")
+	if prov == nil {
+		return
+	}
+	wp, ok := prov.(*provider.WorkflowProvider)
+	if !ok {
+		return
+	}
+	steps := make([]provider.WorkflowStep, len(tc.Steps))
+	for i, st := range tc.Steps {
+		ws := provider.WorkflowStep{
+			Tool:    st.Tool,
+			Params:  st.Params,
+			Store:   st.Store,
+			If:      st.If,
+			Require: st.Require,
+		}
+		for _, sc := range st.Switch {
+			ws.Switch = append(ws.Switch, provider.WorkflowSwitchCase{
+				Condition: sc.Condition,
+				Tool:      sc.Tool,
+				Params:    sc.Params,
+				Store:     sc.Store,
+			})
+		}
+		steps[i] = ws
+	}
+	wp.RegisterWorkflow(name, steps)
 }
 
 // unregisterTool removes a tool from the live registry and provider.
@@ -430,18 +443,6 @@ func (s *Server) updateShadowRule(name string, tc config.ToolConfig) {
 		rule.RateLimit = rl
 	}
 	policy.SetRule(name, rule)
-}
-
-func dedup(s []string) []string {
-	seen := make(map[string]bool, len(s))
-	out := make([]string, 0, len(s))
-	for _, v := range s {
-		if !seen[v] {
-			seen[v] = true
-			out = append(out, v)
-		}
-	}
-	return out
 }
 
 func templateFuncs() template.FuncMap {

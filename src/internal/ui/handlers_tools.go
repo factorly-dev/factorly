@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/factorly-dev/factorly/internal/config"
-	"github.com/factorly-dev/factorly/internal/output"
 )
 
 type toolListItem struct {
@@ -699,111 +698,6 @@ func (s *Server) handleToolDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// splitArgs splits a space-separated string respecting quoted segments.
-func splitArgs(s string) []string {
-	var args []string
-	var current []byte
-	inQuote := false
-	quoteChar := byte(0)
-
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if inQuote {
-			if c == quoteChar {
-				inQuote = false
-			} else {
-				current = append(current, c)
-			}
-		} else if c == '"' || c == '\'' {
-			inQuote = true
-			quoteChar = c
-		} else if c == ' ' {
-			if len(current) > 0 {
-				args = append(args, string(current))
-				current = current[:0]
-			}
-		} else {
-			current = append(current, c)
-		}
-	}
-	if len(current) > 0 {
-		args = append(args, string(current))
-	}
-	return args
-}
-
-func splitComma(s string) []string {
-	if s == "" {
-		return nil
-	}
-	var result []string
-	for _, part := range strings.Split(s, ",") {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			result = append(result, part)
-		}
-	}
-	return result
-}
-
-func parseFilterForm(r *http.Request) *output.FilterConfig {
-	jsonPath := strings.TrimSpace(r.FormValue("filter_json_path"))
-	keepLines := splitComma(r.FormValue("filter_keep_lines"))
-	stripLines := splitComma(r.FormValue("filter_strip_lines"))
-	headLines := 0
-	tailLines := 0
-	maxLines := 0
-	if v := r.FormValue("filter_head_lines"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			headLines = n
-		}
-	}
-	if v := r.FormValue("filter_tail_lines"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			tailLines = n
-		}
-	}
-	if v := r.FormValue("filter_max_lines"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			maxLines = n
-		}
-	}
-
-	var replaces []output.ReplaceConfig
-	if raw := strings.TrimSpace(r.FormValue("filter_replace")); raw != "" {
-		for _, line := range strings.Split(raw, "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			// Split on → (arrow) separator
-			parts := strings.SplitN(line, "→", 2)
-			if len(parts) == 2 {
-				replaces = append(replaces, output.ReplaceConfig{
-					Pattern:     strings.TrimSpace(parts[0]),
-					Replacement: strings.TrimSpace(parts[1]),
-				})
-			}
-		}
-	}
-
-	// Only create filter if at least one field is set
-	if jsonPath == "" && len(keepLines) == 0 && len(stripLines) == 0 &&
-		headLines == 0 && tailLines == 0 && maxLines == 0 && len(replaces) == 0 {
-		return nil
-	}
-
-	return &output.FilterConfig{
-		JSONPath:   jsonPath,
-		HeadLines:  headLines,
-		TailLines:  tailLines,
-		MaxLines:   maxLines,
-		KeepLines:  keepLines,
-		StripLines: stripLines,
-		Replace:    replaces,
-	}
-}
-
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
 	t, ok := s.tmpls["templates/"+name]
 	if !ok {
@@ -832,34 +726,32 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 	}
 }
 
-func (s *Server) getSidebarTools() []toolListItem {
-	var tools []toolListItem
+// getSidebarItems returns sidebar items filtered by type.
+// If onlyType is set, only tools of that type are returned.
+// If excludeType is set, tools of that type are excluded.
+func (s *Server) getSidebarItems(onlyType, excludeType string) []toolListItem {
+	var items []toolListItem
 	for name, tc := range s.cfg.Tools {
-		if tc.Type == "workflow" {
+		if onlyType != "" && tc.Type != onlyType {
 			continue
 		}
-		tools = append(tools, toolListItem{
+		if excludeType != "" && tc.Type == excludeType {
+			continue
+		}
+		items = append(items, toolListItem{
 			Name:   name,
 			Type:   tc.Type,
 			Hidden: tc.Hidden,
 		})
 	}
-	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
-	return tools
+	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
+	return items
+}
+
+func (s *Server) getSidebarTools() []toolListItem {
+	return s.getSidebarItems("", "workflow")
 }
 
 func (s *Server) getSidebarWorkflows() []toolListItem {
-	var workflows []toolListItem
-	for name, tc := range s.cfg.Tools {
-		if tc.Type != "workflow" {
-			continue
-		}
-		workflows = append(workflows, toolListItem{
-			Name:   name,
-			Type:   tc.Type,
-			Hidden: tc.Hidden,
-		})
-	}
-	sort.Slice(workflows, func(i, j int) bool { return workflows[i].Name < workflows[j].Name })
-	return workflows
+	return s.getSidebarItems("workflow", "")
 }
