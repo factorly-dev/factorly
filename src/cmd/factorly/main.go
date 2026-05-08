@@ -616,7 +616,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			restDef := provider.RESTToolDef{
 				Method:  toolCfg.Method,
 				BaseURL: resolveVaultRefTracked(resolver, toolCfg.BaseURL, &vaultKeys),
-				Path:    toolCfg.Path,
+				Path:    resolveVaultRefTracked(resolver, toolCfg.Path, &vaultKeys),
 				Body:    toolCfg.Body,
 				Headers: resolveVaultMap(resolver, toolCfg.Headers),
 			}

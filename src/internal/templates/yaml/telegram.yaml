@@ -3,15 +3,8 @@ telegram.send_message:
   description: Send a text message to a chat
   base_url: "https://api.telegram.org"
   method: POST
-  path: "/bot{{token}}/sendMessage"
-  auth:
-    type: bearer
-    token: "{{vault:TELEGRAM_BOT_TOKEN}}"
+  path: "/bot{{vault:TELEGRAM_BOT_TOKEN}}/sendMessage"
   parameters:
-    - name: token
-      description: "Bot token (auto-filled from vault)"
-      required: true
-      in: path
     - name: chat_id
       description: "Chat ID or @channel_username"
       required: true
@@ -31,15 +24,8 @@ telegram.get_updates:
   description: "Get incoming updates (messages, commands, etc.)"
   base_url: "https://api.telegram.org"
   method: POST
-  path: "/bot{{token}}/getUpdates"
-  auth:
-    type: bearer
-    token: "{{vault:TELEGRAM_BOT_TOKEN}}"
+  path: "/bot{{vault:TELEGRAM_BOT_TOKEN}}/getUpdates"
   parameters:
-    - name: token
-      description: Bot token
-      required: true
-      in: path
     - name: offset
       description: Update offset for pagination
       in: body
@@ -52,15 +38,8 @@ telegram.send_document:
   description: Send a file to a chat
   base_url: "https://api.telegram.org"
   method: POST
-  path: "/bot{{token}}/sendDocument"
-  auth:
-    type: bearer
-    token: "{{vault:TELEGRAM_BOT_TOKEN}}"
+  path: "/bot{{vault:TELEGRAM_BOT_TOKEN}}/sendDocument"
   parameters:
-    - name: token
-      description: Bot token
-      required: true
-      in: path
     - name: chat_id
       description: "Chat ID or @channel_username"
       required: true
@@ -80,15 +59,8 @@ telegram.get_chat:
   description: Get information about a chat
   base_url: "https://api.telegram.org"
   method: POST
-  path: "/bot{{token}}/getChat"
-  auth:
-    type: bearer
-    token: "{{vault:TELEGRAM_BOT_TOKEN}}"
+  path: "/bot{{vault:TELEGRAM_BOT_TOKEN}}/getChat"
   parameters:
-    - name: token
-      description: Bot token
-      required: true
-      in: path
     - name: chat_id
       description: "Chat ID or @channel_username"
       required: true
@@ -99,15 +71,8 @@ telegram.send_photo:
   description: Send a photo to a chat
   base_url: "https://api.telegram.org"
   method: POST
-  path: "/bot{{token}}/sendPhoto"
-  auth:
-    type: bearer
-    token: "{{vault:TELEGRAM_BOT_TOKEN}}"
+  path: "/bot{{vault:TELEGRAM_BOT_TOKEN}}/sendPhoto"
   parameters:
-    - name: token
-      description: Bot token
-      required: true
-      in: path
     - name: chat_id
       description: "Chat ID or @channel_username"
       required: true
@@ -127,12 +92,4 @@ telegram.get_me:
   description: Get information about the bot
   base_url: "https://api.telegram.org"
   method: POST
-  path: "/bot{{token}}/getMe"
-  auth:
-    type: bearer
-    token: "{{vault:TELEGRAM_BOT_TOKEN}}"
-  parameters:
-    - name: token
-      description: Bot token
-      required: true
-      in: path
+  path: "/bot{{vault:TELEGRAM_BOT_TOKEN}}/getMe"

@@ -61,7 +61,7 @@ func TestAllTemplatesYAMLValid(t *testing.T) {
 				if tc.Method == "" {
 					t.Errorf("template %q tool %s: empty method", tmpl.Name, name)
 				}
-				if tc.Auth == nil {
+				if tc.Auth == nil && !strings.Contains(tc.Path, "{{vault:") {
 					t.Errorf("template %q tool %s: missing auth", tmpl.Name, name)
 				}
 			case "cli":

@@ -15,7 +15,7 @@
 <!-- Add secret form -->
 <div class="bg-white rounded-lg border border-gray-200 p-5 mb-6">
   <h2 class="font-semibold mb-3 text-sm">Add Secret</h2>
-  <form hx-post="/vault" hx-target="#vault-keys" hx-swap="innerHTML" class="flex gap-3 items-end">
+  <form hx-post="/vault" hx-target="#vault-keys" hx-swap="innerHTML" hx-on::after-request="if(event.detail.successful) this.reset()" class="flex gap-3 items-end">
     <div class="flex-1">
       <label class="block text-[10px] text-gray-400 uppercase mb-1">Key</label>
       <input type="text" name="key" required placeholder="API_KEY"

@@ -314,7 +314,7 @@ func (s *Server) registerRESTProvider(name string, tc config.ToolConfig, vaultKe
 	def := provider.RESTToolDef{
 		Method:  tc.Method,
 		BaseURL: s.resolveRefT(tc.BaseURL, vaultKeys),
-		Path:    tc.Path,
+		Path:    s.resolveRefT(tc.Path, vaultKeys),
 		Body:    tc.Body,
 		Headers: s.resolveRefMapTracked(tc.Headers, vaultKeys),
 	}

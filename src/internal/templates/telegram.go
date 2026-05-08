@@ -15,8 +15,8 @@ func Telegram() *Template {
 		DisplayName: "Telegram",
 		Description: "Bot messaging, channels, and notifications via phone",
 		Category:    "engineering",
-		AuthType:    "bearer",
-		AuthGuide:   "Create a bot with @BotFather on Telegram — it will give you the token",
+		AuthType:    "vault",
+		AuthGuide:   "Create a bot with @BotFather on Telegram, then run: factorly vault set TELEGRAM_BOT_TOKEN <token>",
 		VaultKey:    "TELEGRAM_BOT_TOKEN",
 		YAML:        telegramYAML,
 	}
