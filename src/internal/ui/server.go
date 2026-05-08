@@ -123,6 +123,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /tools/{name}", s.handleToolEdit)
 	s.mux.HandleFunc("POST /tools/_new", s.handleToolCreate)
 	s.mux.HandleFunc("POST /tools/{name}", s.handleToolSave)
+	s.mux.HandleFunc("POST /tools/{name}/duplicate", s.handleToolDuplicate)
 	s.mux.HandleFunc("POST /tools/{name}/rename", s.handleToolRename)
 	s.mux.HandleFunc("GET /tools/{name}/try-panel", s.handleToolTryPanel)
 	s.mux.HandleFunc("POST /tools/{name}/try", s.handleToolTry)

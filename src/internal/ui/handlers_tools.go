@@ -533,6 +533,34 @@ func (s *Server) handleToolRename(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (s *Server) handleToolDuplicate(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	tc, ok := s.cfg.Tools[name]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Generate a unique copy name
+	newName := name + ".copy"
+	for i := 2; ; i++ {
+		if _, exists := s.cfg.Tools[newName]; !exists {
+			break
+		}
+		newName = fmt.Sprintf("%s.copy%d", name, i)
+	}
+
+	if err := SaveTool(s.cfgPath, s.toolsDir, newName, tc); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.cfg.Tools[newName] = tc
+	s.registerTool(newName, tc)
+
+	w.Header().Set("HX-Redirect", "/tools/"+newName)
+	w.WriteHeader(http.StatusOK)
+}
+
 func (s *Server) handleToolDelete(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 

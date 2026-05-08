@@ -41,9 +41,13 @@
       </div>
     </form>
   </div>
-  <button hx-delete="/tools/{{.Tool.Name}}"
-          hx-confirm="Delete tool '{{.Tool.Name}}'?"
-          class="text-red-400 hover:text-red-600 text-sm">Delete</button>
+  <div class="flex items-center gap-3">
+    <button hx-post="/tools/{{.Tool.Name}}/duplicate"
+            class="text-gray-400 hover:text-indigo-600 text-sm">Duplicate</button>
+    <button hx-delete="/tools/{{.Tool.Name}}"
+            hx-confirm="Delete tool '{{.Tool.Name}}'?"
+            class="text-red-400 hover:text-red-600 text-sm">Delete</button>
+  </div>
 </div>
 
 {{if .Tool.Hidden}}
