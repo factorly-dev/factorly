@@ -1438,3 +1438,125 @@ func TestRESTVerboseNoRedactWithoutSecrets(t *testing.T) {
 		t.Errorf("expected full URL in output without redaction, got: %s", stderr)
 	}
 }
+
+func TestRESTVerboseRedactsSensitiveHeaders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	tests := []struct {
+		name       string
+		headerName string
+		secret     string
+	}{
+		{"Authorization", "Authorization", "Bearer sk_live_12345"},
+		{"X-Api-Key", "X-Api-Key", "apikey_secret_99"},
+		{"X-Auth-Token", "X-Auth-Token", "authtoken_abc"},
+		{"X-Secret-Id", "X-Secret-Id", "secret_id_xyz"},
+		{"Cookie", "Cookie", "session=s3cr3t"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewREST(map[string]RESTToolDef{
+				"test": {
+					Method:  "GET",
+					BaseURL: srv.URL,
+					Path:    "/",
+					Headers: map[string]string{tt.headerName: tt.secret},
+				},
+			}, nil)
+			p.Verbose = true
+			_ = p.Setup()
+
+			oldStderr := os.Stderr
+			r, w, _ := os.Pipe()
+			os.Stderr = w
+
+			_, _ = p.Execute("test", map[string]string{})
+
+			_ = w.Close()
+			os.Stderr = oldStderr
+			captured, _ := io.ReadAll(r)
+			stderr := string(captured)
+
+			if strings.Contains(stderr, tt.secret) {
+				t.Errorf("SECRET LEAKED for header %s: %s", tt.headerName, stderr)
+			}
+			if !strings.Contains(stderr, tt.headerName+": ****") {
+				t.Errorf("expected %s: **** in output, got: %s", tt.headerName, stderr)
+			}
+		})
+	}
+}
+
+func TestRESTVerboseNonSensitiveHeadersNotRedacted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:  "GET",
+			BaseURL: srv.URL,
+			Path:    "/",
+			Headers: map[string]string{
+				"Accept":       "application/json",
+				"Content-Type": "text/plain",
+				"X-Request-Id": "abc-123",
+			},
+		},
+	}, nil)
+	p.Verbose = true
+	_ = p.Setup()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	_, _ = p.Execute("test", map[string]string{})
+
+	_ = w.Close()
+	os.Stderr = oldStderr
+	captured, _ := io.ReadAll(r)
+	stderr := string(captured)
+
+	if !strings.Contains(stderr, "application/json") {
+		t.Errorf("Accept header should not be redacted, got: %s", stderr)
+	}
+	if !strings.Contains(stderr, "text/plain") {
+		t.Errorf("Content-Type should not be redacted, got: %s", stderr)
+	}
+	if !strings.Contains(stderr, "abc-123") {
+		t.Errorf("X-Request-Id should not be redacted, got: %s", stderr)
+	}
+}
+
+func TestIsSensitiveHeader(t *testing.T) {
+	sensitive := []string{
+		"Authorization", "authorization",
+		"X-Api-Key", "x-api-key",
+		"X-Auth-Token", "X-AUTH-TOKEN",
+		"X-Secret", "x-secret-id",
+		"Cookie", "cookie",
+		"X-Access-Token", "Bearer-Token",
+	}
+	for _, h := range sensitive {
+		if !isSensitiveHeader(h) {
+			t.Errorf("expected %q to be sensitive", h)
+		}
+	}
+
+	safe := []string{
+		"Accept", "Content-Type", "Content-Length",
+		"X-Request-Id", "X-Correlation-Id", "User-Agent",
+		"Cache-Control", "Host",
+	}
+	for _, h := range safe {
+		if isSensitiveHeader(h) {
+			t.Errorf("expected %q to NOT be sensitive", h)
+		}
+	}
+}

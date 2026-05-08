@@ -358,7 +358,11 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 		fmt.Fprintf(os.Stderr, "[rest] %s %s\n", req.Method, redact(req.URL.String()))
 		for k, vals := range req.Header {
 			for _, v := range vals {
-				fmt.Fprintf(os.Stderr, "[rest]   header: %s: %s\n", k, redact(v))
+				if isSensitiveHeader(k) {
+					fmt.Fprintf(os.Stderr, "[rest]   header: %s: ****\n", k)
+				} else {
+					fmt.Fprintf(os.Stderr, "[rest]   header: %s: %s\n", k, redact(v))
+				}
 			}
 		}
 		if bodyContent != "" {
@@ -500,6 +504,15 @@ func applyBodyDefaults(s string) string {
 	}
 	s = strings.ReplaceAll(s, "\x00\x00", "{{")
 	return s
+}
+
+func isSensitiveHeader(name string) bool {
+	lower := strings.ToLower(name)
+	return strings.Contains(lower, "auth") ||
+		strings.Contains(lower, "key") ||
+		strings.Contains(lower, "secret") ||
+		strings.Contains(lower, "token") ||
+		strings.Contains(lower, "cookie")
 }
 
 func defaultParamLocation(method string) string {
