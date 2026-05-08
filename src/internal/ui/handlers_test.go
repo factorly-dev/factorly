@@ -594,6 +594,80 @@ func TestHandleToolSave_WithShadow(t *testing.T) {
 	}
 }
 
+func TestHandleToolSave_WithHeaders(t *testing.T) {
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"api.test": {Type: "rest", Method: "GET", BaseURL: "https://example.com"},
+		},
+	}
+	srv, _ := testServer(t, cfg)
+
+	form := url.Values{
+		"description":  {"test"},
+		"method":       {"GET"},
+		"base_url":     {"https://example.com"},
+		"path":         {"/test"},
+		"header_key[]": {"Accept", "X-Custom"},
+		"header_val[]": {"application/json", "myvalue"},
+	}
+
+	req := httptest.NewRequest("POST", "/tools/api.test", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	tc := srv.cfg.Tools["api.test"]
+	if len(tc.Headers) != 2 {
+		t.Fatalf("expected 2 headers, got %d: %v", len(tc.Headers), tc.Headers)
+	}
+	if tc.Headers["Accept"] != "application/json" {
+		t.Errorf("expected Accept header, got %v", tc.Headers)
+	}
+	if tc.Headers["X-Custom"] != "myvalue" {
+		t.Errorf("expected X-Custom header, got %v", tc.Headers)
+	}
+}
+
+func TestHandleToolSave_HeadersCleared(t *testing.T) {
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"api.test": {
+				Type:    "rest",
+				Method:  "GET",
+				BaseURL: "https://example.com",
+				Headers: map[string]string{"Old": "value"},
+			},
+		},
+	}
+	srv, _ := testServer(t, cfg)
+
+	// Save with no headers
+	form := url.Values{
+		"description": {"test"},
+		"method":      {"GET"},
+		"base_url":    {"https://example.com"},
+		"path":        {"/test"},
+	}
+
+	req := httptest.NewRequest("POST", "/tools/api.test", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	tc := srv.cfg.Tools["api.test"]
+	if tc.Headers != nil {
+		t.Errorf("expected nil headers after clearing, got %v", tc.Headers)
+	}
+}
+
 func TestHandleToolSave_NotFound(t *testing.T) {
 	srv, _ := testServer(t, nil)
 

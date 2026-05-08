@@ -164,6 +164,22 @@
             </div>
           </div>
 
+          <div>
+            <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Headers</label>
+            <div id="headers-list" class="space-y-1 mb-1">
+              {{range $k, $v := .Tool.Headers}}
+              <div class="header-row flex gap-1">
+                <input type="text" name="header_key[]" value="{{$k}}" placeholder="Header name"
+                       class="w-1/3 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
+                <input type="text" name="header_val[]" value="{{$v}}" placeholder="value"
+                       class="flex-1 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
+                <button type="button" onclick="this.closest('.header-row').remove()" class="text-gray-300 hover:text-red-500 text-xs px-1">✕</button>
+              </div>
+              {{end}}
+            </div>
+            <button type="button" onclick="addHeader()" class="text-[10px] text-indigo-500 hover:text-indigo-700">+ header</button>
+          </div>
+
           <div class="flex gap-2">
             <div class="flex-1">
               <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Body</label>
@@ -414,6 +430,18 @@
 </div>
 
 <script>
+function addHeader() {
+  const list = document.getElementById('headers-list');
+  const row = document.createElement('div');
+  row.className = 'header-row flex gap-1';
+  row.innerHTML = `
+    <input type="text" name="header_key[]" placeholder="Header name" class="w-1/3 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
+    <input type="text" name="header_val[]" placeholder="value" class="flex-1 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
+    <button type="button" onclick="this.closest('.header-row').remove()" class="text-gray-300 hover:text-red-500 text-xs px-1">✕</button>
+  `;
+  list.appendChild(row);
+}
+
 function toggleAuthFields(type) {
   const container = document.getElementById('auth-fields');
   switch (type) {

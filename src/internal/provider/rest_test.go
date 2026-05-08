@@ -561,6 +561,32 @@ func TestRESTContentTypeOverride(t *testing.T) {
 	}
 }
 
+func TestRESTParamHeaderOverridesStatic(t *testing.T) {
+	var capturedTenant string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedTenant = r.Header.Get("X-Tenant")
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:  "GET",
+			BaseURL: srv.URL,
+			Path:    "/",
+			Headers: map[string]string{"X-Tenant": "default-tenant"},
+			Params:  []RESTParamDef{{Name: "X-Tenant", In: "header"}},
+		},
+	}, nil)
+	_ = p.Setup()
+
+	// Param header should override the static header
+	_, _ = p.Execute("test", map[string]string{"X-Tenant": "custom-tenant"})
+	if capturedTenant != "custom-tenant" {
+		t.Errorf("expected param header to override static, got %q", capturedTenant)
+	}
+}
+
 // --- Response Handling ---
 
 func TestRESTSuccess200(t *testing.T) {

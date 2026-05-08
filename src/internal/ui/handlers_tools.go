@@ -385,6 +385,26 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 		tc.BaseURL = r.FormValue("base_url")
 		tc.Method = r.FormValue("method")
 		tc.Path = r.FormValue("path")
+		// Parse headers
+		headerKeys := r.Form["header_key[]"]
+		headerVals := r.Form["header_val[]"]
+		headers := make(map[string]string)
+		for i, k := range headerKeys {
+			k = strings.TrimSpace(k)
+			if k == "" {
+				continue
+			}
+			v := ""
+			if i < len(headerVals) {
+				v = headerVals[i]
+			}
+			headers[k] = v
+		}
+		if len(headers) > 0 {
+			tc.Headers = headers
+		} else {
+			tc.Headers = nil
+		}
 	case "mcp":
 		tc.Command = r.FormValue("command")
 		if args := r.FormValue("args"); args != "" {
