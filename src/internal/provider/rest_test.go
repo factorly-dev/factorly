@@ -6,6 +6,7 @@ package provider
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -219,10 +220,11 @@ func TestRESTBodyParam(t *testing.T) {
 
 	p := NewREST(map[string]RESTToolDef{
 		"test": {
-			Method:  "POST",
-			BaseURL: srv.URL,
-			Path:    "/items",
-			Params:  []RESTParamDef{{Name: "body", In: "body"}},
+			Method:   "POST",
+			BaseURL:  srv.URL,
+			Path:     "/items",
+			BodyType: "raw",
+			Params:   []RESTParamDef{{Name: "body", In: "body"}},
 		},
 	}, nil)
 	_ = p.Setup()
@@ -281,9 +283,10 @@ func TestRESTDefaultParamRoutingPOST(t *testing.T) {
 
 	p := NewREST(map[string]RESTToolDef{
 		"test": {
-			Method:  "POST",
-			BaseURL: srv.URL,
-			Path:    "/items",
+			Method:   "POST",
+			BaseURL:  srv.URL,
+			Path:     "/items",
+			BodyType: "raw",
 		},
 	}, nil)
 	_ = p.Setup()
@@ -291,7 +294,7 @@ func TestRESTDefaultParamRoutingPOST(t *testing.T) {
 
 	_, _ = p.Execute("test", map[string]string{"data": `{"x":1}`})
 	if capturedBody != `{"x":1}` {
-		t.Errorf("expected POST param as body, got %q", capturedBody)
+		t.Errorf("expected POST param as raw body, got %q", capturedBody)
 	}
 }
 
@@ -316,9 +319,10 @@ func TestRESTMixedParams(t *testing.T) {
 
 	p := NewREST(map[string]RESTToolDef{
 		"test": {
-			Method:  "POST",
-			BaseURL: srv.URL,
-			Path:    "/orgs/{{orgId}}/items",
+			Method:   "POST",
+			BaseURL:  srv.URL,
+			Path:     "/orgs/{{orgId}}/items",
+			BodyType: "raw",
 			Params: []RESTParamDef{
 				{Name: "orgId", In: "path", Required: true},
 				{Name: "limit", In: "query"},
@@ -540,11 +544,12 @@ func TestRESTContentTypeOverride(t *testing.T) {
 
 	p := NewREST(map[string]RESTToolDef{
 		"test": {
-			Method:  "POST",
-			BaseURL: srv.URL,
-			Path:    "/",
-			Headers: map[string]string{"Content-Type": "text/plain"},
-			Params:  []RESTParamDef{{Name: "body", In: "body"}},
+			Method:   "POST",
+			BaseURL:  srv.URL,
+			Path:     "/",
+			BodyType: "raw",
+			Headers:  map[string]string{"Content-Type": "text/plain"},
+			Params:   []RESTParamDef{{Name: "body", In: "body"}},
 		},
 	}, nil)
 	_ = p.Setup()
@@ -1095,5 +1100,237 @@ func TestRESTPathParamsAutoDetect(t *testing.T) {
 	}
 	if receivedPath != "/repos/factorly-dev/factorly" {
 		t.Errorf("expected /repos/factorly-dev/factorly, got %s", receivedPath)
+	}
+}
+
+// --- Body Type tests ---
+
+func TestRESTBodyType_JSONSingleParam(t *testing.T) {
+	var capturedBody string
+	var capturedCT string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedCT = r.Header.Get("Content-Type")
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = string(body)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:  "POST",
+			BaseURL: srv.URL,
+			Path:    "/getChat",
+			Params:  []RESTParamDef{{Name: "chat_id", In: "body", Required: true}},
+			// BodyType defaults to "json"
+		},
+	}, nil)
+	_ = p.Setup()
+
+	_, err := p.Execute("test", map[string]string{"chat_id": "123456"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capturedBody != `{"chat_id":"123456"}` {
+		t.Errorf("expected JSON object, got %q", capturedBody)
+	}
+	if capturedCT != "application/json" {
+		t.Errorf("expected application/json, got %q", capturedCT)
+	}
+}
+
+func TestRESTBodyType_JSONMultipleParams(t *testing.T) {
+	var capturedBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = string(body)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:   "POST",
+			BaseURL:  srv.URL,
+			Path:     "/sendMessage",
+			BodyType: "json",
+			Params: []RESTParamDef{
+				{Name: "chat_id", In: "body", Required: true},
+				{Name: "text", In: "body", Required: true},
+			},
+		},
+	}, nil)
+	_ = p.Setup()
+
+	_, err := p.Execute("test", map[string]string{"chat_id": "123", "text": "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse as JSON to check keys (order may vary)
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(capturedBody), &parsed); err != nil {
+		t.Fatalf("body not valid JSON: %s", capturedBody)
+	}
+	if parsed["chat_id"] != "123" {
+		t.Errorf("chat_id: expected '123', got %v", parsed["chat_id"])
+	}
+	if parsed["text"] != "hello" {
+		t.Errorf("text: expected 'hello', got %v", parsed["text"])
+	}
+}
+
+func TestRESTBodyType_JSONWithTypes(t *testing.T) {
+	var capturedBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = string(body)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:  "POST",
+			BaseURL: srv.URL,
+			Path:    "/",
+			Params: []RESTParamDef{
+				{Name: "count", In: "body", Type: "integer"},
+				{Name: "active", In: "body", Type: "boolean"},
+				{Name: "tags", In: "body", Type: "json"},
+				{Name: "name", In: "body"},
+			},
+		},
+	}, nil)
+	_ = p.Setup()
+
+	_, err := p.Execute("test", map[string]string{
+		"count":  "42",
+		"active": "true",
+		"tags":   `["a","b"]`,
+		"name":   "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(capturedBody), &parsed); err != nil {
+		t.Fatalf("body not valid JSON: %s", capturedBody)
+	}
+	// integer: unquoted
+	if string(parsed["count"]) != "42" {
+		t.Errorf("count: expected 42, got %s", parsed["count"])
+	}
+	// boolean: unquoted
+	if string(parsed["active"]) != "true" {
+		t.Errorf("active: expected true, got %s", parsed["active"])
+	}
+	// json: raw array
+	if string(parsed["tags"]) != `["a","b"]` {
+		t.Errorf("tags: expected [\"a\",\"b\"], got %s", parsed["tags"])
+	}
+	// string: quoted
+	if string(parsed["name"]) != `"test"` {
+		t.Errorf("name: expected \"test\", got %s", parsed["name"])
+	}
+}
+
+func TestRESTBodyType_Form(t *testing.T) {
+	var capturedBody string
+	var capturedCT string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedCT = r.Header.Get("Content-Type")
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = string(body)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:   "POST",
+			BaseURL:  srv.URL,
+			Path:     "/submit",
+			BodyType: "form",
+			Params: []RESTParamDef{
+				{Name: "username", In: "body", Required: true},
+				{Name: "password", In: "body", Required: true},
+			},
+		},
+	}, nil)
+	_ = p.Setup()
+
+	_, err := p.Execute("test", map[string]string{"username": "admin", "password": "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if capturedCT != "application/x-www-form-urlencoded" {
+		t.Errorf("expected form content-type, got %q", capturedCT)
+	}
+	if !strings.Contains(capturedBody, "username=admin") {
+		t.Errorf("expected username=admin in body, got %q", capturedBody)
+	}
+	if !strings.Contains(capturedBody, "password=secret") {
+		t.Errorf("expected password=secret in body, got %q", capturedBody)
+	}
+}
+
+func TestRESTBodyType_Raw(t *testing.T) {
+	var capturedBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = string(body)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:   "POST",
+			BaseURL:  srv.URL,
+			Path:     "/",
+			BodyType: "raw",
+			Params:   []RESTParamDef{{Name: "payload", In: "body"}},
+		},
+	}, nil)
+	_ = p.Setup()
+
+	_, err := p.Execute("test", map[string]string{"payload": `<xml>hello</xml>`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capturedBody != `<xml>hello</xml>` {
+		t.Errorf("expected raw XML, got %q", capturedBody)
+	}
+}
+
+func TestRESTBodyType_DefaultIsJSON(t *testing.T) {
+	// No explicit BodyType — should default to json
+	var capturedBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = string(body)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	p := NewREST(map[string]RESTToolDef{
+		"test": {
+			Method:  "POST",
+			BaseURL: srv.URL,
+			Path:    "/",
+			Params:  []RESTParamDef{{Name: "key", In: "body"}},
+		},
+	}, nil)
+	_ = p.Setup()
+
+	_, err := p.Execute("test", map[string]string{"key": "value"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capturedBody != `{"key":"value"}` {
+		t.Errorf("expected JSON object, got %q", capturedBody)
 	}
 }

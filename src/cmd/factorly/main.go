@@ -568,6 +568,13 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 	return cfg, reg, nil
 }
 
+var cachedResolver *vault.Resolver
+
+// getCachedResolver returns the resolver from the last bootstrapProviders call.
+func getCachedResolver() *vault.Resolver {
+	return cachedResolver
+}
+
 // bootstrapProviders opens the vault if needed, creates providers, and
 // wires everything into a proxy. Takes config and registry from loadConfig().
 // confirmFn is used for shadow confirm prompts — nil uses the default CLI prompt.
@@ -577,6 +584,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	if err != nil {
 		return nil, err
 	}
+	cachedResolver = resolver
 
 	providers := make(map[string]provider.Provider)
 	cliTools := make(map[string]provider.CLIToolDef)
@@ -614,11 +622,12 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			vlog("  registered cli tool: %s", name)
 		case "rest":
 			restDef := provider.RESTToolDef{
-				Method:  toolCfg.Method,
-				BaseURL: resolveVaultRefTracked(resolver, toolCfg.BaseURL, &vaultKeys),
-				Path:    resolveVaultRefTracked(resolver, toolCfg.Path, &vaultKeys),
-				Body:    toolCfg.Body,
-				Headers: resolveVaultMap(resolver, toolCfg.Headers),
+				Method:   toolCfg.Method,
+				BaseURL:  resolveVaultRefTracked(resolver, toolCfg.BaseURL, &vaultKeys),
+				Path:     resolveVaultRefTracked(resolver, toolCfg.Path, &vaultKeys),
+				Body:     toolCfg.Body,
+				BodyType: toolCfg.BodyType,
+				Headers:  resolveVaultMap(resolver, toolCfg.Headers),
 			}
 			if toolCfg.Auth != nil {
 				authDef := &provider.AuthDef{

@@ -41,11 +41,18 @@
       <a href="/vault" class="text-sm {{if eq .Nav "vault"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Vault</a>
       <a href="/history" class="text-sm {{if eq .Nav "history"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">History</a>
     </div>
-    <!-- Activity toggle (right-aligned) -->
+    <!-- Right-aligned controls -->
+    <div class="flex items-center gap-1">
+    <button hx-post="/reload" hx-target="#reload-status" hx-swap="innerHTML"
+            class="px-2 py-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors" title="Reload config from disk">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+    </button>
+    <span id="reload-status"></span>
     <button onclick="toggleActivity()" class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors" id="activity-toggle">
       <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" id="activity-dot"></span>
       <span id="activity-badge">Activity</span>
     </button>
+    </div>
   </nav>
 
   <div class="flex flex-1 overflow-hidden relative">

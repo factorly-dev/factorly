@@ -164,10 +164,20 @@
             </div>
           </div>
 
-          <div>
-            <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Body</label>
-            <textarea name="body" rows="3" placeholder="JSON body with {{"{{param}}"}} placeholders"
-                      class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">{{.Tool.Body}}</textarea>
+          <div class="flex gap-2">
+            <div class="flex-1">
+              <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Body</label>
+              <textarea name="body" rows="3" placeholder="JSON body with {{"{{param}}"}} placeholders"
+                        class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">{{.Tool.Body}}</textarea>
+            </div>
+            <div class="w-24">
+              <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Body type</label>
+              <select name="body_type" class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-indigo-200">
+                <option value="json" {{if or (not .Tool.BodyType) (eq .Tool.BodyType "json")}}selected{{end}}>JSON</option>
+                <option value="form" {{if eq .Tool.BodyType "form"}}selected{{end}}>Form</option>
+                <option value="raw" {{if eq .Tool.BodyType "raw"}}selected{{end}}>Raw</option>
+              </select>
+            </div>
           </div>
 
           {{else if eq .Tool.Type "mcp"}}
@@ -200,13 +210,20 @@
                 <div class="flex gap-2 flex-1">
                   <input type="text" name="param_name_{{$i}}" value="{{$p.Name}}" placeholder="name"
                          class="w-1/3 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
-                  <select name="param_type_{{$i}}" class="w-24 px-2 py-1 text-xs border border-gray-200 rounded bg-white">
+                  <select name="param_type_{{$i}}" class="w-20 px-2 py-1 text-xs border border-gray-200 rounded bg-white">
                     <option value="string" {{if eq $p.Type "string"}}selected{{end}}>string</option>
                     <option value="integer" {{if eq $p.Type "integer"}}selected{{end}}>integer</option>
                     <option value="number" {{if eq $p.Type "number"}}selected{{end}}>number</option>
                     <option value="boolean" {{if eq $p.Type "boolean"}}selected{{end}}>boolean</option>
                     <option value="json" {{if eq $p.Type "json"}}selected{{end}}>json</option>
                     <option value="" {{if not $p.Type}}selected{{end}}>—</option>
+                  </select>
+                  <select name="param_in_{{$i}}" class="w-20 px-2 py-1 text-xs border border-gray-200 rounded bg-white">
+                    <option value="" {{if not $p.In}}selected{{end}}>auto</option>
+                    <option value="query" {{if eq $p.In "query"}}selected{{end}}>query</option>
+                    <option value="path" {{if eq $p.In "path"}}selected{{end}}>path</option>
+                    <option value="body" {{if eq $p.In "body"}}selected{{end}}>body</option>
+                    <option value="header" {{if eq $p.In "header"}}selected{{end}}>header</option>
                   </select>
                   <label class="flex items-center gap-1 text-xs text-gray-500 shrink-0">
                     <input type="checkbox" name="param_required_{{$i}}" {{if $p.Required}}checked{{end}} class="rounded border-gray-300"> req
@@ -423,13 +440,20 @@ function addToolParam() {
     <div class="flex items-center justify-between">
       <div class="flex gap-2 flex-1">
         <input type="text" name="param_name_${count}" placeholder="name" class="w-1/3 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white" autofocus>
-        <select name="param_type_${count}" class="w-24 px-2 py-1 text-xs border border-gray-200 rounded bg-white">
+        <select name="param_type_${count}" class="w-20 px-2 py-1 text-xs border border-gray-200 rounded bg-white">
           <option value="">—</option>
           <option value="string">string</option>
           <option value="integer">integer</option>
           <option value="number">number</option>
           <option value="boolean">boolean</option>
           <option value="json">json</option>
+        </select>
+        <select name="param_in_${count}" class="w-20 px-2 py-1 text-xs border border-gray-200 rounded bg-white">
+          <option value="">auto</option>
+          <option value="query">query</option>
+          <option value="path">path</option>
+          <option value="body">body</option>
+          <option value="header">header</option>
         </select>
         <label class="flex items-center gap-1 text-xs text-gray-500 shrink-0">
           <input type="checkbox" name="param_required_${count}" class="rounded border-gray-300"> req

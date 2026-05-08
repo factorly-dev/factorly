@@ -46,14 +46,15 @@ type AuthDef struct {
 }
 
 type RESTToolDef struct {
-	Method  string
-	BaseURL string
-	Path    string
-	Body    string // JSON body template with {{param}} placeholders
-	Headers map[string]string
-	Auth    *AuthDef
-	Params  []RESTParamDef
-	Timeout time.Duration
+	Method   string
+	BaseURL  string
+	Path     string
+	Body     string // JSON body template with {{param}} placeholders
+	BodyType string // "json" (default), "form", "raw"
+	Headers  map[string]string
+	Auth     *AuthDef
+	Params   []RESTParamDef
+	Timeout  time.Duration
 }
 
 type RESTProvider struct {
@@ -192,40 +193,53 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 		// Apply remaining defaults for unmatched {{param|default}} placeholders
 		bodyContent = applyBodyDefaults(bodyContent)
 
-	} else if len(bodyParams) == 1 {
-		for _, v := range bodyParams {
-			bodyContent = v
+	} else if len(bodyParams) > 0 {
+		bodyType := def.BodyType
+		if bodyType == "" {
+			bodyType = "json" // default
 		}
-	} else if len(bodyParams) > 1 {
-		obj := make(map[string]json.RawMessage, len(bodyParams))
-		for k, v := range bodyParams {
-			switch paramType[k] {
-			case "integer", "number":
-				// Pass numeric values unquoted
-				obj[k] = json.RawMessage(v)
-			case "boolean":
-				// Pass boolean values unquoted
-				obj[k] = json.RawMessage(v)
-			case "json":
-				// Pass raw JSON through (arrays, objects)
-				obj[k] = json.RawMessage(v)
-			default:
-				// "string" or unspecified — auto-detect:
-				// if valid JSON (array, object, number, bool), pass through;
-				// otherwise quote as string
-				if json.Valid([]byte(v)) && (v[0] == '[' || v[0] == '{') {
+
+		switch bodyType {
+		case "raw":
+			// Single raw body — use the first (or only) param value as-is
+			for _, v := range bodyParams {
+				bodyContent = v
+				break
+			}
+
+		case "form":
+			// URL-encoded form body
+			form := url.Values{}
+			for k, v := range bodyParams {
+				form.Set(k, v)
+			}
+			bodyContent = form.Encode()
+
+		default: // "json"
+			obj := make(map[string]json.RawMessage, len(bodyParams))
+			for k, v := range bodyParams {
+				switch paramType[k] {
+				case "integer", "number":
 					obj[k] = json.RawMessage(v)
-				} else {
-					quoted, _ := json.Marshal(v)
-					obj[k] = json.RawMessage(quoted)
+				case "boolean":
+					obj[k] = json.RawMessage(v)
+				case "json":
+					obj[k] = json.RawMessage(v)
+				default:
+					if json.Valid([]byte(v)) && len(v) > 0 && (v[0] == '[' || v[0] == '{') {
+						obj[k] = json.RawMessage(v)
+					} else {
+						quoted, _ := json.Marshal(v)
+						obj[k] = json.RawMessage(quoted)
+					}
 				}
 			}
+			data, err := json.Marshal(obj)
+			if err != nil {
+				return nil, fmt.Errorf("rest provider: building request body for tool %q: %w", toolName, err)
+			}
+			bodyContent = string(data)
 		}
-		data, err := json.Marshal(obj)
-		if err != nil {
-			return nil, fmt.Errorf("rest provider: building request body for tool %q: %w", toolName, err)
-		}
-		bodyContent = string(data)
 	}
 
 	// Substitute path parameters
@@ -314,12 +328,32 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 		req.Header.Set(name, value)
 	}
 	if bodyContent != "" && req.Header.Get("Content-Type") == "" {
-		req.Header.Set("Content-Type", "application/json")
+		if def.BodyType == "form" {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		} else {
+			req.Header.Set("Content-Type", "application/json")
+		}
 	}
 
 	// Verbose logging
 	if p.Verbose {
 		fmt.Fprintf(os.Stderr, "[rest] %s %s\n", req.Method, req.URL)
+		for k, vals := range req.Header {
+			for _, v := range vals {
+				fmt.Fprintf(os.Stderr, "[rest]   header: %s: %s\n", k, v)
+			}
+		}
+		if bodyContent != "" {
+			preview := bodyContent
+			if len(preview) > 500 {
+				preview = preview[:500] + "..."
+			}
+			bt := def.BodyType
+			if bt == "" {
+				bt = "json"
+			}
+			fmt.Fprintf(os.Stderr, "[rest]   body (%s, %d bytes): %s\n", bt, len(bodyContent), preview)
+		}
 		if fileParam != "" {
 			absFile, _ := filepath.Abs(fileParam)
 			fi, _ := os.Stat(absFile) // #nosec G304 -- verbose logging for user-provided file param

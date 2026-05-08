@@ -360,6 +360,7 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 	tc.Stdin = r.FormValue("stdin")
 	tc.Timeout = r.FormValue("timeout")
 	tc.Body = r.FormValue("body")
+	tc.BodyType = r.FormValue("body_type")
 
 	if mo := r.FormValue("max_output"); mo != "" {
 		if n, err := strconv.Atoi(mo); err == nil {
@@ -403,6 +404,7 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 		params = append(params, config.ParamConfig{
 			Name:        pname,
 			Type:        r.FormValue(fmt.Sprintf("param_type_%d", i)),
+			In:          r.FormValue(fmt.Sprintf("param_in_%d", i)),
 			Required:    r.FormValue(fmt.Sprintf("param_required_%d", i)) == "on",
 			Default:     r.FormValue(fmt.Sprintf("param_default_%d", i)),
 			Description: r.FormValue(fmt.Sprintf("param_desc_%d", i)),

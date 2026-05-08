@@ -61,12 +61,13 @@ type ToolConfig struct {
 	URL string `yaml:"url,omitempty"` // MCP HTTP transport URL
 
 	// REST fields
-	BaseURL string            `yaml:"base_url,omitempty"`
-	Method  string            `yaml:"method,omitempty"`
-	Path    string            `yaml:"path,omitempty"`
-	Body    string            `yaml:"body,omitempty"` // JSON body template with {{param}} placeholders
-	Headers map[string]string `yaml:"headers,omitempty"`
-	Auth    *AuthConfig       `yaml:"auth,omitempty"`
+	BaseURL  string            `yaml:"base_url,omitempty"`
+	Method   string            `yaml:"method,omitempty"`
+	Path     string            `yaml:"path,omitempty"`
+	Body     string            `yaml:"body,omitempty"`      // JSON body template with {{param}} placeholders
+	BodyType string            `yaml:"body_type,omitempty"` // "json" (default), "form", "raw"
+	Headers  map[string]string `yaml:"headers,omitempty"`
+	Auth     *AuthConfig       `yaml:"auth,omitempty"`
 
 	// Workflow fields
 	Steps []StepConfig `yaml:"steps,omitempty"`

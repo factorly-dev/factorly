@@ -622,6 +622,7 @@ tools:
     base_url: %s
     method: POST
     path: /items
+    body_type: raw
     parameters:
       - name: body
         in: body

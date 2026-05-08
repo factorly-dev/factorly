@@ -1278,10 +1278,14 @@ func TestIntegration_VaultRefResolution(t *testing.T) {
 	providers := make(map[string]provider.Provider)
 	p := proxy.New(reg, providers, logger.NopLogger{})
 
+	resolver := vault.NewResolver()
+	resolver.Register("vault", v)
+
 	srv, err := New(Options{
 		Config:   cfg,
 		CfgPath:  cfgPath,
 		Vault:    v,
+		Resolver: resolver,
 		Registry: reg,
 		Proxy:    p,
 	})
@@ -1305,12 +1309,12 @@ func TestIntegration_VaultRefResolution(t *testing.T) {
 	}
 	found := false
 	for _, k := range tool.VaultKeys {
-		if k == "API_KEY" {
+		if k == "vault:API_KEY" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("expected 'API_KEY' in vault keys, got %v", tool.VaultKeys)
+		t.Errorf("expected 'vault:API_KEY' in vault keys, got %v", tool.VaultKeys)
 	}
 }
 

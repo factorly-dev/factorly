@@ -110,6 +110,7 @@ func runUI(cmd *cobra.Command, args []string) error {
 		Registry:      reg,
 		Proxy:         p,
 		Vault:         vaultBackend,
+		Resolver:      getCachedResolver(),
 		ProjectVault:  projectVault,
 		GlobalVault:   globalVault,
 		Activity:      activity,

@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ type Server struct {
 	registry      *registry.Registry
 	proxy         *proxy.Proxy
 	vault         vault.Backend
+	resolver      *vault.Resolver
 	projectVault  vault.Backend
 	globalVault   vault.Backend
 	tmpls         map[string]*template.Template
@@ -48,6 +50,7 @@ type Options struct {
 	Registry      *registry.Registry
 	Proxy         *proxy.Proxy
 	Vault         vault.Backend
+	Resolver      *vault.Resolver
 	ProjectVault  vault.Backend
 	GlobalVault   vault.Backend
 	Activity      *ActivityBroadcaster
@@ -92,6 +95,7 @@ func New(opts Options) (*Server, error) {
 		registry:      opts.Registry,
 		proxy:         opts.Proxy,
 		vault:         opts.Vault,
+		resolver:      opts.Resolver,
 		projectVault:  opts.ProjectVault,
 		globalVault:   opts.GlobalVault,
 		activity:      opts.Activity,
@@ -168,6 +172,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /vault", s.handleVault)
 	s.mux.HandleFunc("POST /vault", s.handleVaultSet)
 	s.mux.HandleFunc("DELETE /vault/{key}", s.handleVaultDelete)
+
+	// Reload
+	s.mux.HandleFunc("POST /reload", s.handleReload)
 }
 
 // MountMCP sets the MCP handler. The StreamableHTTPServer is its own
@@ -312,11 +319,12 @@ func (s *Server) registerRESTProvider(name string, tc config.ToolConfig, vaultKe
 		return
 	}
 	def := provider.RESTToolDef{
-		Method:  tc.Method,
-		BaseURL: s.resolveRefT(tc.BaseURL, vaultKeys),
-		Path:    s.resolveRefT(tc.Path, vaultKeys),
-		Body:    tc.Body,
-		Headers: s.resolveRefMapTracked(tc.Headers, vaultKeys),
+		Method:   tc.Method,
+		BaseURL:  s.resolveRefT(tc.BaseURL, vaultKeys),
+		Path:     s.resolveRefT(tc.Path, vaultKeys),
+		Body:     tc.Body,
+		BodyType: tc.BodyType,
+		Headers:  s.resolveRefMapTracked(tc.Headers, vaultKeys),
 	}
 	if tc.Auth != nil {
 		def.Auth = &provider.AuthDef{
@@ -442,6 +450,51 @@ func (s *Server) updateShadowRule(name string, tc config.ToolConfig) {
 		rule.RateLimit = rl
 	}
 	policy.SetRule(name, rule)
+}
+
+// handleReload re-reads config from disk and applies deltas to the live
+// registry, providers, and shadow policy without restarting.
+func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
+	newCfg, err := config.Load(s.cfgPath)
+	if err != nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<span class="text-red-600 text-xs">✗ %s</span>`, template.HTMLEscapeString(err.Error()))
+		return
+	}
+
+	var added, removed, updated int
+
+	// Find removed tools (in old but not new)
+	for name := range s.cfg.Tools {
+		if _, exists := newCfg.Tools[name]; !exists {
+			s.unregisterTool(name)
+			removed++
+		}
+	}
+
+	// Find added and changed tools
+	for name, newTC := range newCfg.Tools {
+		oldTC, exists := s.cfg.Tools[name]
+		if !exists {
+			added++
+		} else if !reflect.DeepEqual(oldTC, newTC) {
+			s.unregisterTool(name)
+			updated++
+		} else {
+			continue // unchanged
+		}
+		s.registerTool(name, newTC)
+	}
+
+	// Update oauth providers
+	s.cfg.Tools = newCfg.Tools
+	s.cfg.OAuthProviders = newCfg.OAuthProviders
+
+	// Tell browser to refresh the page so sidebar/content updates
+	w.Header().Set("HX-Refresh", "true")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<span class="text-green-600 text-xs">✓ Reloaded (%d added, %d updated, %d removed)</span>`,
+		added, updated, removed)
 }
 
 func templateFuncs() template.FuncMap {

@@ -3,65 +3,52 @@
 
 package ui
 
-// resolveRef resolves a single {{vault:KEY}} reference using the vault backend.
+// resolveRef resolves all backend references (e.g., {{vault:KEY}}, {{op:KEY}})
+// in a string using the shared vault.Resolver.
 func (s *Server) resolveRef(val string) string {
-	v, _ := s.resolveRefTracked(val)
-	return v
+	if s.resolver == nil || val == "" {
+		return val
+	}
+	resolved, err := s.resolver.Resolve(val)
+	if err != nil {
+		return val
+	}
+	return resolved
 }
 
-// resolveRefTracked resolves a {{vault:KEY}} reference and returns the
-// vault key name if one was accessed (empty string otherwise).
-func (s *Server) resolveRefTracked(val string) (string, string) {
-	if s.vault == nil || val == "" {
-		return val, ""
+// resolveRefT resolves all backend refs in a value and appends accessed keys to the tracker.
+func (s *Server) resolveRefT(val string, keys *[]string) string {
+	if s.resolver == nil || val == "" {
+		return val
 	}
-	if len(val) > 10 && val[:8] == "{{vault:" && val[len(val)-2:] == "}}" {
-		key := val[8 : len(val)-2]
-		if resolved, err := s.vault.Get(key); err == nil {
-			return resolved, key
-		}
-		return val, key // still track the key even if resolution failed
+	resolved, accessed, err := s.resolver.ResolveTracked(val)
+	if err != nil {
+		return val
 	}
-	return val, ""
+	*keys = append(*keys, accessed...)
+	return resolved
 }
 
-// resolveRefsTracked resolves vault references in a string slice and collects accessed keys.
+// resolveRefsTracked resolves backend references in a string slice and collects accessed keys.
 func (s *Server) resolveRefsTracked(vals []string, keys *[]string) []string {
-	if s.vault == nil || len(vals) == 0 {
+	if s.resolver == nil || len(vals) == 0 {
 		return vals
 	}
 	out := make([]string, len(vals))
 	for i, v := range vals {
-		resolved, key := s.resolveRefTracked(v)
-		out[i] = resolved
-		if key != "" {
-			*keys = append(*keys, key)
-		}
+		out[i] = s.resolveRefT(v, keys)
 	}
 	return out
 }
 
-// resolveRefMapTracked resolves vault references in a map and collects accessed keys.
+// resolveRefMapTracked resolves backend references in a map and collects accessed keys.
 func (s *Server) resolveRefMapTracked(m map[string]string, keys *[]string) map[string]string {
-	if s.vault == nil || len(m) == 0 {
+	if s.resolver == nil || len(m) == 0 {
 		return m
 	}
 	out := make(map[string]string, len(m))
 	for k, v := range m {
-		resolved, vaultKey := s.resolveRefTracked(v)
-		out[k] = resolved
-		if vaultKey != "" {
-			*keys = append(*keys, vaultKey)
-		}
+		out[k] = s.resolveRefT(v, keys)
 	}
 	return out
-}
-
-// resolveRefT resolves a ref and appends the vault key to the tracker.
-func (s *Server) resolveRefT(val string, keys *[]string) string {
-	resolved, key := s.resolveRefTracked(val)
-	if key != "" {
-		*keys = append(*keys, key)
-	}
-	return resolved
 }
