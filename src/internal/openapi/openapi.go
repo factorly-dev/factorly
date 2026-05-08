@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,12 +20,13 @@ import (
 )
 
 type GenerateOpts struct {
-	Prefix string // tool name prefix, defaults to slugified info.title
+	Prefix  string // tool name prefix, defaults to slugified info.title
+	BaseDir string // if set, local file paths are restricted to this directory
 }
 
 // Generate reads an OpenAPI 3.x spec (local file or URL) and returns Factorly tool definitions.
 func Generate(specPath string, opts GenerateOpts) (map[string]config.ToolConfig, error) {
-	data, err := readSpec(specPath)
+	data, err := readSpec(specPath, opts.BaseDir)
 	if err != nil {
 		return nil, err
 	}
@@ -305,15 +307,17 @@ func isHTTPMethod(m string) bool {
 	return false
 }
 
-func readSpec(specPath string) ([]byte, error) {
+func readSpec(specPath, baseDir string) ([]byte, error) {
 	if strings.HasPrefix(specPath, "http://") || strings.HasPrefix(specPath, "https://") {
-		// Validate URL before fetching to prevent SSRF against internal services
 		parsed, err := url.Parse(specPath)
 		if err != nil {
 			return nil, fmt.Errorf("invalid spec URL: %w", err)
 		}
 		if parsed.Scheme != "http" && parsed.Scheme != "https" {
 			return nil, fmt.Errorf("unsupported URL scheme %q (only http/https allowed)", parsed.Scheme)
+		}
+		if err := checkSpecURL(parsed); err != nil {
+			return nil, err
 		}
 		resp, err := http.Get(parsed.String()) //nolint:gosec,noctx // user-provided URL is intentional for spec import
 		if err != nil {
@@ -335,9 +339,48 @@ func readSpec(specPath string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolving spec path: %w", err)
 	}
-	data, err := os.ReadFile(absPath) // #nosec G304 -- user explicitly provides spec file path via CLI/UI
+	// When baseDir is set, restrict reads to that directory.
+	if baseDir != "" {
+		absBase, err := filepath.Abs(baseDir)
+		if err != nil {
+			return nil, fmt.Errorf("resolving base dir: %w", err)
+		}
+		// EvalSymlinks resolves symlink traversal before the prefix check.
+		resolved, err := filepath.EvalSymlinks(absPath)
+		if err != nil {
+			return nil, fmt.Errorf("reading spec: %w", err)
+		}
+		if !strings.HasPrefix(resolved, absBase+string(filepath.Separator)) && resolved != absBase {
+			return nil, fmt.Errorf("spec path %q is outside the project directory", specPath)
+		}
+	}
+	data, err := os.ReadFile(absPath) // #nosec G304 -- validated against baseDir above when called from UI
 	if err != nil {
 		return nil, fmt.Errorf("reading spec: %w", err)
 	}
 	return data, nil
+}
+
+// checkSpecURL blocks requests to internal/private network targets.
+func checkSpecURL(u *url.URL) error {
+	host := u.Hostname()
+
+	// Block cloud metadata endpoints
+	if host == "169.254.169.254" || host == "metadata.google.internal" {
+		return fmt.Errorf("spec URL blocked: cloud metadata endpoint")
+	}
+
+	// Block localhost/loopback
+	if host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0" || host == "::1" {
+		return fmt.Errorf("spec URL blocked: localhost access denied")
+	}
+
+	// Block private/link-local IPs
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			return fmt.Errorf("spec URL blocked: private network access denied")
+		}
+	}
+
+	return nil
 }

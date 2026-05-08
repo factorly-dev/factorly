@@ -4,7 +4,7 @@
 
 ```bash
 factorly serve                      # start MCP server (stdio)
-factorly serve --http :3000         # start MCP server (HTTP at /mcp)
+factorly serve --port 3000          # start MCP server (HTTP at /mcp)
 factorly serve --http-token <tok>   # HTTP with Bearer token auth
 factorly serve --http-token '{{vault:HTTP_TOKEN}}'  # token from vault
 factorly init                       # create .factorly/factorly.yaml (interactive)
@@ -257,7 +257,8 @@ factorly wrap --url http://localhost:3001/mcp
 --rate-limit <spec>  # rate limit (e.g. "100/hour")
 --max-output <bytes> # max output bytes per call (default: 50000)
 --compress <hints>   # compression hints: "json", "logs", or "all" (default: "all")
---http <addr>        # serve wrapped server over HTTP (e.g. ":3000")
+--host <addr>        # address to bind (default: 127.0.0.1)
+--port <port>        # port for HTTP mode
 --http-token <tok>   # Bearer token for HTTP mode
 --env-isolation <mode>  # "strict" for minimal env, default inherits parent
 --env KEY=VALUE         # set env var (repeatable; supports {{env:VAR}} and {{vault:KEY}})
@@ -285,7 +286,7 @@ Factorly ships with governed alternatives to common agent tools. These are avail
 ### Context-aware
 
 In **stdio mode** (default): all 5 tools available.
-In **HTTP mode** (`--http`): only `factorly.fetch` — local tools don't make sense on a remote server.
+In **HTTP mode** (`--port`): only `factorly.fetch` — local tools don't make sense on a remote server.
 
 ### Safety guards
 
@@ -331,7 +332,7 @@ disable_builtins: true
 
 ## HTTP server authentication
 
-When running `factorly serve --http`, you can secure the endpoint with a Bearer token. The token is resolved in order:
+When running `factorly serve --port`, you can secure the endpoint with a Bearer token. The token is resolved in order:
 
 1. `--http-token` flag
 2. `FACTORLY_HTTP_TOKEN` environment variable
@@ -340,25 +341,25 @@ Both support `{{vault:KEY}}` references — the vault is opened automatically if
 
 ```bash
 # Plain token (visible in ps output — use for dev only)
-factorly serve --http :3000 --http-token mytoken
+factorly serve --port 3000 --http-token mytoken
 
 # Environment variable (better for CI/deployment)
-FACTORLY_HTTP_TOKEN=mytoken factorly serve --http :3000
+FACTORLY_HTTP_TOKEN=mytoken factorly serve --port 3000
 
 # Vault reference (best — token encrypted at rest)
 factorly vault set HTTP_TOKEN "my-secret-token"
-factorly serve --http :3000 --http-token '{{vault:HTTP_TOKEN}}'
+factorly serve --port 3000 --http-token '{{vault:HTTP_TOKEN}}'
 
 # Vault ref via env var
-FACTORLY_HTTP_TOKEN='{{vault:HTTP_TOKEN}}' factorly serve --http :3000
+FACTORLY_HTTP_TOKEN='{{vault:HTTP_TOKEN}}' factorly serve --port 3000
 ```
 
 When a token is set, all HTTP requests must include `Authorization: Bearer <token>`. Requests without a valid token receive a 401 response. A warning is printed to stderr when HTTP mode starts without any token configured.
 
-**Note:** If Factorly is running inside a container (Docker, devcontainer, Codespace), use the host-accessible address — not `localhost`. For Docker, this is typically `host.docker.internal`:
+By default, the server binds to `127.0.0.1` (localhost only). If Factorly is running inside a container (Docker, devcontainer, Codespace), bind to all interfaces with `--host 0.0.0.0`:
 
 ```bash
-factorly serve --http 0.0.0.0:3000 --http-token '{{vault:HTTP_TOKEN}}'
+factorly serve --host 0.0.0.0 --port 3000 --http-token '{{vault:HTTP_TOKEN}}'
 factorly sync --http host.docker.internal:3000 --token '{{vault:HTTP_TOKEN}}'
 ```
 

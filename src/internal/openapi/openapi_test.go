@@ -368,7 +368,7 @@ paths:
 }
 
 func TestReadSpec_RejectsInvalidScheme(t *testing.T) {
-	_, err := readSpec("ftp://evil.example.com/spec.yaml")
+	_, err := readSpec("ftp://evil.example.com/spec.yaml", "")
 	// ftp is not http/https, so it falls through to file read which should fail
 	if err == nil {
 		t.Fatal("expected error for non-http URL treated as file path")
@@ -390,7 +390,7 @@ paths:
 	specPath := filepath.Join(dir, "spec.yaml")
 	_ = os.WriteFile(specPath, []byte(specContent), 0o644)
 
-	data, err := readSpec(specPath)
+	data, err := readSpec(specPath, "")
 	if err != nil {
 		t.Fatalf("readSpec failed: %v", err)
 	}
@@ -401,7 +401,7 @@ paths:
 
 func TestReadSpec_TraversalPath(t *testing.T) {
 	// This should resolve via filepath.Abs and fail because the file doesn't exist
-	_, err := readSpec("../../../etc/passwd")
+	_, err := readSpec("../../../etc/passwd", "")
 	if err == nil {
 		t.Fatal("expected error for traversal path")
 	}

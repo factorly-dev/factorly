@@ -25,6 +25,7 @@ import (
 )
 
 var (
+	uiHost     string
 	uiPort     int
 	uiMCP      bool
 	uiMCPToken string
@@ -39,6 +40,7 @@ var uiCmd = &cobra.Command{
 }
 
 func init() {
+	uiCmd.Flags().StringVar(&uiHost, "host", "127.0.0.1", "address to bind the UI server (use 0.0.0.0 for all interfaces)")
 	uiCmd.Flags().IntVar(&uiPort, "port", 3741, "port for the UI server")
 	uiCmd.Flags().BoolVar(&uiMCP, "mcp", false, "also serve MCP endpoint at /mcp")
 	uiCmd.Flags().StringVar(&uiMCPToken, "mcp-token", "", "bearer token for MCP endpoint (required when --mcp is set)")
@@ -151,8 +153,7 @@ func runUI(cmd *cobra.Command, args []string) error {
 	// Wrap with host validation + token check
 	handler := hostValidation(tokenValidation(srv.Handler(), token))
 
-	// Bind to all interfaces (needed for container/port-forward scenarios)
-	addr := fmt.Sprintf(":%d", uiPort)
+	addr := fmt.Sprintf("%s:%d", uiHost, uiPort)
 	url := fmt.Sprintf("http://localhost:%d/?token=%s", uiPort, token)
 
 	fmt.Fprintf(cmd.ErrOrStderr(), "Factorly UI running at %s\n", url)

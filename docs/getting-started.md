@@ -112,10 +112,10 @@ This writes the Factorly MCP server entry into `.mcp.json` (Claude Code), `.curs
 For remote or shared servers:
 
 ```bash
-factorly serve --http :3000
+factorly serve --port 3000
 ```
 
-Endpoint at `http://localhost:3000/mcp`. Secure with `--http-token` or `FACTORLY_HTTP_TOKEN`. See [CLI Reference](cli-reference.md) for details.
+Endpoint at `http://localhost:3000/mcp`. Secure with `--http-token` or `FACTORLY_HTTP_TOKEN`. See [CLI Reference](cli-reference.md) for details. Use `--host 0.0.0.0` to bind to all interfaces (e.g. for containers).
 
 > **Note:** If running inside Docker, use `host.docker.internal` instead of `localhost`. See [CLI Reference](cli-reference.md#http-server-authentication) for container setup.
 

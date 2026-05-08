@@ -36,7 +36,10 @@ func (s *Server) handleImportPreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tools, err := openapi.Generate(specURL, openapi.GenerateOpts{Prefix: prefix})
+	tools, err := openapi.Generate(specURL, openapi.GenerateOpts{
+		Prefix:  prefix,
+		BaseDir: s.projectDir(),
+	})
 	if err != nil {
 		s.renderPartial(w, "import_error", map[string]any{"Message": "Error: " + err.Error()})
 		return
@@ -112,7 +115,10 @@ func (s *Server) handleImportConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Re-generate from spec
-	tools, err := openapi.Generate(specURL, openapi.GenerateOpts{Prefix: prefix})
+	tools, err := openapi.Generate(specURL, openapi.GenerateOpts{
+		Prefix:  prefix,
+		BaseDir: s.projectDir(),
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -173,6 +179,15 @@ func (s *Server) handleImportConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/tools", http.StatusFound)
+}
+
+// projectDir returns the directory containing the config file, used as the
+// sandbox root for local file operations like spec import.
+func (s *Server) projectDir() string {
+	if s.cfgPath != "" {
+		return filepath.Dir(s.cfgPath)
+	}
+	return "."
 }
 
 func writeFileCreate(path string, data []byte) error {

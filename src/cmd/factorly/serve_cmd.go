@@ -20,8 +20,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var httpAddr string
-var httpToken string
+var (
+	httpHost  string
+	httpPort  int
+	httpAddr  string // legacy --http flag
+	httpToken string
+)
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
@@ -29,12 +33,20 @@ var serveCmd = &cobra.Command{
 	Long: `Start an MCP server that exposes all configured Factorly tools
 to MCP clients like Claude Code and Cursor.
 
-By default, uses stdio transport. Use --http to start an HTTP server instead.`,
+By default, uses stdio transport. Use --port to start an HTTP server instead.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := checkCommandAllowed("serve"); err != nil {
 			return err
 		}
+		// --host/--port or legacy --http both enable HTTP mode
+		if httpPort != 0 && httpAddr == "" {
+			httpAddr = fmt.Sprintf("%s:%d", httpHost, httpPort)
+		}
 		if httpAddr != "" {
+			// Default to localhost when only a port is given (e.g. ":3000")
+			if strings.HasPrefix(httpAddr, ":") {
+				httpAddr = "127.0.0.1" + httpAddr
+			}
 			serveMode = "http"
 		}
 		cfg, reg, err := loadConfig()
@@ -181,8 +193,10 @@ func mcpElicitConfirm(ctx context.Context, toolName string, params map[string]st
 }
 
 func init() {
-	serveCmd.Flags().StringVar(&httpAddr, "http", "",
-		"start HTTP transport on this address (e.g. :3000) instead of stdio")
+	serveCmd.Flags().StringVar(&httpHost, "host", "127.0.0.1", "address to bind the HTTP server (use 0.0.0.0 for all interfaces)")
+	serveCmd.Flags().IntVar(&httpPort, "port", 0, "port for HTTP transport (enables HTTP mode)")
+	serveCmd.Flags().StringVar(&httpAddr, "http", "", "start HTTP transport on this address (legacy; prefer --host/--port)")
 	serveCmd.Flags().StringVar(&httpToken, "http-token", "",
 		"require Bearer token authentication for HTTP transport")
+	_ = serveCmd.Flags().MarkHidden("http")
 }
