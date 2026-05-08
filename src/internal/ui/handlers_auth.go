@@ -6,6 +6,7 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"sort"
 	"strings"
@@ -365,6 +366,9 @@ func (s *Server) renderAuthList(w http.ResponseWriter, providers []authProviderV
 			icon = "✗"
 		}
 
+		escName := html.EscapeString(p.Name)
+		escLabel := html.EscapeString(p.StatusLabel)
+
 		fmt.Fprintf(w, `<div class="px-5 py-4 border-b border-gray-100 last:border-b-0">
 			<div class="flex items-center justify-between mb-1">
 				<div class="flex items-center gap-2">
@@ -373,13 +377,13 @@ func (s *Server) renderAuthList(w http.ResponseWriter, providers []authProviderV
 					<span class="text-xs text-%s-600">%s</span>
 				</div>
 				<div class="flex items-center gap-2">`,
-			p.StatusColor, p.StatusColor, icon, p.Name, p.StatusColor, p.StatusLabel)
+			p.StatusColor, p.StatusColor, icon, escName, p.StatusColor, escLabel)
 
 		if !p.HasToken {
-			fmt.Fprintf(w, `<span class="text-[10px] text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded border border-gray-200 select-all">factorly auth login %s</span>`, p.Name)
+			fmt.Fprintf(w, `<span class="text-[10px] text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded border border-gray-200 select-all">factorly auth login %s</span>`, escName)
 		}
 		if p.HasToken {
-			fmt.Fprintf(w, `<button hx-delete="/auth/%s/token" hx-target="#auth-list" hx-swap="innerHTML" hx-confirm="Logout from %s?" class="text-gray-400 hover:text-red-600 text-xs">logout</button>`, p.Name, p.Name)
+			fmt.Fprintf(w, `<button hx-delete="/auth/%s/token" hx-target="#auth-list" hx-swap="innerHTML" hx-confirm="Logout from %s?" class="text-gray-400 hover:text-red-600 text-xs">logout</button>`, escName, escName)
 		}
 
 		fmt.Fprint(w, `</div></div>`)
@@ -388,7 +392,7 @@ func (s *Server) renderAuthList(w http.ResponseWriter, providers []authProviderV
 		if len(p.Tools) > 0 {
 			fmt.Fprint(w, `<div class="flex flex-wrap gap-1 mt-1">`)
 			for _, t := range p.Tools {
-				fmt.Fprintf(w, `<span class="text-[10px] font-mono text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded">%s</span>`, t)
+				fmt.Fprintf(w, `<span class="text-[10px] font-mono text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded">%s</span>`, html.EscapeString(t))
 			}
 			fmt.Fprint(w, `</div>`)
 		}

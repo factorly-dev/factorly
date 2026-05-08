@@ -5,8 +5,8 @@ package ui
 
 import (
 	"fmt"
+	"html"
 	"net/http"
-	"strings"
 )
 
 type vaultSection struct {
@@ -139,7 +139,7 @@ func (s *Server) renderVaultKeys(w http.ResponseWriter) {
 			fmt.Fprint(w, `<div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>`)
 		} else {
 			for _, key := range sec.Keys {
-				escapedKey := strings.ReplaceAll(key, `"`, `&quot;`)
+				esc := html.EscapeString(key)
 				fmt.Fprintf(w, `<div class="px-5 py-2.5 flex items-center justify-between">
 					<span class="font-mono text-sm">%s</span>
 					<div class="flex items-center gap-3">
@@ -147,10 +147,10 @@ func (s *Server) renderVaultKeys(w http.ResponseWriter) {
 						<button hx-delete="/vault/%s?scope=%s"
 								hx-target="#vault-keys"
 								hx-swap="innerHTML"
-								hx-confirm="Delete secret '%s'?"
+								hx-confirm="Delete secret &#39;%s&#39;?"
 								class="text-red-400 hover:text-red-600 text-xs">delete</button>
 					</div>
-				</div>`, key, escapedKey, sec.Scope, escapedKey)
+				</div>`, esc, esc, sec.Scope, esc)
 			}
 		}
 		fmt.Fprint(w, `</div>`)

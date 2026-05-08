@@ -327,7 +327,7 @@ func (s *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) {
       <span class="inline-flex items-center justify-center w-4 h-4 rounded-full %s text-[9px] font-bold shrink-0">%s</span>
       <span class="font-mono text-xs text-gray-700 flex-1">%s</span>
       <span class="text-[10px] text-gray-400 font-mono">%s</span>
-    </div>`, iconBg, icon, step.Tool, dur)
+    </div>`, iconBg, icon, template.HTMLEscapeString(step.Tool), dur)
 		if step.Error != "" {
 			fmt.Fprintf(w, `
     <div class="ml-6 text-[11px] text-red-600 font-mono">%s</div>`, template.HTMLEscapeString(step.Error))

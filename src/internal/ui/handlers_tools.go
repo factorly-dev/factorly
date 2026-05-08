@@ -155,9 +155,9 @@ func (s *Server) renderSuccessResponse(w http.ResponseWriter, tool, status, icon
 		var prettyBuf bytes.Buffer
 		if json.Indent(&prettyBuf, []byte(output), "", "  ") == nil {
 			formattedOutput = formatJSONHTML(prettyBuf.String())
-		} else {
-			formattedOutput = formatJSONHTML(output)
 		}
+		// If json.Indent fails, keep the HTMLEscapeString'd version —
+		// formatJSONHTML is only safe on valid JSON.
 	}
 
 	tabID := fmt.Sprintf("tab-%d", time.Now().UnixNano())
@@ -244,7 +244,17 @@ func formatJSONHTML(s string) string {
 			i += 4
 			continue
 		default:
-			out.WriteByte(ch)
+			// HTML-escape any unexpected characters as a safety net.
+			switch ch {
+			case '<':
+				out.WriteString("&lt;")
+			case '>':
+				out.WriteString("&gt;")
+			case '&':
+				out.WriteString("&amp;")
+			default:
+				out.WriteByte(ch)
+			}
 			i++
 		}
 	}
