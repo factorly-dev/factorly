@@ -1,0 +1,41 @@
+{{define "import_error"}}
+<div class="text-red-600 text-sm">{{.Message}}</div>
+{{end}}
+
+{{define "import_warning"}}
+<div class="text-amber-600 text-sm">{{.Message}}</div>
+{{end}}
+
+{{define "import_preview"}}
+<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+  <div class="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+    <label class="flex items-center gap-2 cursor-pointer">
+      <input type="checkbox" checked onchange="this.closest('.rounded-lg').querySelectorAll('input[name=tools]').forEach(c => c.checked = this.checked)"
+             class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-200">
+      <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">{{.Count}} tools found</span>
+    </label>
+  </div>
+  <div class="px-4 py-2 border-b border-gray-100">
+    <input type="text" placeholder="Filter tools..." oninput="this.closest('.rounded-lg').querySelectorAll('.import-row').forEach(r => r.style.display = r.textContent.toLowerCase().includes(this.value.toLowerCase()) ? '' : 'none')"
+           class="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-200">
+  </div>
+  <form method="POST" action="/tools/import/confirm">
+    <input type="hidden" name="spec_url" value="{{.SpecURL}}">
+    <input type="hidden" name="prefix" value="{{.Prefix}}">
+    <div class="max-h-96 overflow-y-auto">
+      {{range .Tools}}
+      <label class="import-row px-4 py-2 border-b border-gray-100 flex items-center gap-3 hover:bg-gray-50 cursor-pointer">
+        <input type="checkbox" name="tools" value="{{.Name}}" checked class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-200">
+        <span class="px-1.5 py-0.5 text-[10px] font-bold rounded bg-{{.MethodColor}}-100 text-{{.MethodColor}}-700">{{.Method}}</span>
+        <span class="font-mono text-xs text-gray-800 flex-1 truncate">{{.Name}}</span>
+        <span class="text-[10px] text-gray-400 truncate max-w-[200px]">{{.Description}}</span>
+      </label>
+      {{end}}
+    </div>
+    <div class="px-4 py-3 border-t border-gray-200 flex items-center gap-3">
+      <button type="submit" class="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">Import Selected</button>
+      <span class="text-xs text-gray-400">Uncheck tools you don't want to import.</span>
+    </div>
+  </form>
+</div>
+{{end}}

@@ -85,53 +85,10 @@ func (s *Server) handleToolTryPanel(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-	fmt.Fprint(w, `<div class="bg-white rounded-lg border border-gray-200 p-5 sticky top-6">
-		<div class="flex items-center justify-between mb-4">
-			<h2 class="text-xs font-medium text-gray-500 uppercase tracking-wide">Try it</h2>`)
-	fmt.Fprintf(w, `<span class="text-[10px] text-gray-400 font-mono">%s</span>
-		</div>`, template.HTMLEscapeString(name))
-
-	fmt.Fprintf(w, `<form hx-post="/tools/%s/try" hx-target="#try-result" hx-swap="innerHTML" hx-indicator="#try-spinner">`, template.HTMLEscapeString(name))
-
-	if len(tc.Parameters) > 0 {
-		fmt.Fprint(w, `<div class="space-y-3 mb-4">`)
-		for _, p := range tc.Parameters {
-			fmt.Fprintf(w, `<div>
-				<label class="block text-xs text-gray-600 mb-1 font-medium">%s`, template.HTMLEscapeString(p.Name))
-			if p.Required {
-				fmt.Fprint(w, ` <span class="text-red-400">*</span>`)
-			}
-			if p.Type != "" {
-				fmt.Fprintf(w, ` <span class="text-gray-300 font-normal">%s</span>`, template.HTMLEscapeString(p.Type))
-			}
-			fmt.Fprint(w, `</label>`)
-			if p.Description != "" {
-				fmt.Fprintf(w, `<p class="text-[10px] text-gray-400 mb-1">%s</p>`, template.HTMLEscapeString(p.Description))
-			}
-			fmt.Fprintf(w, `<input type="text" name="param_%s" value="%s"
-				class="w-full px-3 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200"`,
-				template.HTMLEscapeString(p.Name), template.HTMLEscapeString(p.Default))
-			if p.Required {
-				fmt.Fprint(w, ` required`)
-			}
-			fmt.Fprint(w, `></div>`)
-		}
-		fmt.Fprint(w, `</div>`)
-	} else {
-		fmt.Fprint(w, `<p class="text-xs text-gray-400 mb-4">No parameters.</p>`)
-	}
-
-	fmt.Fprint(w, `<button type="submit"
-		class="w-full px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm inline-flex items-center justify-center gap-2">Send</button>
-		<span id="try-spinner" class="htmx-indicator block mt-2 text-center text-xs text-gray-400">
-			<span class="inline-block animate-pulse">●</span> running...
-		</span>
-	</form>
-	<div id="try-result" class="mt-4"></div>
-	</div>`)
+	s.renderPartial(w, "try_panel", map[string]any{
+		"Name":   name,
+		"Params": tc.Parameters,
+	})
 }
 
 func (s *Server) handleToolTry(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +115,7 @@ func (s *Server) handleToolTry(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	if execErr != nil {
-		renderBlockedResponse(w, name, duration, execErr)
+		s.renderBlockedResponse(w, name, duration, execErr)
 		return
 	}
 
@@ -173,41 +130,28 @@ func (s *Server) handleToolTry(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	renderSuccessResponse(w, name, status, statusIcon, duration, output)
+	s.renderSuccessResponse(w, name, status, statusIcon, duration, output)
 }
 
-func renderBlockedResponse(w http.ResponseWriter, tool string, dur time.Duration, err error) {
-	fmt.Fprintf(w, `
-<div class="rounded-lg overflow-hidden border border-red-200">
-  <div class="bg-red-50 px-4 py-2.5 flex items-center justify-between">
-    <div class="flex items-center gap-2">
-      <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-600 text-xs font-bold">✗</span>
-      <span class="text-red-700 font-medium text-sm">blocked</span>
-      <span class="text-red-400 text-xs font-mono">%s</span>
-    </div>
-    <span class="text-gray-400 text-xs font-mono">%dms</span>
-  </div>
-  <div class="bg-gray-900 p-4">
-    <pre class="text-red-300 text-xs font-mono whitespace-pre-wrap">%s</pre>
-  </div>
-</div>`, tool, dur.Milliseconds(), template.HTMLEscapeString(err.Error()))
+func (s *Server) renderBlockedResponse(w http.ResponseWriter, tool string, dur time.Duration, err error) {
+	s.renderPartial(w, "try_blocked", map[string]any{
+		"Tool":       tool,
+		"DurationMs": dur.Milliseconds(),
+		"Error":      err.Error(),
+	})
 }
 
-func renderSuccessResponse(w http.ResponseWriter, tool, status, icon string, dur time.Duration, output string) {
+func (s *Server) renderSuccessResponse(w http.ResponseWriter, tool, status, icon string, dur time.Duration, output string) {
 	statusColor := "green"
-	statusBg := "green"
 	textColor := "green-300"
 	if status == "error" {
 		statusColor = "amber"
-		statusBg = "amber"
 		textColor = "amber-300"
 	}
 
-	// Detect if output is JSON for formatting
 	isJSON := len(output) > 0 && (output[0] == '{' || output[0] == '[')
 	formattedOutput := template.HTMLEscapeString(output)
 	if isJSON {
-		// Pretty-print JSON before highlighting
 		var prettyBuf bytes.Buffer
 		if json.Indent(&prettyBuf, []byte(output), "", "  ") == nil {
 			formattedOutput = formatJSONHTML(prettyBuf.String())
@@ -218,60 +162,17 @@ func renderSuccessResponse(w http.ResponseWriter, tool, status, icon string, dur
 
 	tabID := fmt.Sprintf("tab-%d", time.Now().UnixNano())
 
-	fmt.Fprintf(w, `
-<div class="rounded-lg overflow-hidden border border-%s-200">
-  <!-- Status bar -->
-  <div class="bg-%s-50 px-4 py-2.5 flex items-center justify-between">
-    <div class="flex items-center gap-2">
-      <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-%s-100 text-%s-600 text-xs font-bold">%s</span>
-      <span class="text-%s-700 font-medium text-sm">%s</span>
-      <span class="text-%s-400 text-xs font-mono">%s</span>
-    </div>
-    <span class="text-gray-400 text-xs font-mono">%dms</span>
-  </div>
-
-  <!-- Tabs -->
-  <div class="bg-gray-800 border-b border-gray-700 px-4 flex gap-1">
-    <button onclick="switchTab('%s', 'formatted')" class="tab-btn px-3 py-1.5 text-xs text-gray-300 hover:text-white border-b-2 border-indigo-400 font-medium" data-tab="formatted">Response</button>
-    <button onclick="switchTab('%s', 'raw')" class="tab-btn px-3 py-1.5 text-xs text-gray-500 hover:text-white border-b-2 border-transparent" data-tab="raw">Raw</button>
-  </div>
-
-  <!-- Response body -->
-  <div class="bg-gray-900 p-4 max-h-[500px] overflow-y-auto">
-    <div id="%s-formatted">
-      <pre class="text-%s text-xs font-mono whitespace-pre-wrap leading-relaxed">%s</pre>
-    </div>
-    <div id="%s-raw" class="hidden">
-      <pre class="text-gray-300 text-xs font-mono whitespace-pre-wrap leading-relaxed">%s</pre>
-    </div>
-  </div>
-</div>
-
-<script>
-function switchTab(prefix, tab) {
-  document.getElementById(prefix + '-formatted').classList.toggle('hidden', tab !== 'formatted');
-  document.getElementById(prefix + '-raw').classList.toggle('hidden', tab !== 'raw');
-  const parent = document.getElementById(prefix + '-formatted').closest('.rounded-lg');
-  parent.querySelectorAll('.tab-btn').forEach(btn => {
-    const isActive = btn.dataset.tab === tab;
-    btn.classList.toggle('border-indigo-400', isActive);
-    btn.classList.toggle('text-gray-300', isActive);
-    btn.classList.toggle('font-medium', isActive);
-    btn.classList.toggle('border-transparent', !isActive);
-    btn.classList.toggle('text-gray-500', !isActive);
-  });
-}
-</script>`,
-		statusColor,
-		statusBg,
-		statusColor, statusColor, icon,
-		statusColor, status,
-		statusColor, tool,
-		dur.Milliseconds(),
-		tabID, tabID,
-		tabID, textColor, formattedOutput,
-		tabID, template.HTMLEscapeString(output),
-	)
+	s.renderPartial(w, "try_success", map[string]any{
+		"Tool":            tool,
+		"Status":          status,
+		"StatusColor":     statusColor,
+		"Icon":            icon,
+		"DurationMs":      dur.Milliseconds(),
+		"TabID":           tabID,
+		"TextColor":       textColor,
+		"FormattedOutput": template.HTML(formattedOutput),
+		"RawOutput":       output,
+	})
 }
 
 // formatJSONHTML returns syntax-highlighted HTML for JSON content.
@@ -352,96 +253,14 @@ func formatJSONHTML(s string) string {
 
 func (s *Server) handleToolFormPartial(w http.ResponseWriter, r *http.Request) {
 	toolType := r.URL.Query().Get("type")
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
+	partialName := "tool_form_cli"
 	switch toolType {
 	case "rest":
-		fmt.Fprint(w, `<div class="space-y-4 pt-4 border-t border-gray-100">
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">Method</label>
-				<select name="method" class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
-					<option value="GET">GET</option>
-					<option value="POST">POST</option>
-					<option value="PUT">PUT</option>
-					<option value="PATCH">PATCH</option>
-					<option value="DELETE">DELETE</option>
-				</select>
-			</div>
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">Base URL</label>
-				<input type="text" name="base_url" placeholder="https://api.example.com"
-					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
-			</div>
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">Path</label>
-				<input type="text" name="path" placeholder="/v1/resource"
-					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
-			</div>
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">Auth</label>
-				<select name="auth_type" class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 mb-2"
-				        onchange="toggleNewAuthFields(this.value)">
-					<option value="">None</option>
-					<option value="bearer">Bearer token</option>
-					<option value="header">Custom header</option>
-					<option value="oauth">OAuth</option>
-				</select>
-				<div id="new-auth-fields"></div>
-			</div>
-		</div>
-		<script>
-		function toggleNewAuthFields(type) {
-			const c = document.getElementById('new-auth-fields');
-			switch(type) {
-				case 'bearer':
-					c.innerHTML = '<input type="text" name="auth_token" placeholder="token or {{vault:KEY}}" class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">';
-					break;
-				case 'header':
-					c.innerHTML = '<div class="flex gap-2"><input type="text" name="auth_header" placeholder="Header name" class="w-1/3 px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200"><input type="text" name="auth_value" placeholder="value" class="flex-1 px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200"></div>';
-					break;
-				case 'oauth':
-					c.innerHTML = '<input type="text" name="auth_provider" placeholder="provider name" class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">';
-					break;
-				default:
-					c.innerHTML = '';
-			}
-		}
-		</script>`)
+		partialName = "tool_form_rest"
 	case "mcp":
-		fmt.Fprint(w, `<div class="space-y-4 pt-4 border-t border-gray-100">
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">Command</label>
-				<input type="text" name="command" placeholder="npx -y @modelcontextprotocol/server-github"
-					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
-			</div>
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">Args</label>
-				<input type="text" name="args" placeholder=""
-					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
-				<p class="text-xs text-gray-400 mt-1">Space-separated arguments for the MCP server command.</p>
-			</div>
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">URL (HTTP transport)</label>
-				<input type="text" name="url" placeholder="http://localhost:8080/mcp (optional, for HTTP transport)"
-					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
-				<p class="text-xs text-gray-400 mt-1">Leave empty for stdio transport (command-based).</p>
-			</div>
-		</div>`)
-	default: // cli
-		fmt.Fprint(w, `<div class="space-y-4 pt-4 border-t border-gray-100">
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">Command</label>
-				<input type="text" name="command" placeholder="curl"
-					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
-			</div>
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">Args</label>
-				<input type="text" name="args" placeholder="-s {{url}}"
-					   class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
-				<p class="text-xs text-gray-400 mt-1">Space-separated. Use {{param}} for placeholders.</p>
-			</div>
-		</div>`)
+		partialName = "tool_form_mcp"
 	}
+	s.renderPartial(w, partialName, nil)
 }
 
 func (s *Server) handleToolNew(w http.ResponseWriter, r *http.Request) {
@@ -722,6 +541,25 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// renderPartial renders a named partial template (from templates/partials/).
+// Uses any available page template since partials are parsed with all of them.
+func (s *Server) renderPartial(w http.ResponseWriter, partialName string, data any) {
+	// Use the first available template (all include partials)
+	var t *template.Template
+	for _, tmpl := range s.tmpls {
+		t = tmpl
+		break
+	}
+	if t == nil {
+		http.Error(w, "no templates available", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := t.ExecuteTemplate(w, partialName, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

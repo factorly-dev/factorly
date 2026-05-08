@@ -1,0 +1,58 @@
+{{define "try_blocked"}}
+<div class="rounded-lg overflow-hidden border border-red-200">
+  <div class="bg-red-50 px-4 py-2.5 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-600 text-xs font-bold">✗</span>
+      <span class="text-red-700 font-medium text-sm">blocked</span>
+      <span class="text-red-400 text-xs font-mono">{{.Tool}}</span>
+    </div>
+    <span class="text-gray-400 text-xs font-mono">{{.DurationMs}}ms</span>
+  </div>
+  <div class="bg-gray-900 p-4">
+    <pre class="text-red-300 text-xs font-mono whitespace-pre-wrap">{{.Error}}</pre>
+  </div>
+</div>
+{{end}}
+
+{{define "try_success"}}
+<div class="rounded-lg overflow-hidden border border-{{.StatusColor}}-200">
+  <div class="bg-{{.StatusColor}}-50 px-4 py-2.5 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-{{.StatusColor}}-100 text-{{.StatusColor}}-600 text-xs font-bold">{{.Icon}}</span>
+      <span class="text-{{.StatusColor}}-700 font-medium text-sm">{{.Status}}</span>
+      <span class="text-{{.StatusColor}}-400 text-xs font-mono">{{.Tool}}</span>
+    </div>
+    <span class="text-gray-400 text-xs font-mono">{{.DurationMs}}ms</span>
+  </div>
+
+  <div class="bg-gray-800 border-b border-gray-700 px-4 flex gap-1">
+    <button onclick="switchTab('{{.TabID}}', 'formatted')" class="tab-btn px-3 py-1.5 text-xs text-gray-300 hover:text-white border-b-2 border-indigo-400 font-medium" data-tab="formatted">Response</button>
+    <button onclick="switchTab('{{.TabID}}', 'raw')" class="tab-btn px-3 py-1.5 text-xs text-gray-500 hover:text-white border-b-2 border-transparent" data-tab="raw">Raw</button>
+  </div>
+
+  <div class="bg-gray-900 p-4 max-h-[500px] overflow-y-auto">
+    <div id="{{.TabID}}-formatted">
+      <pre class="text-{{.TextColor}} text-xs font-mono whitespace-pre-wrap leading-relaxed">{{.FormattedOutput}}</pre>
+    </div>
+    <div id="{{.TabID}}-raw" class="hidden">
+      <pre class="text-gray-300 text-xs font-mono whitespace-pre-wrap leading-relaxed">{{.RawOutput}}</pre>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchTab(prefix, tab) {
+  document.getElementById(prefix + '-formatted').classList.toggle('hidden', tab !== 'formatted');
+  document.getElementById(prefix + '-raw').classList.toggle('hidden', tab !== 'raw');
+  const parent = document.getElementById(prefix + '-formatted').closest('.rounded-lg');
+  parent.querySelectorAll('.tab-btn').forEach(btn => {
+    const isActive = btn.dataset.tab === tab;
+    btn.classList.toggle('border-indigo-400', isActive);
+    btn.classList.toggle('text-gray-300', isActive);
+    btn.classList.toggle('font-medium', isActive);
+    btn.classList.toggle('border-transparent', !isActive);
+    btn.classList.toggle('text-gray-500', !isActive);
+  });
+}
+</script>
+{{end}}

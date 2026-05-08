@@ -68,7 +68,6 @@ func New(opts Options) (*Server, error) {
 		"templates/workflows.html",
 		"templates/workflow_new.html",
 		"templates/workflow_edit.html",
-		"templates/activity.html",
 		"templates/history.html",
 		"templates/auth.html",
 		"templates/vault.html",
