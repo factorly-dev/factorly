@@ -243,9 +243,27 @@ Use `condition: "true"` as a default/else case.
 
 Each switch case supports `tool`, `params`, and `store` (same as a regular step). If no condition matches, the switch step is skipped.
 
-## Value expressions in step params
+## Value expressions
 
-Use `{{expr:...}}` in step param values to transform variables before passing them to the next step. The expression is evaluated and its **string result** is substituted.
+Use `{{expr:...}}` in parameter values to evaluate functions inline. Works in **any tool call** (CLI, REST, MCP, workflows) — not just workflow steps.
+
+```yaml
+tools:
+  my.api:
+    type: rest
+    base_url: https://api.example.com
+    method: GET
+    path: /events
+    parameters:
+      - name: since
+        default: "{{expr:now('-24h')}}"
+```
+
+The `{{expr:...}}` pattern is a resolver backend — it works alongside `{{vault:KEY}}` and `{{env:VAR}}` in the same string, all resolved in one pass.
+
+### In workflow step params
+
+Expressions are most powerful in workflows where they can reference stored step outputs:
 
 ```yaml
 steps:
@@ -261,11 +279,12 @@ steps:
       count: "{{expr:len(events)}}"
 ```
 
-The `{{expr:...}}` prefix distinguishes expressions from simple variable substitution (`{{variable}}`). Both can be mixed in the same string:
+Mix `{{expr:...}}` with simple `{{variable}}` substitution and `{{vault:KEY}}` references in the same string:
 
 ```yaml
 params:
   message: "Hello {{name}}, you have {{expr:len(items)}} items"
+  auth: "{{vault:API_KEY}}"
 ```
 
 ### Value functions

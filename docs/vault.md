@@ -33,9 +33,23 @@ token: "{{env:GITHUB_TOKEN}}"
 
 # Vault (encrypted on disk, decrypted on demand)
 token: "{{vault:GITHUB_TOKEN}}"
+
+# With a default fallback
+base_url: "{{vault:API_URL|https://api.example.com}}"
 ```
 
 Both work. Mix and match per tool. Vault references are resolved at call time — the agent never sees either form.
+
+All `{{prefix:content}}` references use the same resolver pattern. Available backends:
+
+| Prefix | Source | Example |
+|--------|--------|---------|
+| `vault` | Encrypted local vault | `{{vault:GITHUB_TOKEN}}` |
+| `env` | Environment variable | `{{env:HOME}}` |
+| `op` | 1Password (external backend) | `{{op:ABCDEF}}` |
+| `expr` | [Expression function](expressions.md#value-expressions) | `{{expr:now()}}` |
+
+All can be mixed in a single string: `{{vault:TOKEN}} expires {{expr:now('24h')}}`.
 
 ## How it works
 
