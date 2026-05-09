@@ -18,6 +18,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/provider"
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/factorly-dev/factorly/internal/shadow"
+	"github.com/factorly-dev/factorly/internal/vault"
 )
 
 // Option configures a Proxy.
@@ -31,6 +32,12 @@ func WithShadow(s *shadow.Policy) Option {
 // WithOnCall sets a callback that fires after each tool call.
 func WithOnCall(fn func(CallEvent)) Option {
 	return func(p *Proxy) { p.onCall = fn }
+}
+
+// WithResolver sets a vault resolver for resolving {{backend:content}}
+// patterns in param values at call time.
+func WithResolver(r *vault.Resolver) Option {
+	return func(p *Proxy) { p.resolver = r }
 }
 
 // SetOnCall sets the call event callback after proxy creation.
@@ -57,6 +64,7 @@ type Proxy struct {
 	logger    logger.Logger
 	shadow    *shadow.Policy
 	onCall    func(CallEvent)
+	resolver  *vault.Resolver
 }
 
 func New(reg *registry.Registry, providers map[string]provider.Provider, log logger.Logger, opts ...Option) *Proxy {
@@ -115,10 +123,14 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		}
 	}
 
-	// Evaluate {{expr:...}} in param values (e.g., {{expr:now()}})
-	for k, v := range params {
-		if strings.Contains(v, "{{expr:") {
-			params[k] = provider.SubstituteExpr(v)
+	// Resolve {{backend:content}} patterns in param values (e.g., {{expr:now()}})
+	if p.resolver != nil {
+		for k, v := range params {
+			if strings.Contains(v, "{{") {
+				if resolved, err := p.resolver.Resolve(v); err == nil {
+					params[k] = resolved
+				}
+			}
 		}
 	}
 

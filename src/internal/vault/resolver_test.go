@@ -4,6 +4,7 @@
 package vault
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -362,3 +363,111 @@ func (m *mapBackend) List() ([]string, error) {
 }
 
 func (m *mapBackend) Close() error { return nil }
+
+// --- ResolveFunc tests ---
+
+func TestResolveFuncExpr(t *testing.T) {
+	r := NewResolver()
+	r.RegisterFunc("expr", func(content string) (string, error) {
+		// Simulate a simple expression evaluator
+		if content == "now()" {
+			return "2026-05-09T00:00:00Z", nil
+		}
+		return content, nil
+	})
+
+	result, err := r.Resolve("time is {{expr:now()}}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != "time is 2026-05-09T00:00:00Z" {
+		t.Errorf("expected resolved expr, got %q", result)
+	}
+}
+
+func TestResolveFuncWithVaultBackend(t *testing.T) {
+	r := NewResolver()
+	r.Register("vault", &mockBackend{secrets: map[string]string{"TOKEN": "secret123"}})
+	r.RegisterFunc("expr", func(content string) (string, error) {
+		return "evaluated:" + content, nil
+	})
+
+	// Both should resolve in one pass
+	result, err := r.Resolve("key={{vault:TOKEN}} expr={{expr:hello}}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != "key=secret123 expr=evaluated:hello" {
+		t.Errorf("expected both resolved, got %q", result)
+	}
+}
+
+func TestResolveFuncOverridesBackend(t *testing.T) {
+	r := NewResolver()
+	r.Register("test", &mockBackend{secrets: map[string]string{"key": "from_backend"}})
+	r.RegisterFunc("test", func(content string) (string, error) {
+		return "from_func", nil
+	})
+
+	// Func takes priority over backend
+	result, err := r.Resolve("{{test:key}}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != "from_func" {
+		t.Errorf("expected func to take priority, got %q", result)
+	}
+}
+
+func TestResolveFuncNotTracked(t *testing.T) {
+	r := NewResolver()
+	r.RegisterFunc("expr", func(content string) (string, error) {
+		return "resolved", nil
+	})
+
+	_, accessed, err := r.ResolveTracked("{{expr:something}}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(accessed) != 0 {
+		t.Errorf("expr funcs should not be tracked, got %v", accessed)
+	}
+}
+
+func TestResolveFuncError(t *testing.T) {
+	r := NewResolver()
+	r.RegisterFunc("expr", func(content string) (string, error) {
+		return "", fmt.Errorf("eval error")
+	})
+
+	// With no default, should leave pattern unchanged
+	result, _ := r.Resolve("{{expr:bad}}")
+	if result != "{{expr:bad}}" {
+		t.Errorf("expected unchanged on error, got %q", result)
+	}
+}
+
+func TestResolveFuncWithDefault(t *testing.T) {
+	r := NewResolver()
+	r.RegisterFunc("expr", func(content string) (string, error) {
+		return "", fmt.Errorf("eval error")
+	})
+
+	result, _ := r.Resolve("{{expr:bad|fallback}}")
+	if result != "fallback" {
+		t.Errorf("expected fallback on error, got %q", result)
+	}
+}
+
+func TestResolveFuncComplexExpr(t *testing.T) {
+	r := NewResolver()
+	r.RegisterFunc("expr", func(content string) (string, error) {
+		// Verify the full expression content is passed through
+		return "got:" + content, nil
+	})
+
+	result, _ := r.Resolve("{{expr:jsonpath(data, '$.items[0].name')}}")
+	if result != "got:jsonpath(data, '$.items[0].name')" {
+		t.Errorf("expected full expression passed, got %q", result)
+	}
+}

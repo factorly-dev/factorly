@@ -586,6 +586,13 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	}
 	cachedResolver = resolver
 
+	// Register expr as a resolver backend so {{expr:now()}} etc. work everywhere
+	if resolver != nil {
+		resolver.RegisterFunc("expr", func(content string) (string, error) {
+			return provider.EvalExpr(content, nil), nil
+		})
+	}
+
 	providers := make(map[string]provider.Provider)
 	cliTools := make(map[string]provider.CLIToolDef)
 	restTools := make(map[string]provider.RESTToolDef)
@@ -841,6 +848,10 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 		policy := shadow.New(shadowRules, cf, "")
 		proxyOpts = append(proxyOpts, proxy.WithShadow(policy))
 		vlog("shadow policy active (%d rules)", len(shadowRules))
+	}
+
+	if resolver != nil {
+		proxyOpts = append(proxyOpts, proxy.WithResolver(resolver))
 	}
 
 	p := proxy.New(reg, providers, logIface, proxyOpts...)

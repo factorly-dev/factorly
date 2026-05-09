@@ -9,19 +9,36 @@ import (
 	"strings"
 )
 
-var refPattern = regexp.MustCompile(`\{\{([A-Za-z0-9_][A-Za-z0-9_-]*):([A-Za-z0-9_./-]+)(?:\|([^}]*))?\}\}`)
+// refPattern matches {{backend:content}} and {{backend:content|default}}.
+// The content group uses .+? (non-greedy) to support both simple keys (MY_SECRET)
+// and complex expressions (now('24h'), jsonpath(data, '$.field')).
+var refPattern = regexp.MustCompile(`\{\{([A-Za-z0-9_][A-Za-z0-9_-]*):(.+?)(?:\|([^}]*))?\}\}`)
 
-// Resolver resolves {{backend:key}} references by dispatching to registered backends.
+// ResolveFunc is a lightweight read-only resolver for computed backends
+// like expr that don't need Get/Set/Delete/List/Close.
+type ResolveFunc func(content string) (string, error)
+
+// Resolver resolves {{backend:content}} references by dispatching to registered backends.
 type Resolver struct {
 	backends map[string]Backend
+	funcs    map[string]ResolveFunc
 }
 
 func NewResolver() *Resolver {
-	return &Resolver{backends: make(map[string]Backend)}
+	return &Resolver{
+		backends: make(map[string]Backend),
+		funcs:    make(map[string]ResolveFunc),
+	}
 }
 
 func (r *Resolver) Register(prefix string, b Backend) {
 	r.backends[prefix] = b
+}
+
+// RegisterFunc registers a lightweight resolver function for a prefix.
+// Used for computed backends like "expr" that only resolve, never store.
+func (r *Resolver) RegisterFunc(prefix string, fn ResolveFunc) {
+	r.funcs[prefix] = fn
 }
 
 // Backend returns a registered backend by name, or nil if not found.
@@ -50,6 +67,19 @@ func (r *Resolver) Resolve(s string) (string, error) {
 		if hasDefault {
 			defaultVal = parts[3]
 		}
+		// Try ResolveFunc first (lightweight computed backends like expr)
+		if fn, ok := r.funcs[backend]; ok {
+			val, err := fn(key)
+			if err != nil {
+				if hasDefault {
+					return defaultVal
+				}
+				return match
+			}
+			return val
+		}
+
+		// Then try full Backend
 		b, ok := r.backends[backend]
 		if !ok {
 			if hasDefault {
@@ -91,6 +121,19 @@ func (r *Resolver) ResolveTracked(s string) (string, []string, error) {
 		if hasDefault {
 			defaultVal = parts[3]
 		}
+		// Try ResolveFunc first
+		if fn, ok := r.funcs[backend]; ok {
+			val, err := fn(key)
+			if err != nil {
+				if hasDefault {
+					return defaultVal
+				}
+				return match
+			}
+			// Don't track expr funcs as accessed keys (they're not secrets)
+			return val
+		}
+
 		b, ok := r.backends[backend]
 		if !ok {
 			if hasDefault {
