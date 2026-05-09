@@ -65,16 +65,34 @@
                oninput="filterTools(this.value)">
       </div>
       <div id="sidebar-tools" class="pb-3">
-        {{range .SidebarTools}}
+        {{range .SidebarToolGroups}}
+        {{if .Prefix}}
+        <details class="tool-group" open>
+          <summary class="px-4 py-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:bg-gray-50 flex items-center justify-between">
+            <span>{{.Prefix}}</span>
+            <span class="text-gray-300 font-normal">{{len .Tools}}</span>
+          </summary>
+          {{range .Tools}}
+          <a href="/tools/{{.Name}}"
+             class="sidebar-item block px-4 py-2 pl-7 text-xs font-mono truncate {{if eq .Name $.ActiveTool}}active{{end}} {{if .Hidden}}opacity-50{{end}}">
+            <span class="inline-block w-2 h-2 rounded-full mr-1.5
+              {{if eq .Type "cli"}}bg-gray-400{{else if eq .Type "rest"}}bg-blue-400{{else if eq .Type "mcp"}}bg-purple-400{{end}}"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-400">⊘</span>{{end}}
+          </a>
+          {{end}}
+        </details>
+        {{else}}
+        {{range .Tools}}
         <a href="/tools/{{.Name}}"
            class="sidebar-item block px-4 py-2 text-xs font-mono truncate {{if eq .Name $.ActiveTool}}active{{end}} {{if .Hidden}}opacity-50{{end}}">
           <span class="inline-block w-2 h-2 rounded-full mr-1.5
             {{if eq .Type "cli"}}bg-gray-400{{else if eq .Type "rest"}}bg-blue-400{{else if eq .Type "mcp"}}bg-purple-400{{end}}"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-400">⊘</span>{{end}}
         </a>
         {{end}}
+        {{end}}
+        {{end}}
       </div>
       <div class="px-3 pb-3">
-        <a href="/tools/new" class="block text-center px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">+ New Tool</a>
+        <a href="/tools/new" class="block text-center px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">+ Create New Tool</a>
       </div>
     </aside>
     {{else if eq .Nav "workflows"}}
@@ -86,15 +104,32 @@
                oninput="filterTools(this.value)">
       </div>
       <div id="sidebar-tools" class="pb-3">
-        {{range .SidebarWorkflows}}
+        {{range .SidebarWorkflowGroups}}
+        {{if .Prefix}}
+        <details class="tool-group" open>
+          <summary class="px-4 py-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:bg-gray-50 flex items-center justify-between">
+            <span>{{.Prefix}}</span>
+            <span class="text-gray-300 font-normal">{{len .Tools}}</span>
+          </summary>
+          {{range .Tools}}
+          <a href="/workflows/{{.Name}}"
+             class="sidebar-item block px-4 py-2 pl-7 text-xs font-mono truncate {{if eq .Name $.ActiveTool}}active{{end}} {{if .Hidden}}opacity-50{{end}}">
+            <span class="inline-block w-2 h-2 rounded-full mr-1.5 bg-green-400"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-400">⊘</span>{{end}}
+          </a>
+          {{end}}
+        </details>
+        {{else}}
+        {{range .Tools}}
         <a href="/workflows/{{.Name}}"
            class="sidebar-item block px-4 py-2 text-xs font-mono truncate {{if eq .Name $.ActiveTool}}active{{end}} {{if .Hidden}}opacity-50{{end}}">
           <span class="inline-block w-2 h-2 rounded-full mr-1.5 bg-green-400"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-400">⊘</span>{{end}}
         </a>
         {{end}}
+        {{end}}
+        {{end}}
       </div>
       <div class="px-3 pb-3">
-        <a href="/workflows/new" class="block text-center px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">+ New Workflow</a>
+        <a href="/workflows/new" class="block text-center px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">{{icon "plus"}} Create New Workflow</a>
       </div>
     </aside>
     {{end}}
@@ -133,11 +168,41 @@
   </div>
 
   <script>
+  // Restore group collapse state from localStorage
+  (function() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('sidebarGroups') || '{}');
+      document.querySelectorAll('#sidebar-tools .tool-group').forEach(group => {
+        const prefix = group.querySelector('summary span')?.textContent?.trim();
+        if (prefix && saved[prefix] === false) {
+          group.open = false;
+        }
+      });
+    } catch(e) {}
+
+    // Save state on toggle
+    document.getElementById('sidebar-tools')?.addEventListener('toggle', function(e) {
+      if (!e.target.classList.contains('tool-group')) return;
+      const prefix = e.target.querySelector('summary span')?.textContent?.trim();
+      if (!prefix) return;
+      try {
+        const saved = JSON.parse(localStorage.getItem('sidebarGroups') || '{}');
+        saved[prefix] = e.target.open;
+        localStorage.setItem('sidebarGroups', JSON.stringify(saved));
+      } catch(e) {}
+    }, true);
+  })();
+
   function filterTools(query) {
-    const items = document.querySelectorAll('#sidebar-tools .sidebar-item');
     const q = query.toLowerCase();
-    items.forEach(item => {
+    document.querySelectorAll('#sidebar-tools .sidebar-item').forEach(item => {
       item.style.display = item.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+    // Hide empty groups, expand matching groups during search
+    document.querySelectorAll('#sidebar-tools .tool-group').forEach(group => {
+      const visible = group.querySelectorAll('.sidebar-item:not([style*="display: none"])').length;
+      group.style.display = visible ? '' : 'none';
+      if (q && visible) group.open = true;
     });
   }
   function escapeHtml(s) {

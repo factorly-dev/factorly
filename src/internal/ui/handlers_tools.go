@@ -26,6 +26,41 @@ type toolListItem struct {
 	Hidden      bool
 }
 
+type toolGroup struct {
+	Prefix string
+	Tools  []toolListItem
+}
+
+func groupTools(items []toolListItem) []toolGroup {
+	groups := make(map[string][]toolListItem)
+	var order []string
+	for _, item := range items {
+		prefix := ""
+		if i := strings.Index(item.Name, "."); i > 0 {
+			prefix = item.Name[:i]
+		}
+		if _, exists := groups[prefix]; !exists {
+			order = append(order, prefix)
+		}
+		groups[prefix] = append(groups[prefix], item)
+	}
+	// Sort: ungrouped first, then alphabetical
+	sort.Slice(order, func(i, j int) bool {
+		if order[i] == "" {
+			return true
+		}
+		if order[j] == "" {
+			return false
+		}
+		return order[i] < order[j]
+	})
+	result := make([]toolGroup, len(order))
+	for i, prefix := range order {
+		result[i] = toolGroup{Prefix: prefix, Tools: groups[prefix]}
+	}
+	return result
+}
+
 func (s *Server) handleToolsList(w http.ResponseWriter, r *http.Request) {
 	var tools []toolListItem
 	for name, tc := range s.cfg.Tools {
@@ -585,16 +620,30 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 	}
 
 	if m, ok := data.(map[string]any); ok {
+		// Ensure ActivePrefix is always set (templates need it)
+		if _, has := m["ActivePrefix"]; !has {
+			m["ActivePrefix"] = ""
+		}
 		// Inject sidebar tools for tools-related pages
 		if m["Nav"] == "tools" {
-			if _, has := m["SidebarTools"]; !has {
-				m["SidebarTools"] = s.getSidebarTools()
+			if _, has := m["SidebarToolGroups"]; !has {
+				m["SidebarToolGroups"] = groupTools(s.getSidebarTools())
+			}
+			if active, ok := m["ActiveTool"].(string); ok {
+				if i := strings.Index(active, "."); i > 0 {
+					m["ActivePrefix"] = active[:i]
+				}
 			}
 		}
 		// Inject sidebar workflows for workflow pages
 		if m["Nav"] == "workflows" {
-			if _, has := m["SidebarWorkflows"]; !has {
-				m["SidebarWorkflows"] = s.getSidebarWorkflows()
+			if _, has := m["SidebarWorkflowGroups"]; !has {
+				m["SidebarWorkflowGroups"] = groupTools(s.getSidebarWorkflows())
+			}
+			if active, ok := m["ActiveTool"].(string); ok {
+				if i := strings.Index(active, "."); i > 0 {
+					m["ActivePrefix"] = active[:i]
+				}
 			}
 		}
 	}
