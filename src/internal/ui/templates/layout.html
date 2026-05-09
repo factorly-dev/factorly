@@ -150,10 +150,51 @@
   <script src="/static/activity.js"></script>
   <script src="/static/confirm.js"></script>
 
-  <!-- Confirm modal overlay -->
+  <!-- Shadow confirm modal (for tool execution confirmations via SSE) -->
   <div id="confirm-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
     <div class="bg-white rounded-xl shadow-2xl border border-gray-200 p-6 max-w-md w-full mx-4" id="confirm-content">
     </div>
   </div>
+
+  <!-- Generic confirm dialog (replaces browser native confirm for hx-confirm) -->
+  <div id="confirm-dialog" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+    <div class="bg-white rounded-xl shadow-2xl border border-gray-200 p-6 max-w-sm w-full mx-4">
+      <p id="confirm-dialog-message" class="text-sm text-gray-700 mb-4"></p>
+      <div class="flex gap-2 justify-end">
+        <button id="confirm-dialog-cancel" class="px-4 py-2 text-gray-500 text-sm rounded border border-gray-200 hover:bg-gray-50">Cancel</button>
+        <button id="confirm-dialog-ok" class="px-4 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // Intercept htmx:confirm to show custom modal instead of browser native
+  // Only trigger for elements that have an hx-confirm attribute
+  document.addEventListener('htmx:confirm', function(e) {
+    if (!e.detail.question) return;
+    e.preventDefault();
+    const dialog = document.getElementById('confirm-dialog');
+    document.getElementById('confirm-dialog-message').textContent = e.detail.question;
+    dialog.classList.remove('hidden');
+
+    const ok = document.getElementById('confirm-dialog-ok');
+    const cancel = document.getElementById('confirm-dialog-cancel');
+
+    function cleanup() {
+      dialog.classList.add('hidden');
+      ok.removeEventListener('click', onOk);
+      cancel.removeEventListener('click', onCancel);
+    }
+    function onOk() {
+      cleanup();
+      e.detail.issueRequest(true);
+    }
+    function onCancel() {
+      cleanup();
+    }
+    ok.addEventListener('click', onOk);
+    cancel.addEventListener('click', onCancel);
+  });
+  </script>
 </body>
 </html>{{end}}
