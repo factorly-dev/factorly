@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -162,11 +163,18 @@ func runUI(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "MCP endpoint at http://localhost:%d/mcp (token: %s)\n", uiPort, uiMCPToken)
 	}
 
+	// Start listener first, then open browser to avoid race condition
+	// where the browser connects before the server is ready
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+
 	if !uiNoLaunch {
 		go openBrowser(url)
 	}
 
-	return http.ListenAndServe(addr, handler)
+	return http.Serve(ln, handler)
 }
 
 // hostValidation rejects requests with unexpected Host headers.

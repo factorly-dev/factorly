@@ -20,7 +20,14 @@ function clearActivity() {
 }
 
 // SSE connection (singleton — only create once across hx-boost navigations)
-if (!window._activitySSE) {
+// Use DOMContentLoaded to ensure page is ready; for hx-boost navigations
+// the script re-executes after swap so the guard prevents duplicates.
+function _initActivitySSE() {
+  // Reconnect if previous connection was closed (e.g., by auth redirect)
+  if (window._activitySSE && window._activitySSE.readyState === EventSource.CLOSED) {
+    window._activitySSE = null;
+  }
+  if (window._activitySSE) return;
   window._activitySSE = new EventSource('/activity/stream');
 
   window._activitySSE.onmessage = function(event) {
@@ -96,4 +103,9 @@ if (!window._activitySSE) {
     dot.classList.add('bg-indigo-500');
     setTimeout(() => { dot.classList.remove('bg-indigo-500'); dot.classList.add('bg-green-500'); }, 300);
   };
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _initActivitySSE);
+} else {
+  _initActivitySSE();
 }

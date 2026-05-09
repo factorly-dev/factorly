@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: gpl
 
 // Confirm modal — SSE stream for shadow confirm prompts
-if (!window._confirmSSE) {
+function _initConfirmSSE() {
+  // Reconnect if previous connection was closed (e.g., by auth redirect)
+  if (window._confirmSSE && window._confirmSSE.readyState === EventSource.CLOSED) {
+    window._confirmSSE = null;
+  }
+  if (window._confirmSSE) return;
   window._confirmSSE = new EventSource('/confirm/stream');
   window._confirmSSE.onmessage = function(event) {
     const pending = JSON.parse(event.data);
@@ -39,4 +44,10 @@ if (!window._confirmSSE) {
 function respondConfirm(id, action) {
   fetch(`/confirm/${id}/${action}`, { method: 'POST' });
   document.getElementById('confirm-modal').classList.add('hidden');
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _initConfirmSSE);
+} else {
+  _initConfirmSSE();
 }
