@@ -478,8 +478,95 @@ func evalCall(name string, args []node, vars map[string]string) any {
 			new, _ := evaluate(args[2], vars)
 			return strings.ReplaceAll(toString(val), toString(old), toString(new))
 		}
+	case "today":
+		return evalToday(args, vars)
+	case "left":
+		if len(args) >= 2 {
+			val, _ := evaluate(args[0], vars)
+			n, _ := evaluate(args[1], vars)
+			s := toString(val)
+			count, _ := strconv.Atoi(fmt.Sprint(n))
+			if count > len(s) {
+				count = len(s)
+			}
+			if count < 0 {
+				count = 0
+			}
+			return s[:count]
+		}
+	case "right":
+		if len(args) >= 2 {
+			val, _ := evaluate(args[0], vars)
+			n, _ := evaluate(args[1], vars)
+			s := toString(val)
+			count, _ := strconv.Atoi(fmt.Sprint(n))
+			if count > len(s) {
+				count = len(s)
+			}
+			if count < 0 {
+				count = 0
+			}
+			return s[len(s)-count:]
+		}
+	case "find":
+		if len(args) >= 2 {
+			val, _ := evaluate(args[0], vars)
+			needle, _ := evaluate(args[1], vars)
+			idx := strings.Index(toString(val), toString(needle))
+			return idx
+		}
+	case "cut":
+		if len(args) >= 2 {
+			val, _ := evaluate(args[0], vars)
+			delim, _ := evaluate(args[1], vars)
+			return evalCut(toString(val), toString(delim), args, vars)
+		}
+	case "concat":
+		var sb strings.Builder
+		for _, arg := range args {
+			val, _ := evaluate(arg, vars)
+			sb.WriteString(toString(val))
+		}
+		return sb.String()
 	}
 	return false
+}
+
+func evalToday(args []node, vars map[string]string) string {
+	t := time.Now().UTC()
+	if len(args) >= 1 {
+		offset, _ := evaluate(args[0], vars)
+		s := toString(offset)
+		// Try duration first (e.g., '24h', '-48h')
+		if d, err := time.ParseDuration(s); err == nil {
+			t = t.Add(d)
+		} else {
+			// Try day count (e.g., '1', '-7')
+			if days, err := strconv.Atoi(s); err == nil {
+				t = t.AddDate(0, 0, days)
+			}
+		}
+	}
+	return t.Format("2006-01-02")
+}
+
+func evalCut(s, delim string, args []node, vars map[string]string) string {
+	parts := strings.Split(s, delim)
+	if len(args) >= 3 {
+		// cut(val, delim, index) — return specific field
+		idxVal, _ := evaluate(args[2], vars)
+		idx, _ := strconv.Atoi(fmt.Sprint(idxVal))
+		if idx < 0 {
+			idx = len(parts) + idx // negative indexing
+		}
+		if idx >= 0 && idx < len(parts) {
+			return parts[idx]
+		}
+		return ""
+	}
+	// No index — return as JSON array
+	b, _ := json.Marshal(parts)
+	return string(b)
 }
 
 func evalNow(args []node, vars map[string]string) string {

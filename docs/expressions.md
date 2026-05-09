@@ -291,18 +291,26 @@ params:
 
 | Function | Description | Example |
 |----------|-------------|---------|
+| `concat(a, b, ...)` | Concatenate values | `concat(first, ' ', last)` → `John Doe` |
+| `cut(val, delim)` | Split by delimiter → JSON array | `cut(csv, ',')` → `["a","b"]` |
+| `cut(val, delim, index)` | Split and pick field | `cut(path, '/', '-1')` → last segment |
+| `default(var, fallback)` | Value or fallback if empty | `default(title, 'Untitled')` |
+| `find(val, needle)` | Index of substring (-1 if not found) | `find(path, '/')` → `4` |
+| `join(val, sep)` | Join JSON array | `join(tags, ', ')` → `go, rust` |
+| `jsonpath(var, path)` | Extract from JSON | `jsonpath(data, '$.items[0].name')` |
+| `left(val, n)` | First n characters | `left(id, 8)` → `abcdefgh` |
+| `len(val)` | Length (array, object, or string) | `len(items)` → `3` |
+| `lower(val)` | Lowercase | `lower(name)` → `jordan` |
 | `now()` | Current UTC timestamp (RFC3339) | `now()` → `2026-05-08T12:00:00Z` |
 | `now(offset)` | Timestamp with offset | `now('24h')`, `now('-1h')`, `now('30m')` |
-| `jsonpath(var, path)` | Extract from JSON | `jsonpath(data, '$.items[0].name')` |
-| `default(var, fallback)` | Value or fallback if empty | `default(title, 'Untitled')` |
-| `upper(val)` | Uppercase | `upper(name)` → `JORDAN` |
-| `lower(val)` | Lowercase | `lower(name)` → `jordan` |
-| `trim(val)` | Strip whitespace | `trim(output)` |
-| `len(val)` | Length (array, object, or string) | `len(items)` → `3` |
+| `replace(val, old, new)` | String replacement | `replace(output, '\n', ' ')` |
+| `right(val, n)` | Last n characters | `right(hash, 7)` → `a1b2c3d` |
 | `substr(val, start)` | Substring from position | `substr(id, 0, 8)` |
 | `substr(val, start, end)` | Substring with end | `substr(hash, 0, 7)` |
-| `join(val, sep)` | Join JSON array | `join(tags, ', ')` → `go, rust` |
-| `replace(val, old, new)` | String replacement | `replace(output, '\n', ' ')` |
+| `today()` | Today's date (YYYY-MM-DD) | `today()` → `2026-05-09` |
+| `today(offset)` | Date with offset | `today('7')` → 7 days from now |
+| `trim(val)` | Strip whitespace | `trim(output)` |
+| `upper(val)` | Uppercase | `upper(name)` → `JORDAN` |
 
 These functions also work in `if:`/`require:` conditions and `switch:` cases — they return values that can be compared:
 
@@ -311,6 +319,39 @@ if: "len(items) > 0"
 if: "jsonpath(data, '$.status') == 'ok'"
 if: "lower(env) == 'prod'"
 ```
+
+### `cut()` behavior
+
+Splits a string by delimiter. Without an index, returns a JSON array. With an index, returns the specific field. Supports negative indexing (`'-1'` for last).
+
+```yaml
+# path = "a/b/c/d"
+cut(path, '/')         # → ["a","b","c","d"]
+cut(path, '/', 0)      # → "a"
+cut(path, '/', '-1')   # → "d"
+
+# csv = "name,age,city"
+cut(csv, ',', 1)       # → "age"
+```
+
+### `join()` behavior
+
+Parses the value as a JSON array and joins elements with the separator. Non-array values pass through unchanged.
+
+```yaml
+# tags = ["go", "rust", "python"]
+join(tags, ', ')  # → "go, rust, python"
+join(tags, ' | ') # → "go | rust | python"
+```
+
+### `len()` behavior
+
+| Input | Result |
+|-------|--------|
+| JSON array `["a","b"]` | `2` |
+| JSON object `{"a":1}` | `1` |
+| Plain string `"hello"` | `5` |
+| Empty `""` | `0` |
 
 ### `now()` offsets
 
@@ -324,24 +365,16 @@ The offset uses Go duration syntax: `h` (hours), `m` (minutes), `s` (seconds). P
 | `now('30m')` | 30 minutes from now |
 | `now('1h30m')` | 90 minutes from now |
 
-### `len()` behavior
+### `today()` offsets
 
-| Input | Result |
-|-------|--------|
-| JSON array `["a","b"]` | `2` |
-| JSON object `{"a":1}` | `1` |
-| Plain string `"hello"` | `5` |
-| Empty `""` | `0` |
+Returns the date in `YYYY-MM-DD` format. Accepts a duration or day count as offset.
 
-### `join()` behavior
-
-Parses the value as a JSON array and joins elements with the separator. Non-array values pass through unchanged.
-
-```yaml
-# tags = ["go", "rust", "python"]
-join(tags, ', ')  # → "go, rust, python"
-join(tags, ' | ') # → "go | rust | python"
-```
+| Offset | Result |
+|--------|--------|
+| `today()` | Today |
+| `today('7')` | 7 days from now |
+| `today('-1')` | Yesterday |
+| `today('48h')` | 2 days from now (duration syntax) |
 
 ## Error handling
 

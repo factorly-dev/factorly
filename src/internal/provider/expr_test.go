@@ -1057,3 +1057,163 @@ func TestEvalExprDefaultBothEmpty(t *testing.T) {
 		t.Errorf("expected empty, got %q", r)
 	}
 }
+
+// --- today(), left(), right(), find(), cut() tests ---
+
+func TestEvalExprToday(t *testing.T) {
+	result := EvalExpr("today()", nil)
+	expected := time.Now().UTC().Format("2006-01-02")
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestEvalExprTodayOffset(t *testing.T) {
+	result := EvalExpr("today('24h')", nil)
+	expected := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestEvalExprTodayDayCount(t *testing.T) {
+	result := EvalExpr("today('7')", nil)
+	expected := time.Now().UTC().AddDate(0, 0, 7).Format("2006-01-02")
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestEvalExprTodayNegative(t *testing.T) {
+	result := EvalExpr("today('-1')", nil)
+	expected := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
+	if result != expected {
+		t.Errorf("expected yesterday %q, got %q", expected, result)
+	}
+}
+
+func TestEvalExprLeft(t *testing.T) {
+	vars := map[string]string{"s": "abcdefgh"}
+	if r := EvalExpr("left(s, 3)", vars); r != "abc" {
+		t.Errorf("expected 'abc', got %q", r)
+	}
+}
+
+func TestEvalExprLeftBeyondLength(t *testing.T) {
+	vars := map[string]string{"s": "ab"}
+	if r := EvalExpr("left(s, 10)", vars); r != "ab" {
+		t.Errorf("expected 'ab', got %q", r)
+	}
+}
+
+func TestEvalExprLeftEmpty(t *testing.T) {
+	vars := map[string]string{"s": ""}
+	if r := EvalExpr("left(s, 3)", vars); r != "" {
+		t.Errorf("expected empty, got %q", r)
+	}
+}
+
+func TestEvalExprRight(t *testing.T) {
+	vars := map[string]string{"s": "abcdefgh"}
+	if r := EvalExpr("right(s, 3)", vars); r != "fgh" {
+		t.Errorf("expected 'fgh', got %q", r)
+	}
+}
+
+func TestEvalExprRightBeyondLength(t *testing.T) {
+	vars := map[string]string{"s": "ab"}
+	if r := EvalExpr("right(s, 10)", vars); r != "ab" {
+		t.Errorf("expected 'ab', got %q", r)
+	}
+}
+
+func TestEvalExprRightEmpty(t *testing.T) {
+	vars := map[string]string{"s": ""}
+	if r := EvalExpr("right(s, 3)", vars); r != "" {
+		t.Errorf("expected empty, got %q", r)
+	}
+}
+
+func TestEvalExprFind(t *testing.T) {
+	vars := map[string]string{"s": "hello world"}
+	if r := EvalExpr("find(s, 'world')", vars); r != "6" {
+		t.Errorf("expected '6', got %q", r)
+	}
+}
+
+func TestEvalExprFindNotFound(t *testing.T) {
+	vars := map[string]string{"s": "hello"}
+	if r := EvalExpr("find(s, 'xyz')", vars); r != "-1" {
+		t.Errorf("expected '-1', got %q", r)
+	}
+}
+
+func TestEvalExprFindEmpty(t *testing.T) {
+	vars := map[string]string{"s": "hello"}
+	if r := EvalExpr("find(s, '')", vars); r != "0" {
+		t.Errorf("expected '0', got %q", r)
+	}
+}
+
+func TestEvalExprCutWithIndex(t *testing.T) {
+	vars := map[string]string{"s": "one:two:three"}
+	if r := EvalExpr("cut(s, ':', 0)", vars); r != "one" {
+		t.Errorf("expected 'one', got %q", r)
+	}
+	if r := EvalExpr("cut(s, ':', 1)", vars); r != "two" {
+		t.Errorf("expected 'two', got %q", r)
+	}
+	if r := EvalExpr("cut(s, ':', 2)", vars); r != "three" {
+		t.Errorf("expected 'three', got %q", r)
+	}
+}
+
+func TestEvalExprCutNegativeIndex(t *testing.T) {
+	vars := map[string]string{"s": "a/b/c/d"}
+	// Use string '-1' since the parser treats bare -1 as binary minus
+	if r := EvalExpr("cut(s, '/', '-1')", vars); r != "d" {
+		t.Errorf("expected 'd', got %q", r)
+	}
+}
+
+func TestEvalExprCutNoIndex(t *testing.T) {
+	vars := map[string]string{"s": "a,b,c"}
+	r := EvalExpr("cut(s, ',')", vars)
+	if !strings.Contains(r, "a") || !strings.Contains(r, "b") || !strings.Contains(r, "c") {
+		t.Errorf("expected JSON array, got %q", r)
+	}
+}
+
+func TestEvalExprCutOutOfBounds(t *testing.T) {
+	vars := map[string]string{"s": "a:b"}
+	if r := EvalExpr("cut(s, ':', 5)", vars); r != "" {
+		t.Errorf("expected empty for out of bounds, got %q", r)
+	}
+}
+
+func TestEvalExprConcat(t *testing.T) {
+	vars := map[string]string{"first": "hello", "second": "world"}
+	if r := EvalExpr("concat(first, ' ', second)", vars); r != "hello world" {
+		t.Errorf("expected 'hello world', got %q", r)
+	}
+}
+
+func TestEvalExprConcatSingle(t *testing.T) {
+	vars := map[string]string{"x": "solo"}
+	if r := EvalExpr("concat(x)", vars); r != "solo" {
+		t.Errorf("expected 'solo', got %q", r)
+	}
+}
+
+func TestEvalExprConcatEmpty(t *testing.T) {
+	if r := EvalExpr("concat()", nil); r != "" {
+		t.Errorf("expected empty, got %q", r)
+	}
+}
+
+func TestEvalExprConcatNested(t *testing.T) {
+	vars := map[string]string{"name": "jordan"}
+	if r := EvalExpr("concat(upper(name), '@example.com')", vars); r != "JORDAN@example.com" {
+		t.Errorf("expected 'JORDAN@example.com', got %q", r)
+	}
+}
