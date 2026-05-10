@@ -4,7 +4,6 @@
 package ui
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -193,12 +192,10 @@ func (s *Server) renderSuccessResponse(w http.ResponseWriter, tool, status, icon
 	isJSON := len(output) > 0 && (output[0] == '{' || output[0] == '[')
 	formattedOutput := template.HTMLEscapeString(output)
 	if isJSON {
-		var prettyBuf bytes.Buffer
-		if json.Indent(&prettyBuf, []byte(output), "", "  ") == nil {
-			formattedOutput = formatJSONHTML(prettyBuf.String())
+		tree := formatJSONTree(output)
+		if tree != "" {
+			formattedOutput = tree
 		}
-		// If json.Indent fails, keep the HTMLEscapeString'd version —
-		// formatJSONHTML is only safe on valid JSON.
 	}
 
 	tabID := fmt.Sprintf("tab-%d", time.Now().UnixNano())
@@ -213,6 +210,9 @@ func (s *Server) renderSuccessResponse(w http.ResponseWriter, tool, status, icon
 		"TextColor":       textColor,
 		"FormattedOutput": template.HTML(formattedOutput),
 		"RawOutput":       output,
+		"IsJSON":          isJSON,
+		"OutputSize":      len(output),
+		"Timestamp":       time.Now().Format("15:04:05"),
 	})
 }
 
@@ -300,6 +300,73 @@ func formatJSONHTML(s string) string {
 		}
 	}
 	return out.String()
+}
+
+// formatJSONTree renders JSON as a collapsible HTML tree using <details>/<summary>.
+func formatJSONTree(s string) string {
+	var data any
+	if err := json.Unmarshal([]byte(s), &data); err != nil {
+		return ""
+	}
+	var out strings.Builder
+	renderJSONNode(&out, "", data, true)
+	return out.String()
+}
+
+func renderJSONNode(out *strings.Builder, key string, value any, last bool) {
+	comma := ","
+	if last {
+		comma = ""
+	}
+	keyHTML := ""
+	if key != "" {
+		keyHTML = `<span class="text-indigo-300">"` + template.HTMLEscapeString(key) + `"</span><span class="text-gray-500">: </span>`
+	}
+
+	switch v := value.(type) {
+	case map[string]any:
+		if len(v) == 0 {
+			out.WriteString(`<div class="json-line">` + keyHTML + `<span class="text-gray-400">{}</span>` + comma + `</div>`)
+			return
+		}
+		out.WriteString(`<details open class="json-node"><summary class="json-line cursor-pointer hover:bg-gray-800/50">` + keyHTML + `<span class="text-gray-400">{</span> <span class="text-gray-600 text-[10px]">` + fmt.Sprintf("%d keys", len(v)) + `</span></summary>`)
+		out.WriteString(`<div class="ml-4">`)
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for i, k := range keys {
+			renderJSONNode(out, k, v[k], i == len(keys)-1)
+		}
+		out.WriteString(`</div>`)
+		out.WriteString(`<div class="json-line"><span class="text-gray-400">}</span>` + comma + `</div></details>`)
+
+	case []any:
+		if len(v) == 0 {
+			out.WriteString(`<div class="json-line">` + keyHTML + `<span class="text-gray-400">[]</span>` + comma + `</div>`)
+			return
+		}
+		out.WriteString(`<details open class="json-node"><summary class="json-line cursor-pointer hover:bg-gray-800/50">` + keyHTML + `<span class="text-gray-400">[</span> <span class="text-gray-600 text-[10px]">` + fmt.Sprintf("%d items", len(v)) + `</span></summary>`)
+		out.WriteString(`<div class="ml-4">`)
+		for i, item := range v {
+			renderJSONNode(out, "", item, i == len(v)-1)
+		}
+		out.WriteString(`</div>`)
+		out.WriteString(`<div class="json-line"><span class="text-gray-400">]</span>` + comma + `</div></details>`)
+
+	case string:
+		out.WriteString(`<div class="json-line">` + keyHTML + `<span class="text-green-300">"` + template.HTMLEscapeString(v) + `"</span>` + comma + `</div>`)
+
+	case float64:
+		out.WriteString(`<div class="json-line">` + keyHTML + `<span class="text-amber-300">` + fmt.Sprintf("%v", v) + `</span>` + comma + `</div>`)
+
+	case bool:
+		out.WriteString(`<div class="json-line">` + keyHTML + `<span class="text-amber-300">` + fmt.Sprintf("%t", v) + `</span>` + comma + `</div>`)
+
+	case nil:
+		out.WriteString(`<div class="json-line">` + keyHTML + `<span class="text-gray-500">null</span>` + comma + `</div>`)
+	}
 }
 
 func (s *Server) handleToolFormPartial(w http.ResponseWriter, r *http.Request) {

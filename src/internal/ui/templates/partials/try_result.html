@@ -22,37 +22,109 @@
       <span class="text-{{.StatusColor}}-700 font-medium text-sm">{{.Status}}</span>
       <span class="text-{{.StatusColor}}-400 text-xs font-mono">{{.Tool}}</span>
     </div>
-    <span class="text-gray-400 text-xs font-mono">{{.DurationMs}}ms</span>
+    <div class="flex items-center gap-3">
+      <span class="text-gray-400 text-xs font-mono">{{.DurationMs}}ms</span>
+      <span class="text-gray-300 text-[10px]">{{.OutputSize}}b</span>
+    </div>
   </div>
 
-  <div class="bg-gray-800 border-b border-gray-700 px-4 flex gap-1">
-    <button onclick="switchTab('{{.TabID}}', 'formatted')" class="tab-btn px-3 py-1.5 text-xs text-gray-300 hover:text-white border-b-2 border-indigo-400 font-medium" data-tab="formatted">Response</button>
-    <button onclick="switchTab('{{.TabID}}', 'raw')" class="tab-btn px-3 py-1.5 text-xs text-gray-500 hover:text-white border-b-2 border-transparent" data-tab="raw">Raw</button>
+  <div class="bg-gray-800 border-b border-gray-700 px-4 flex items-center">
+    <div class="flex gap-1">
+      <button onclick="switchTab('{{.TabID}}', 'formatted')" class="tab-btn px-3 py-1.5 text-xs text-gray-300 hover:text-white border-b-2 border-indigo-400 font-medium" data-tab="formatted">Response</button>
+      <button onclick="switchTab('{{.TabID}}', 'raw')" class="tab-btn px-3 py-1.5 text-xs text-gray-500 hover:text-white border-b-2 border-transparent" data-tab="raw">Raw</button>
+      <button onclick="switchTab('{{.TabID}}', 'meta')" class="tab-btn px-3 py-1.5 text-xs text-gray-500 hover:text-white border-b-2 border-transparent" data-tab="meta">Meta</button>
+    </div>
+    <div class="ml-auto flex gap-1 py-1">
+      {{if .IsJSON}}
+      <button onclick="expandAllJSON('{{.TabID}}')" class="text-gray-500 hover:text-gray-300 px-1.5 py-0.5 rounded hover:bg-gray-700" title="Expand all">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg>
+      </button>
+      <button onclick="collapseAllJSON('{{.TabID}}')" class="text-gray-500 hover:text-gray-300 px-1.5 py-0.5 rounded hover:bg-gray-700" title="Collapse all">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5-5 5 5"/><path d="m7 9 5 5 5-5"/></svg>
+      </button>
+      {{end}}
+      <button onclick="copyResponse('{{.TabID}}')" class="copy-btn text-gray-500 hover:text-gray-300 px-1.5 py-0.5 rounded hover:bg-gray-700" title="Copy response">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+      </button>
+    </div>
   </div>
 
   <div class="bg-gray-900 p-4 max-h-[500px] overflow-y-auto">
     <div id="{{.TabID}}-formatted">
-      <pre class="text-{{.TextColor}} text-xs font-mono whitespace-pre-wrap leading-relaxed">{{.FormattedOutput}}</pre>
+      <div class="text-xs font-mono leading-relaxed">{{.FormattedOutput}}</div>
     </div>
     <div id="{{.TabID}}-raw" class="hidden">
       <pre class="text-gray-300 text-xs font-mono whitespace-pre-wrap leading-relaxed">{{.RawOutput}}</pre>
+    </div>
+    <div id="{{.TabID}}-meta" class="hidden">
+      <div class="space-y-2 text-xs">
+        <div class="flex gap-8">
+          <div>
+            <span class="text-gray-500 block text-[10px] uppercase">Tool</span>
+            <span class="text-gray-300 font-mono">{{.Tool}}</span>
+          </div>
+          <div>
+            <span class="text-gray-500 block text-[10px] uppercase">Status</span>
+            <span class="text-{{.StatusColor}}-400 font-medium">{{.Status}}</span>
+          </div>
+          <div>
+            <span class="text-gray-500 block text-[10px] uppercase">Duration</span>
+            <span class="text-gray-300 font-mono">{{.DurationMs}}ms</span>
+          </div>
+        </div>
+        <div class="flex gap-8">
+          <div>
+            <span class="text-gray-500 block text-[10px] uppercase">Size</span>
+            <span class="text-gray-300 font-mono">{{.OutputSize}} bytes</span>
+          </div>
+          <div>
+            <span class="text-gray-500 block text-[10px] uppercase">Time</span>
+            <span class="text-gray-300 font-mono">{{.Timestamp}}</span>
+          </div>
+          <div>
+            <span class="text-gray-500 block text-[10px] uppercase">Format</span>
+            <span class="text-gray-300 font-mono">{{if .IsJSON}}JSON{{else}}Text{{end}}</span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
 function switchTab(prefix, tab) {
-  document.getElementById(prefix + '-formatted').classList.toggle('hidden', tab !== 'formatted');
-  document.getElementById(prefix + '-raw').classList.toggle('hidden', tab !== 'raw');
-  const parent = document.getElementById(prefix + '-formatted').closest('.rounded-lg');
-  parent.querySelectorAll('.tab-btn').forEach(btn => {
-    const isActive = btn.dataset.tab === tab;
+  ['formatted', 'raw', 'meta'].forEach(function(t) {
+    var el = document.getElementById(prefix + '-' + t);
+    if (el) el.classList.toggle('hidden', t !== tab);
+  });
+  var container = document.getElementById(prefix + '-formatted').closest('.rounded-lg');
+  container.querySelectorAll('.tab-btn').forEach(function(btn) {
+    var isActive = btn.dataset.tab === tab;
     btn.classList.toggle('border-indigo-400', isActive);
     btn.classList.toggle('text-gray-300', isActive);
     btn.classList.toggle('font-medium', isActive);
     btn.classList.toggle('border-transparent', !isActive);
     btn.classList.toggle('text-gray-500', !isActive);
   });
+}
+function expandAllJSON(prefix) {
+  document.querySelectorAll('#' + prefix + '-formatted details').forEach(function(d) { d.open = true; });
+}
+function collapseAllJSON(prefix) {
+  document.querySelectorAll('#' + prefix + '-formatted details').forEach(function(d) { d.open = false; });
+}
+function copyResponse(prefix) {
+  var raw = document.getElementById(prefix + '-raw');
+  if (raw) {
+    navigator.clipboard.writeText(raw.textContent).then(function() {
+      var btn = document.querySelector('[onclick*="copyResponse(\'' + prefix + '\')"]');
+      if (btn) {
+        var orig = btn.innerHTML;
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+        setTimeout(function() { btn.innerHTML = orig; }, 1500);
+      }
+    });
+  }
 }
 </script>
 {{end}}
