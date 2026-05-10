@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/factorly-dev/factorly/internal/proxy"
 	factorlyServer "github.com/factorly-dev/factorly/internal/server"
@@ -63,28 +64,46 @@ func runUI(cmd *cobra.Command, args []string) error {
 		// can respond via elicitation, whichever is faster.
 		mcpFn := shadow.ConfirmFunc(mcpElicitConfirm)
 		confirmFn = func(ctx context.Context, toolName string, params map[string]string) bool {
+			// Timeout: deny if no response within 1 minute
+			ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			defer cancel()
+
 			// Always send to browser
 			browserCtx, browserCancel := context.WithCancel(ctx)
 			defer browserCancel()
 
-			result := make(chan bool, 2)
+			type confirmResult struct {
+				approved bool
+				source   string
+			}
+			result := make(chan confirmResult, 2)
 
+			channels := []string{"browser"}
 			go func() {
-				result <- confirmBroker.Request(browserCtx, toolName, params)
+				result <- confirmResult{confirmBroker.Request(browserCtx, toolName, params), "browser"}
 			}()
 
 			// If there's an MCP session, also try elicitation
 			if mcpserver.ClientSessionFromContext(ctx) != nil {
+				channels = append(channels, "elicitation")
 				go func() {
-					result <- mcpFn(ctx, toolName, params)
+					result <- confirmResult{mcpFn(ctx, toolName, params), "elicitation"}
 				}()
 			}
 
+			vlog("[confirm] %s: waiting for approval (%s)", toolName, strings.Join(channels, ", "))
+
 			// First response wins
 			select {
-			case approved := <-result:
-				return approved
+			case r := <-result:
+				action := "approved"
+				if !r.approved {
+					action = "denied"
+				}
+				vlog("[confirm] %s: %s via %s", toolName, action, r.source)
+				return r.approved
 			case <-ctx.Done():
+				vlog("[confirm] %s: denied (timed out after 60s)", toolName)
 				return false
 			}
 		}

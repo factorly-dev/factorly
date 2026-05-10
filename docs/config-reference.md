@@ -7,6 +7,9 @@
 tools_dir: ./tools               # optional, scan directory for tool files
 disabled_commands: [vault, exec] # optional, block specific CLI commands
 disable_builtins: true           # optional, disable all factorly.* built-in tools
+disabled_builtins:               # optional, disable specific built-in tools
+  - factorly.shell
+  - factorly.clipboard
 
 vault_backends:                  # optional, external secret managers
   op:                            # backend name → use as {{op:KEY}}
@@ -29,7 +32,7 @@ oauth_providers: # shared across tools
 
 tools:
   <tool-name>:
-    type: cli | rest | mcp | workflow  # required
+    type: cli | rest | mcp | workflow | builtin  # required (builtin is internal-only)
     description: "..."                 # optional, shown to agent
 
     # For CLI commands:

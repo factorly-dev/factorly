@@ -1,16 +1,16 @@
 # Built-in Tools
 
-Factorly ships five governed tools that work out of the box — no YAML needed. All are prefixed `factorly.` to avoid collisions.
+Factorly ships five governed tools that work out of the box — no YAML needed. All are prefixed `factorly.` to avoid collisions. They execute **in-process** using Go's standard library (no subprocesses for read/write/fetch).
 
 ## Available tools
 
-| Tool | Description |
-|------|-------------|
-| `factorly.shell` | Run a shell command (confirm required, destructive patterns blocked) |
-| `factorly.read_file` | Read a local file (sensitive paths blocked) |
-| `factorly.write_file` | Write a local file (confirm required, system paths blocked) |
-| `factorly.fetch` | HTTP GET a URL (cloud metadata and private networks blocked) |
-| `factorly.clipboard` | Copy text to clipboard (confirm required) |
+| Tool | Description | Implementation |
+|------|-------------|----------------|
+| `factorly.shell` | Run a shell command (confirm required, destructive patterns blocked) | `exec.Command` with 30s timeout |
+| `factorly.read_file` | Read a local file (sensitive paths blocked) | `os.ReadFile`, project-scoped |
+| `factorly.write_file` | Write a local file (confirm required, system paths blocked) | `os.WriteFile`, project-scoped |
+| `factorly.fetch` | HTTP GET a URL (cloud metadata and private networks blocked) | `net/http`, 1MB limit |
+| `factorly.clipboard` | Copy text to clipboard (confirm required) | Platform-aware (pbcopy/xclip/xsel) |
 
 ## Usage
 
@@ -28,11 +28,21 @@ factorly tools
   github.repos         rest      GET /users/{username}/repos
 ```
 
+## Project scoping
+
+File operations (`read_file`, `write_file`) are **scoped to the project directory** (the directory containing your `factorly.yaml`). Any attempt to read or write outside this directory is rejected:
+
+```
+path "/etc/passwd" is outside project directory "/home/user/myproject"
+```
+
+Relative paths are resolved against the project root. Path traversal (`../../../etc/passwd`) is blocked.
+
 ## Safety guards
 
 Built-in tools block dangerous operations by default:
 
-- **Shell**: blocks `rm -rf /`, `curl | sh`, `DROP TABLE`, `shutdown`, fork bombs
+- **Shell**: blocks `rm -rf /`, `curl | sh`, `DROP TABLE`, `shutdown`, fork bombs. Uses `sh -c` on Unix, `cmd /C` on Windows.
 - **Read/Write**: blocks `.env`, `.ssh/id_*`, `*.pem`, `credentials.json`, `/etc/shadow`, system directories
 - **Fetch**: blocks cloud metadata (`169.254.169.254`), localhost, private networks, `file://` protocol
 
@@ -58,22 +68,25 @@ tools:
 
 Disable specific built-ins or all of them:
 
-```bash
-# Disable specific tools via env var
-export FACTORLY_DISABLED_TOOLS=factorly.shell,factorly.write_file
-```
-
 ```yaml
-# Or disable all built-ins in config
+# Disable specific built-in tools
+disabled_builtins:
+  - factorly.shell
+  - factorly.clipboard
+
+# Or disable all built-ins
 disable_builtins: true
 ```
 
 ## What happens
 
 1. Built-in tools are registered automatically when Factorly starts. They appear in `factorly tools` alongside your configured tools.
-2. Each built-in has default oversight rules (confirm prompts, blocked patterns). These apply without any config.
-3. You can loosen restrictions using `allow_patterns`, `allow_paths`, or `allow_urls` in a `shadow` block — but only for specific values, not blanket overrides.
-4. In HTTP mode (`factorly serve --port`), local tools (`shell`, `read_file`, `write_file`, `clipboard`) are hidden. Only `factorly.fetch` is available since local filesystem operations don't apply to remote servers.
+2. Each built-in executes in-process (no subprocess), except `clipboard` which uses the platform clipboard command.
+3. File operations are scoped to the project directory. Shell commands run from the working directory.
+4. Each built-in has default oversight rules (confirm prompts, blocked patterns). These apply without any config.
+5. You can loosen restrictions using `allow_patterns`, `allow_paths`, or `allow_urls` in a `shadow` block — but only for specific values, not blanket overrides.
+6. In HTTP mode (`factorly serve --port`), local tools (`shell`, `read_file`, `write_file`, `clipboard`) are hidden. Only `factorly.fetch` is available since local filesystem operations don't apply to remote servers.
+7. In the UI (`factorly ui`), built-in tools appear with a "Built-in" badge and locked configuration — only oversight settings are editable.
 
 ---
 
