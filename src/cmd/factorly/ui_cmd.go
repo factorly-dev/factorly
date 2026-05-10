@@ -58,16 +58,35 @@ func runUI(cmd *cobra.Command, args []string) error {
 	confirmBroker := ui.NewConfirmBroker()
 	confirmFn := shadow.ConfirmFunc(confirmBroker.Request)
 	if uiMCP {
-		// When MCP is enabled, try MCP elicitation first (for agent calls),
-		// fall back to browser confirm for direct UI calls
+		// Race MCP elicitation and browser confirm — first response wins.
+		// This ensures prompts always show in the browser UI AND the agent
+		// can respond via elicitation, whichever is faster.
 		mcpFn := shadow.ConfirmFunc(mcpElicitConfirm)
 		confirmFn = func(ctx context.Context, toolName string, params map[string]string) bool {
-			// If there's an MCP session, use elicitation
+			// Always send to browser
+			browserCtx, browserCancel := context.WithCancel(ctx)
+			defer browserCancel()
+
+			result := make(chan bool, 2)
+
+			go func() {
+				result <- confirmBroker.Request(browserCtx, toolName, params)
+			}()
+
+			// If there's an MCP session, also try elicitation
 			if mcpserver.ClientSessionFromContext(ctx) != nil {
-				return mcpFn(ctx, toolName, params)
+				go func() {
+					result <- mcpFn(ctx, toolName, params)
+				}()
 			}
-			// Otherwise route to browser
-			return confirmBroker.Request(ctx, toolName, params)
+
+			// First response wins
+			select {
+			case approved := <-result:
+				return approved
+			case <-ctx.Done():
+				return false
+			}
 		}
 	}
 	p, err := bootstrapProviders(cfg, reg, confirmFn)
