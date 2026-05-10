@@ -104,6 +104,7 @@ func (s *Server) handleWorkflowEdit(w http.ResponseWriter, r *http.Request) {
 		"Steps":          tc.Steps,
 		"Params":         tc.Parameters,
 		"AvailableTools": available,
+		"Tool":           tc,
 	})
 }
 
@@ -237,6 +238,43 @@ func (s *Server) handleWorkflowSave(w http.ResponseWriter, r *http.Request) {
 	tc.Description = r.FormValue("description")
 	tc.Parameters = wfParams
 	tc.Steps = steps
+	tc.Hidden = r.FormValue("hidden") == "on"
+	tc.Timeout = r.FormValue("timeout")
+
+	if mo := r.FormValue("max_output"); mo != "" {
+		if n, err := strconv.Atoi(mo); err == nil {
+			tc.MaxOutput = n
+		}
+	} else {
+		tc.MaxOutput = 0
+	}
+	if compress := r.FormValue("compress"); compress != "" {
+		tc.Compress = splitComma(compress)
+	} else {
+		tc.Compress = nil
+	}
+
+	// Parse shadow/oversight
+	deny := splitComma(r.FormValue("shadow_deny"))
+	confirmOn := r.FormValue("shadow_confirm") == "on"
+	rateLimit := r.FormValue("shadow_rate_limit")
+	if len(deny) > 0 || confirmOn || rateLimit != "" {
+		sc := &config.ShadowConfig{Deny: deny, RateLimit: rateLimit}
+		if confirmOn {
+			sc.Confirm = true
+		}
+		tc.Shadow = sc
+	} else {
+		tc.Shadow = nil
+	}
+
+	// Parse output filter
+	fc := parseFilterForm(r)
+	if fc != nil {
+		tc.Filter = fc
+	} else {
+		tc.Filter = nil
+	}
 
 	if err := SaveTool(s.cfgPath, s.toolsDir, name, tc); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
