@@ -23,16 +23,16 @@ type ConfirmRequest struct {
 // ConfirmBroker manages pending confirmation prompts between the shadow
 // policy and the browser UI.
 type ConfirmBroker struct {
-	mu      sync.Mutex
-	pending map[string]*ConfirmRequest
-	notify  chan struct{} // signaled when a new request arrives
-	counter atomic.Int64
+	mu          sync.Mutex
+	pending     map[string]*ConfirmRequest
+	subscribers map[chan struct{}]struct{} // SSE listeners
+	counter     atomic.Int64
 }
 
 func NewConfirmBroker() *ConfirmBroker {
 	return &ConfirmBroker{
-		pending: make(map[string]*ConfirmRequest),
-		notify:  make(chan struct{}, 1),
+		pending:     make(map[string]*ConfirmRequest),
+		subscribers: make(map[chan struct{}]struct{}),
 	}
 }
 
@@ -49,13 +49,14 @@ func (b *ConfirmBroker) Request(ctx context.Context, toolName string, params map
 
 	b.mu.Lock()
 	b.pending[id] = req
-	b.mu.Unlock()
-
-	// Signal SSE listeners that there's a new prompt
-	select {
-	case b.notify <- struct{}{}:
-	default:
+	// Broadcast to all SSE listeners
+	for ch := range b.subscribers {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
 	}
+	b.mu.Unlock()
 
 	defer func() {
 		b.mu.Lock()
@@ -98,9 +99,21 @@ func (b *ConfirmBroker) Pending() []*ConfirmRequest {
 	return out
 }
 
-// Notify returns a channel that is signaled when new confirm requests arrive.
-func (b *ConfirmBroker) Notify() <-chan struct{} {
-	return b.notify
+// Subscribe returns a channel that is signaled when new confirm requests arrive.
+// Caller must call Unsubscribe when done.
+func (b *ConfirmBroker) Subscribe() chan struct{} {
+	ch := make(chan struct{}, 1)
+	b.mu.Lock()
+	b.subscribers[ch] = struct{}{}
+	b.mu.Unlock()
+	return ch
+}
+
+// Unsubscribe removes a subscriber channel.
+func (b *ConfirmBroker) Unsubscribe(ch chan struct{}) {
+	b.mu.Lock()
+	delete(b.subscribers, ch)
+	b.mu.Unlock()
 }
 
 // --- HTTP handlers ---
@@ -161,7 +174,8 @@ func (s *Server) handleConfirmSSE(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	ctx := r.Context()
-	notify := s.confirmBroker.Notify()
+	notify := s.confirmBroker.Subscribe()
+	defer s.confirmBroker.Unsubscribe(notify)
 
 	for {
 		// Send current pending
