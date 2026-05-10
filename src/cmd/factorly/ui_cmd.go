@@ -161,6 +161,7 @@ func runUI(cmd *cobra.Command, args []string) error {
 
 	// Generate per-run nonce token
 	token := generateNonce()
+	var uiWarnings []string
 
 	// Optionally mount MCP endpoint on the UI server's mux
 	if uiMCP {
@@ -179,7 +180,7 @@ func runUI(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if uiMCPToken == "" {
-			fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: MCP endpoint has no authentication. Use --mcp-token or FACTORLY_HTTP_TOKEN.")
+			uiWarnings = append(uiWarnings, "MCP endpoint has no authentication. Use --mcp-token or FACTORLY_HTTP_TOKEN.")
 		}
 
 		// Wrap MCP handler with bearer token auth
@@ -196,6 +197,12 @@ func runUI(cmd *cobra.Command, args []string) error {
 	addr := fmt.Sprintf("%s:%d", uiHost, uiPort)
 	url := fmt.Sprintf("http://localhost:%d/?token=%s", uiPort, token)
 
+	if uiHost != "127.0.0.1" && uiHost != "localhost" {
+		uiWarnings = append(uiWarnings, "The UI is bound to "+uiHost+" — intended for local development only. Do not expose to the internet.")
+	}
+	if len(uiWarnings) > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "⚠ WARNING: %s\n", strings.Join(uiWarnings, " "))
+	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "Factorly UI running at %s\n", url)
 	if uiMCP {
 		fmt.Fprintf(cmd.ErrOrStderr(), "MCP endpoint at http://localhost:%d/mcp (token: %s)\n", uiPort, uiMCPToken)
