@@ -110,6 +110,7 @@ func (s *Server) handleToolEdit(w http.ResponseWriter, r *http.Request) {
 		"ActiveTool": name,
 		"Tool":       toolView{Name: name, ToolConfig: tc},
 		"Params":     tc.Parameters,
+		"IsBuiltin":  tc.Type == "builtin",
 	})
 }
 
@@ -162,6 +163,11 @@ func (s *Server) handleToolTry(w http.ResponseWriter, r *http.Request) {
 		if result.IsError() {
 			status = "error"
 			statusIcon = "✗"
+			if result.Error != "" && output == "" {
+				output = result.Error
+			} else if result.Error != "" {
+				output = output + "\n" + result.Error
+			}
 		}
 	}
 
@@ -387,6 +393,26 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 	tc, ok := s.cfg.Tools[name]
 	if !ok {
 		http.NotFound(w, r)
+		return
+	}
+
+	// Built-in tools: only allow shadow/oversight edits
+	if tc.Type == "builtin" {
+		deny := splitComma(r.FormValue("shadow_deny"))
+		confirmOn := r.FormValue("shadow_confirm") == "on"
+		rateLimit := r.FormValue("shadow_rate_limit")
+		if len(deny) > 0 || confirmOn || rateLimit != "" {
+			sc := &config.ShadowConfig{Deny: deny, RateLimit: rateLimit}
+			if confirmOn {
+				sc.Confirm = true
+			}
+			tc.Shadow = sc
+		} else {
+			tc.Shadow = nil
+		}
+		s.cfg.Tools[name] = tc
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<span class="text-green-600 text-xs font-medium">✓ Saved</span>`)
 		return
 	}
 

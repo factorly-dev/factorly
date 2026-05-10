@@ -712,6 +712,8 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			}
 			mcpServers[name] = def
 			vlog("  registered mcp server: %s", name)
+		case "builtin":
+			vlog("  registered builtin tool: %s", name)
 		case "workflow":
 			steps := make([]provider.WorkflowStep, len(toolCfg.Steps))
 			for i, s := range toolCfg.Steps {
@@ -748,6 +750,15 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	if err := validateNoVaultRefs(restTools); err != nil {
 		return nil, err
 	}
+
+	// Built-in provider (in-process, no subprocess)
+	// Scope file operations to the project directory (config file's parent)
+	projectDir := ""
+	if configPath != "" {
+		projectDir = filepath.Dir(configPath)
+	}
+	providers["builtin"] = provider.NewBuiltinProvider(serveMode, projectDir)
+	vlog("initialized builtin provider (root: %s)", projectDir)
 
 	if len(cliTools) > 0 {
 		vlog("initialized cli provider (%d tools)", len(cliTools))

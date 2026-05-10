@@ -32,6 +32,7 @@ type Config struct {
 	VaultBackends    map[string]vault.ExternalBackendConfig `yaml:"vault_backends,omitempty"`
 	DisabledCommands []string                               `yaml:"disabled_commands,omitempty"`
 	DisableBuiltins  bool                                   `yaml:"disable_builtins,omitempty"`
+	DisabledBuiltins []string                               `yaml:"disabled_builtins,omitempty"`
 }
 
 type OAuthProviderConfig struct {

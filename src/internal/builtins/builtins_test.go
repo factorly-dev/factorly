@@ -58,8 +58,67 @@ func TestRegisterOverwritesUserTools(t *testing.T) {
 	}
 	Register(cfg, Options{Mode: "stdio"})
 
-	if cfg.Tools["factorly.shell"].Command == "user-shell" {
-		t.Error("expected built-in to overwrite user tool")
+	if cfg.Tools["factorly.shell"].Type != "builtin" {
+		t.Error("expected built-in to overwrite user tool with type builtin")
+	}
+}
+
+func TestRegisterTypeIsBuiltin(t *testing.T) {
+	cfg := &config.Config{Tools: make(map[string]config.ToolConfig)}
+	Register(cfg, Options{Mode: "stdio"})
+
+	for name, tc := range cfg.Tools {
+		if tc.Type != "builtin" {
+			t.Errorf("%s: got type %q, want \"builtin\"", name, tc.Type)
+		}
+	}
+}
+
+func TestRegisterDisabledBuiltins(t *testing.T) {
+	cfg := &config.Config{
+		Tools:            make(map[string]config.ToolConfig),
+		DisabledBuiltins: []string{"factorly.shell", "factorly.clipboard"},
+	}
+	Register(cfg, Options{Mode: "stdio"})
+
+	if _, ok := cfg.Tools["factorly.shell"]; ok {
+		t.Error("factorly.shell should be disabled")
+	}
+	if _, ok := cfg.Tools["factorly.clipboard"]; ok {
+		t.Error("factorly.clipboard should be disabled")
+	}
+	if _, ok := cfg.Tools["factorly.read_file"]; !ok {
+		t.Error("factorly.read_file should still be registered")
+	}
+	if _, ok := cfg.Tools["factorly.fetch"]; !ok {
+		t.Error("factorly.fetch should still be registered")
+	}
+}
+
+func TestRegisterShadowPreserved(t *testing.T) {
+	cfg := &config.Config{Tools: make(map[string]config.ToolConfig)}
+	Register(cfg, Options{Mode: "stdio"})
+
+	// Shell and write_file should have confirm by default
+	shellShadow := cfg.Tools["factorly.shell"].Shadow
+	if shellShadow == nil {
+		t.Fatal("factorly.shell should have shadow config")
+	}
+	if _, all := shellShadow.ConfirmList(); !all {
+		t.Error("factorly.shell should have confirm=true")
+	}
+
+	writeShadow := cfg.Tools["factorly.write_file"].Shadow
+	if writeShadow == nil {
+		t.Fatal("factorly.write_file should have shadow config")
+	}
+	if _, all := writeShadow.ConfirmList(); !all {
+		t.Error("factorly.write_file should have confirm=true")
+	}
+
+	// read_file should NOT have shadow
+	if cfg.Tools["factorly.read_file"].Shadow != nil {
+		t.Error("factorly.read_file should not have shadow config")
 	}
 }
 
