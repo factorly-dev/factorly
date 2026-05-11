@@ -14,15 +14,14 @@
 [![GitHub](https://img.shields.io/badge/GitHub-factorly-181717?logo=github)](https://github.com/factorly-dev/factorly)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](https://github.com/factorly-dev/factorly/tree/main/docs)
 
-**Stop giving your AI agents your API keys.** One command. All your tools. Credentials stay out of your agent's hands.
+**Build what your agent can do.**
+
+Define tools, compose workflows, test and run them.
+MCP servers, REST APIs, and CLI commands in one config, one UI, one audit log.
 
 </center>
 
-Factorly is a local runtime for agent tool chains. It proxies agent tool calls, injects credentials from an encrypted vault, enforces governance rules, and logs everything.
-
-REST APIs, CLI commands, and MCP servers run through one config, one audit log, one set of rules.
-
-Your agent sees workflows, tool names, and data. Never secrets.
+Factorly is a local runtime for agent tool chains. It manages tool calls, injects credentials from an encrypted vault, enforces governance rules, and logs everything. Your agent sees workflows, tools, and data. Secrets stay secret.
 
 ## Install
 
@@ -31,8 +30,6 @@ pip install factorly
 ```
 
 ## Quick Start
-
-Then, define your tools, secure your credentials, and sync with your agent:
 
 ```bash
 # 1. Configure your tools or install a template (36 services: GitHub, Slack, Stripe, Linear, Gmail, ...)
@@ -43,28 +40,22 @@ factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
 
 # 3. Connect to your agent (auto-detects Claude Code, Cursor, Codex)
 factorly sync
+
+# 4. Optional, start the UI
+factorly ui
 ```
 
-The agent never sees your credentials. Factorly injected it, made the API call, logged it, and returned the data.
+Your agent connects to Factorly as a single MCP server or CLI and sees every tool you've configured. Credentials never leave the vault.
 
-## Already Using an MCP Server?
+## What It Does
 
-Wrap it with Factorly — no config file needed, no changes to the server:
+**Define** — one config, every protocol, 36 templates included
 
-```bash
-factorly wrap -- npx @modelcontextprotocol/server-github
-```
+**Test** — Try tools in the UI, see the response, iterate before giving your agent access
 
-Same tools, same interface. Now every call is logged, output is compressed, loops are detected, and calls are rate-limited.
+**Compose** — workflows with per-step policies, deterministic sequences
 
-## What You Get
-
-- **Encrypted vault** — AES-256-GCM with per-entry encryption, secrets never leave your device
-- **Governance** — deny destructive operations, require confirmation for writes, rate-limit calls, detect agent loops
-- **Audit log** — every call logged with params, response, and governance outcome
-- **36 templates** — pre-built configs for GitHub, Slack, Stripe, Gmail, Linear, and more
-- **Zero-config proxy** — `factorly wrap` and `factorly exec` add safety instantly
-- **Output compression** — compresses JSON, deduplicates logs, truncates to head + tail to save tokens
+**Govern** — vault, policies, audit log. Built in, not bolted on.
 
 ## Supported Platforms
 
