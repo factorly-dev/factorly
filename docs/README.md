@@ -31,6 +31,12 @@
 | [Config Reference](config-reference.md) | Full YAML schema, auth types, parameters, stdin, interactive, shadow |
 | [CLI Reference](cli-reference.md) | All commands, subcommands, flags, and environment variables |
 
+## UI
+
+| Topic | Description |
+|-------|-------------|
+| [Web UI](ui.md) | Built-in browser interface for browsing, testing, and managing tools |
+
 ## Features
 
 | Topic | Description |
