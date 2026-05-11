@@ -1,3 +1,27 @@
+## [v0.9.1] - 2026-05-11
+
+### Added
+- `StepEvent` type and `OnStep` callback on `WorkflowProvider`, fired at every step transition
+- `Proxy.SetOnWorkflowStep` wires workflow provider callbacks to the activity broadcaster
+- `ActivityBroadcaster` tagged event wrapper supporting both `call` and `workflow_step` SSE event types
+- Live workflow step streaming in the "Try It" panel with status icon, index/total, tool, duration, and errors
+- `ConfirmBroker.Request` notifies SSE subscribers on both pending creation and resolution via extracted `notifyLocked`
+- Toast notification in `confirm.js` when a POST returns 404 ("Already resolved by another tab")
+
+### Changed
+- `activity.js` switched from `onmessage` to `addEventListener` for `call` and `workflow_step` event types
+- Step events now render nested inside their parent workflow row in the activity drawer
+- `confirm.js` IIFE gated behind `window._confirmInit`; `sse`, `pollTimer`, and `reconnectTimer` hoisted onto `window`
+- Polling in `confirm.js` stops when SSE is open and only restarts while SSE is in `CLOSED` state, eliminating constant heartbeat polling
+- `workflow_edit.html` reads active workflow name from `window._currentWorkflow` instead of a captured closure
+- `htmx:beforeRequest`, `htmx:afterSwap`, and `workflow_step` SSE listeners in `workflow_edit.html` installed exactly once, guarded by `window._workflowRunInit`
+- `#run-steps` and `#run-steps-list` resolved from live DOM on each event instead of script-load references
+
+### Fixed
+- `hx-boost` navigation no longer leaks poll intervals, `EventSource` instances, or duplicate `document.body` listeners across navigations
+- Resolving a confirm prompt on one tab now dismisses the modal on all connected tabs
+- Workflows header title corrected when workflows exist
+
 ## [v0.9.0] - 2026-05-11
 
 ### Added
