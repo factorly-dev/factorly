@@ -53,7 +53,7 @@
       <div class="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
         <div class="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
           <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Parameters</span>
-          <button type="button" onclick="addWorkflowParam()" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">{{icon "plus"}} Add</button>
+          <button type="button" onclick="addWorkflowParam()" class="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium">{{icon "plus"}} Add</button>
         </div>
         <div id="wf-params-list" class="p-4 space-y-2">
           {{if not .Params}}
@@ -99,7 +99,7 @@
                   hx-target="#steps-list"
                   hx-swap="beforeend"
                   hx-on::after-request="document.getElementById('empty-state')?.remove(); reindexSteps()"
-                  class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">{{icon "plus"}} Add</button>
+                  class="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium">{{icon "plus"}} Add</button>
         </div>
 
         <div id="steps-list">
@@ -186,7 +186,7 @@
                   </div>
                   {{end}}
                 </div>
-                <button type="button" onclick="addParam(this)" class="mt-1 text-[10px] text-indigo-500 hover:text-indigo-700">{{icon "plus"}} param</button>
+                <button type="button" onclick="addParam(this)" class="mt-1 inline-flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700">{{icon "plus"}} param</button>
               </div>
             </div>
           </details>
