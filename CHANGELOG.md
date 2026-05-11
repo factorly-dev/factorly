@@ -1,3 +1,72 @@
+## [v0.9.0] - 2026-05-11
+
+### Added
+
+- **Web UI** (`factorly ui`)
+  - Localhost web interface for browsing, testing, and managing tools
+  - Tool CRUD with full config editing: parameters, oversight, output filters, advanced
+  - Postman-style response inspector with collapsible JSON tree, Raw/Meta tabs, copy button, expand/collapse all
+  - Persistent sidebar with type badges, live filter, and dot-prefix grouping with localStorage persistence
+  - Visual workflow editor with collapsible steps, input parameters, oversight, and output filters
+  - Server-rendered workflow step addition and tool-aware param auto-populate via htmx
+  - OpenAPI import with preview, filtering, and selective tool import
+  - OAuth provider CRUD with auth config editing (Bearer/Custom header/OAuth)
+  - Vault management: project and global vault sections, add/replace/delete with scope awareness
+  - History page with last 100 audit log entries and filtering
+  - Live activity feed via SSE in a slide-out drawer, accessible from any page
+  - Shadow confirm prompts via browser modal — races MCP elicitation and browser, first response wins
+  - SSE subscriber broadcast pattern with 2s polling fallback and exponential reconnect backoff
+  - 60-second auto-deny timeout on unresponded confirm prompts
+  - Config reload button with live diff output
+  - Runtime template install with immediate tool registration
+  - Tool duplication, inline rename/description editing, hidden toggle
+  - Lucide SVG icons rendered inline via template function
+  - `--no-launch` flag to skip auto-opening browser
+  - Non-localhost binding warning for dev-only use
+
+- **Built-in tools**
+  - Native builtin provider — in-process execution via Go stdlib (no subprocess for read/write/fetch)
+  - File operations scoped to project directory with path traversal prevention
+  - Platform-aware shell (`sh -c` on Unix, `cmd /C` on Windows)
+  - Per-tool disable via `disabled_builtins` config field
+
+- **Expressions and resolvers**
+  - `today()`, `left()`, `right()`, `find()`, `cut()`, `concat()` expression functions
+  - Value expressions (`{{expr:...}}`) for workflow step params
+  - `expr` registered as a resolver backend alongside `vault:` and `op:`
+
+- **Tools and config**
+  - `text` parameter type for multi-line textarea rendering in the UI
+  - `body_type` field (json/form/raw) for REST tools
+  - `param in:` field for explicit parameter location (query/path/body/header)
+  - Audit log `vault_keys` field tracking which vault references each tool accesses
+
+### Changed
+
+- **Web UI**
+  - Activity feed promoted from standalone page to persistent slide-out drawer
+  - Templates removed from nav, accessible via "Browse Templates" button in empty state
+  - Workflows promoted to top-level navigation section
+  - Sidebar tool list replaced with grouped `<details>` sections by dot-prefix
+  - Tool save form uses htmx inline confirmation instead of full-page redirect
+  - Navigation order standardized: Tools, Workflows, Auth, Vault, History
+  - Factorly logo added to layout header and favicon
+  - Inline JS extracted to static files (`activity.js`, `confirm.js`, `workflow.js`)
+  - Inline HTML generation in handlers replaced with template partials
+
+- **Server and CLI**
+  - `factorly ui` and `factorly serve` now bind to `127.0.0.1` by default
+  - `factorly serve --http` replaced with `--host`/`--port` flags (legacy flag preserved hidden)
+
+- **Internals**
+  - `registerProvider` refactored from 116-line switch into separate helper functions
+  - Vault ref resolution unified through shared `vault.Resolver` (supports inline refs, multiple backends, defaults)
+  - REST verbose logging now includes all headers, body content, and redacts sensitive headers
+  - `refPattern` regex widened to support expressions with parens/commas/quotes
+  - OpenAPI operationId `/` replaced with `.` and spaces with `_` for valid tool names
+  - Tool name sanitization applied on creation
+  - Go and dependencies bumped to 1.25.2
+
 ## [v0.8.1] - 2026-05-04
 
 ### Fixed
