@@ -62,11 +62,25 @@ type StepState struct {
 	Error      string `json:"error,omitempty"`
 }
 
+// StepEvent is emitted during workflow execution for real-time step visibility.
+type StepEvent struct {
+	RunID    string        `json:"run_id"`
+	Index    int           `json:"index"`
+	Total    int           `json:"total"`
+	Tool     string        `json:"tool"`
+	Status   string        `json:"status"` // "running", "completed", "failed", "skipped", "stopped"
+	Duration time.Duration `json:"-"`
+	DurMs    int64         `json:"duration_ms,omitempty"`
+	Output   string        `json:"output,omitempty"`
+	Error    string        `json:"error,omitempty"`
+}
+
 // WorkflowProvider executes workflow tool types.
 type WorkflowProvider struct {
 	executor WorkflowExecutor
 	steps    map[string][]WorkflowStep
 	verbose  bool
+	OnStep   func(workflowName string, event StepEvent) // optional callback for real-time step updates
 }
 
 // NewWorkflowProvider creates a workflow provider.
@@ -90,6 +104,13 @@ func (p *WorkflowProvider) RemoveWorkflow(toolName string) {
 
 func (p *WorkflowProvider) Setup() error    { return nil }
 func (p *WorkflowProvider) Teardown() error { return nil }
+
+func (p *WorkflowProvider) emitStep(name string, ev StepEvent) {
+	ev.DurMs = ev.Duration.Milliseconds()
+	if p.OnStep != nil {
+		p.OnStep(name, ev)
+	}
+}
 
 // Execute runs a workflow's steps sequentially.
 func (p *WorkflowProvider) Execute(toolName string, params map[string]string) (*Result, error) {
@@ -158,6 +179,7 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 			if p.verbose {
 				fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s stopped    (require: %s)\n", i+1, len(steps), step.Tool, step.Require)
 			}
+			p.emitStep(toolName, StepEvent{RunID: runID, Index: i + 1, Total: len(steps), Tool: step.Tool, Status: "stopped"})
 			state.Result = truncateForState(lastOutput)
 			p.saveState(state)
 			state.Result = lastOutput
@@ -170,6 +192,7 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 			if p.verbose {
 				fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s skipped    (if: %s)\n", i+1, len(steps), step.Tool, step.If)
 			}
+			p.emitStep(toolName, StepEvent{RunID: runID, Index: i + 1, Total: len(steps), Tool: step.Tool, Status: "skipped"})
 			continue
 		}
 
@@ -185,6 +208,7 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 					if p.verbose {
 						fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s running... (switch → %s)\n", i+1, len(steps), c.Tool, c.Condition)
 					}
+					p.emitStep(toolName, StepEvent{RunID: runID, Index: i + 1, Total: len(steps), Tool: c.Tool, Status: "running"})
 
 					resolvedParams := make(map[string]string, len(c.Params))
 					for k, v := range c.Params {
@@ -204,6 +228,7 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 						for j := i + 1; j < len(steps); j++ {
 							state.Steps[j].Status = "skipped"
 						}
+						p.emitStep(toolName, StepEvent{RunID: runID, Index: i + 1, Total: len(steps), Tool: c.Tool, Status: "failed", Duration: duration, Error: err.Error()})
 						p.saveState(state)
 						return &Result{Output: marshalState(state), Error: state.Error},
 							fmt.Errorf("workflow %q failed at step %d switch (%s): %w", toolName, i+1, c.Tool, err)
@@ -223,6 +248,7 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 					if p.verbose {
 						fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s completed  %s\n", i+1, len(steps), c.Tool, duration.Truncate(time.Millisecond))
 					}
+					p.emitStep(toolName, StepEvent{RunID: runID, Index: i + 1, Total: len(steps), Tool: c.Tool, Status: "completed", Duration: duration, Output: truncateForState(output)})
 					p.saveState(state)
 					break
 				}
@@ -245,6 +271,7 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 		if p.verbose {
 			fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s running...\n", i+1, len(steps), step.Tool)
 		}
+		p.emitStep(toolName, StepEvent{RunID: runID, Index: i + 1, Total: len(steps), Tool: step.Tool, Status: "running"})
 
 		// Substitute variables in step params
 		resolvedParams := make(map[string]string, len(step.Params))
@@ -272,6 +299,7 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 			if p.verbose {
 				fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s failed     %s\n", i+1, len(steps), step.Tool, err)
 			}
+			p.emitStep(toolName, StepEvent{RunID: runID, Index: i + 1, Total: len(steps), Tool: step.Tool, Status: "failed", Duration: duration, Error: err.Error()})
 
 			p.saveState(state)
 			return &Result{
@@ -297,6 +325,7 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 		if p.verbose {
 			fmt.Fprintf(os.Stderr, "[workflow]   %d/%d %-25s completed  %s\n", i+1, len(steps), step.Tool, duration.Truncate(time.Millisecond))
 		}
+		p.emitStep(toolName, StepEvent{RunID: runID, Index: i + 1, Total: len(steps), Tool: step.Tool, Status: "completed", Duration: duration, Output: truncateForState(output)})
 
 		p.saveState(state)
 	}

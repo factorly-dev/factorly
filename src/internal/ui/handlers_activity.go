@@ -9,43 +9,67 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/factorly-dev/factorly/internal/provider"
 	"github.com/factorly-dev/factorly/internal/proxy"
 )
 
-// ActivityBroadcaster fans out proxy CallEvents to all connected SSE clients.
+// activityEvent wraps either a CallEvent or a StepEvent for the SSE stream.
+type activityEvent struct {
+	Type string // "call" or "workflow_step"
+	Call *proxy.CallEvent
+	Step *stepEventData
+}
+
+type stepEventData struct {
+	Workflow string `json:"workflow"`
+	provider.StepEvent
+}
+
+// ActivityBroadcaster fans out proxy CallEvents and workflow step events to all connected SSE clients.
 type ActivityBroadcaster struct {
 	mu      sync.Mutex
-	clients map[chan proxy.CallEvent]bool
+	clients map[chan activityEvent]bool
 }
 
 func NewActivityBroadcaster() *ActivityBroadcaster {
 	return &ActivityBroadcaster{
-		clients: make(map[chan proxy.CallEvent]bool),
+		clients: make(map[chan activityEvent]bool),
 	}
 }
 
-// Broadcast sends an event to all connected clients.
+// Broadcast sends a call event to all connected clients.
 func (b *ActivityBroadcaster) Broadcast(e proxy.CallEvent) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for ch := range b.clients {
 		select {
-		case ch <- e:
+		case ch <- activityEvent{Type: "call", Call: &e}:
 		default:
-			// Client too slow, skip
 		}
 	}
 }
 
-func (b *ActivityBroadcaster) subscribe() chan proxy.CallEvent {
-	ch := make(chan proxy.CallEvent, 32)
+// BroadcastStep sends a workflow step event to all connected clients.
+func (b *ActivityBroadcaster) BroadcastStep(workflow string, e provider.StepEvent) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for ch := range b.clients {
+		select {
+		case ch <- activityEvent{Type: "workflow_step", Step: &stepEventData{Workflow: workflow, StepEvent: e}}:
+		default:
+		}
+	}
+}
+
+func (b *ActivityBroadcaster) subscribe() chan activityEvent {
+	ch := make(chan activityEvent, 32)
 	b.mu.Lock()
 	b.clients[ch] = true
 	b.mu.Unlock()
 	return ch
 }
 
-func (b *ActivityBroadcaster) unsubscribe(ch chan proxy.CallEvent) {
+func (b *ActivityBroadcaster) unsubscribe(ch chan activityEvent) {
 	b.mu.Lock()
 	delete(b.clients, ch)
 	b.mu.Unlock()
@@ -77,22 +101,32 @@ func (s *Server) handleActivityStream(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			return
-		case event, ok := <-ch:
+		case ae, ok := <-ch:
 			if !ok {
 				return
 			}
-			data, _ := json.Marshal(map[string]any{
-				"timestamp":   event.Timestamp.Format("15:04:05"),
-				"tool":        event.Tool,
-				"status":      event.Status,
-				"duration_ms": event.DurationMs,
-				"shadow":      event.ShadowAction,
-				"agent_id":    event.AgentID,
-				"error":       event.Error,
-				"output":      event.Output,
-				"params":      event.Params,
-			})
-			fmt.Fprintf(w, "data: %s\n\n", data)
+			var eventType string
+			var data []byte
+			switch ae.Type {
+			case "workflow_step":
+				eventType = "workflow_step"
+				data, _ = json.Marshal(ae.Step)
+			default:
+				eventType = "call"
+				e := ae.Call
+				data, _ = json.Marshal(map[string]any{
+					"timestamp":   e.Timestamp.Format("15:04:05"),
+					"tool":        e.Tool,
+					"status":      e.Status,
+					"duration_ms": e.DurationMs,
+					"shadow":      e.ShadowAction,
+					"agent_id":    e.AgentID,
+					"error":       e.Error,
+					"output":      e.Output,
+					"params":      e.Params,
+				})
+			}
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data)
 			flusher.Flush()
 		}
 	}

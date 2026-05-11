@@ -49,18 +49,13 @@ func (b *ConfirmBroker) Request(ctx context.Context, toolName string, params map
 
 	b.mu.Lock()
 	b.pending[id] = req
-	// Broadcast to all SSE listeners
-	for ch := range b.subscribers {
-		select {
-		case ch <- struct{}{}:
-		default:
-		}
-	}
+	b.notifyLocked()
 	b.mu.Unlock()
 
 	defer func() {
 		b.mu.Lock()
 		delete(b.pending, id)
+		b.notifyLocked()
 		b.mu.Unlock()
 	}()
 
@@ -69,6 +64,16 @@ func (b *ConfirmBroker) Request(ctx context.Context, toolName string, params map
 		return approved
 	case <-ctx.Done():
 		return false
+	}
+}
+
+// notifyLocked wakes all SSE subscribers. Caller must hold b.mu.
+func (b *ConfirmBroker) notifyLocked() {
+	for ch := range b.subscribers {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
 	}
 }
 

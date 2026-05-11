@@ -356,12 +356,85 @@
         </span>
       </form>
 
+      <div id="run-steps" class="mt-4 hidden">
+        <div class="text-[10px] font-medium text-gray-400 uppercase mb-1.5">Running</div>
+        <div id="run-steps-list" class="space-y-1 border border-gray-200 rounded p-2 bg-gray-50"></div>
+      </div>
+
       <div id="run-result" class="mt-4"></div>
     </div>
   </div>
 </div>
 
 <script src="/static/workflow.js"></script>
+<script>
+(function() {
+  var WORKFLOW_NAME = "{{.Name}}";
+  var stepsBox = document.getElementById('run-steps');
+  var stepsList = document.getElementById('run-steps-list');
+
+  // Reset live-steps area when the Run form is submitted
+  document.body.addEventListener('htmx:beforeRequest', function(e) {
+    if (e.detail.elt && e.detail.elt.matches('form[hx-post="/workflows/' + WORKFLOW_NAME + '/run"]')) {
+      stepsList.innerHTML = '';
+      stepsBox.classList.remove('hidden');
+    }
+  });
+  // Hide live-steps once final result swaps in
+  document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (e.detail.target && e.detail.target.id === 'run-result') {
+      stepsBox.classList.add('hidden');
+    }
+  });
+
+  function statusBadge(status) {
+    var cls = 'bg-gray-100 text-gray-500', icon = '…';
+    if (status === 'completed') { cls = 'bg-green-100 text-green-700'; icon = '✓'; }
+    else if (status === 'failed') { cls = 'bg-red-100 text-red-700'; icon = '✗'; }
+    else if (status === 'skipped' || status === 'stopped') { cls = 'bg-gray-100 text-gray-400'; icon = '–'; }
+    else if (status === 'running') { cls = 'bg-indigo-100 text-indigo-700'; icon = '●'; }
+    return '<span class="inline-flex items-center justify-center w-4 h-4 rounded-full ' + cls + ' text-[9px] font-bold">' + icon + '</span>';
+  }
+
+  function renderStep(data) {
+    if (data.workflow !== WORKFLOW_NAME) return;
+    stepsBox.classList.remove('hidden');
+
+    var key = 'step-' + data.run_id + '-' + data.index;
+    var row = document.getElementById(key);
+    var dur = data.duration_ms ? '<span class="font-mono text-[10px] text-gray-400">' + data.duration_ms + 'ms</span>' : '';
+    var err = data.error ? '<div class="mt-1 text-[10px] text-red-600 font-mono">' + escapeHtml(data.error) + '</div>' : '';
+    var html =
+      '<div class="flex items-center gap-2 text-xs">' +
+        statusBadge(data.status) +
+        '<span class="text-gray-400 font-mono text-[10px]">' + data.index + '/' + data.total + '</span>' +
+        '<span class="font-mono text-gray-700 flex-1 truncate">' + escapeHtml(data.tool) + '</span>' +
+        '<span class="text-[10px] text-gray-400">' + data.status + '</span>' +
+        dur +
+      '</div>' + err;
+
+    if (row) {
+      row.innerHTML = html;
+    } else {
+      row = document.createElement('div');
+      row.id = key;
+      row.innerHTML = html;
+      stepsList.appendChild(row);
+    }
+  }
+
+  function _connectRunStream() {
+    if (window._activitySSE && window._activitySSE.readyState !== EventSource.CLOSED) {
+      window._activitySSE.addEventListener('workflow_step', function(ev) {
+        try { renderStep(JSON.parse(ev.data)); } catch(e) {}
+      });
+    } else {
+      setTimeout(_connectRunStream, 200);
+    }
+  }
+  _connectRunStream();
+})();
+</script>
 <script>
 function addWorkflowParam() {
   const list = document.getElementById('wf-params-list');

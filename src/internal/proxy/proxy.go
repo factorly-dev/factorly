@@ -45,6 +45,14 @@ func (p *Proxy) SetOnCall(fn func(CallEvent)) {
 	p.onCall = fn
 }
 
+// SetOnWorkflowStep sets a callback for real-time workflow step events.
+// Finds the workflow provider and sets its OnStep callback.
+func (p *Proxy) SetOnWorkflowStep(fn func(workflow string, event provider.StepEvent)) {
+	if wp, ok := p.providers["workflow"].(*provider.WorkflowProvider); ok {
+		wp.OnStep = fn
+	}
+}
+
 // CallEvent is emitted after each tool call for live activity feeds.
 type CallEvent struct {
 	Timestamp    time.Time

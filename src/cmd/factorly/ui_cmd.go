@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/factorly-dev/factorly/internal/provider"
 	"github.com/factorly-dev/factorly/internal/proxy"
 	factorlyServer "github.com/factorly-dev/factorly/internal/server"
 	"github.com/factorly-dev/factorly/internal/shadow"
@@ -140,6 +141,9 @@ func runUI(cmd *cobra.Command, args []string) error {
 	activity := ui.NewActivityBroadcaster()
 	p.SetOnCall(func(e proxy.CallEvent) {
 		activity.Broadcast(e)
+	})
+	p.SetOnWorkflowStep(func(workflow string, ev provider.StepEvent) {
+		activity.BroadcastStep(workflow, ev)
 	})
 
 	srv, err := ui.New(ui.Options{

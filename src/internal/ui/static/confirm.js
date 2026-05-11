@@ -91,8 +91,22 @@
     startPolling();
   }
 
+  function showToast(msg) {
+    var t = document.createElement('div');
+    t.className = 'fixed bottom-4 right-4 z-50 px-3 py-2 bg-gray-800 text-white text-xs rounded shadow-lg';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function() { t.remove(); }, 2500);
+  }
+
   window.respondConfirm = function(id, action) {
-    fetch('/confirm/' + id + '/' + action, { method: 'POST' });
+    fetch('/confirm/' + id + '/' + action, { method: 'POST' })
+      .then(function(r) {
+        if (r.status === 404) {
+          showToast('Already resolved by another tab');
+        }
+      })
+      .catch(function() {});
     document.getElementById('confirm-modal').classList.add('hidden');
   };
 
