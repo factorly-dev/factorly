@@ -9,6 +9,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{if .Title}}{{.Title}} — {{end}}Factorly</title>
+  <link rel="icon" type="image/png" href="/static/logo.png">
   <script src="/static/tailwind.js"></script>
   <script src="/static/htmx.min.js"></script>
   <script src="/static/sse.js"></script>
@@ -32,7 +33,7 @@
   <nav class="bg-white border-b border-gray-200 px-4 py-3 flex items-center shrink-0">
     <div class="flex items-center gap-6 flex-1">
       <a href="/tools" class="flex items-center gap-2 font-bold text-lg text-gray-900">
-        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAAAQHRFWHRTb2Z0d2FyZQBSZWFsRmF2aWNvbkdlbmVyYXRvciAoaHR0cHM6Ly9yZWFsZmF2aWNvbmdlbmVyYXRvci5uZXQpmZlW4QAAAdlJREFUeF7t3EtuwlAQBVF7R+x/EywpHymzoAzcz5StHKQMm2tXcZuHQNm3bfv4+vOICOwEROR/Yglo+W8EEBATiOM1gICYQByvAQTEBOJ4DSAgJhDHawABMYE4XgMIiAnE8RpAQEwgjteA/y7g+Xxuj8cjxvA7ft+/X5vnP/IGEBB/J0wAAS/3jBV0/vr9M4EAAt5DwHuA9wDvAT4HvGfbvEyxgm66gt51Sjn7tXnbT8IELHppHF1BBBCwhIAVtATj8Sch4Di7JZMELMF4/EkIOM5uySQBSzAefxICjrNbMnlbAdO7v8rnCAKmJofzBAwBTscJmBIczhMwBDgdJ2BKcDhPwBDgdJyAKcHhPAFDgNNxAqYEh/O5gOH1336cgFghAQTEBOL4vAF+FeGHWWkHNCDFv/X/M84KsoLSDlhBKf4LrKD4/vP4vAE5gfgCCCAgJhDH5w1wDHUMTTugASn+CxxDrSArKO2AFZTiv8AKiu8/j88bkBOIL4AAAmICcXzeAMdQx9C0AxqQ4r/AMdQKsoLSDlhBKf4LrKD4/vP4vAE5gfgCCCAgJhDHawABMYE4XgMIiAnE8RpAQEwgjtcAAmICcbwGEBATiOM1gICYQByvAQTEBOL4T5888AHEhh/MAAAAAElFTkSuQmCC" alt="" class="w-6 h-6 rounded-full">
+        <img src="/static/logo.png" alt="" class="w-6 h-6 rounded">
         factorly
       </a>
       <a href="/tools" class="text-sm {{if eq .Nav "tools"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">Tools</a>

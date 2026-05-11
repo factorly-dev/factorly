@@ -112,6 +112,9 @@ func (s *Server) routes() {
 	// Static assets (embedded under static/ subdir)
 	staticSub, _ := fs.Sub(staticFS, "static")
 	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticSub)))
+	s.mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/static/logo.png", http.StatusMovedPermanently)
+	})
 
 	// Tools
 	s.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
