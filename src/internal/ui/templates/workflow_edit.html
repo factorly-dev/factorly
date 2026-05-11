@@ -64,6 +64,7 @@
                 <select name="wf_param_type_{{$i}}" class="w-20 px-2 py-1 text-xs border border-gray-200 rounded bg-white">
                   <option value="" {{if not $p.Type}}selected{{end}}>—</option>
                   <option value="string" {{if eq $p.Type "string"}}selected{{end}}>string</option>
+                  <option value="text" {{if eq $p.Type "text"}}selected{{end}}>text</option>
                   <option value="integer" {{if eq $p.Type "integer"}}selected{{end}}>integer</option>
                   <option value="number" {{if eq $p.Type "number"}}selected{{end}}>number</option>
                   <option value="boolean" {{if eq $p.Type "boolean"}}selected{{end}}>boolean</option>

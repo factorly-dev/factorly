@@ -88,7 +88,7 @@ tools:
         required: true
       - name: limit
         in: query
-        type: integer                # string (default), integer, number, boolean, json
+        type: integer                # string (default), text, integer, number, boolean, json
         default: 100                 # default value if not provided by caller
         min: 1                       # clamp to minimum (integers and numbers)
         max: 100                     # clamp to maximum (integers and numbers)
@@ -143,6 +143,39 @@ tools:
         args: [".items[:10]"]
         timeout: 5s
 
+```
+
+## Parameter types
+
+| Type | Description |
+|------|-------------|
+| `string` | Single-line text (default) |
+| `text` | Multi-line text — same as string at the protocol level, but renders as a textarea in the UI |
+| `integer` | Whole number — supports `min`/`max` clamping |
+| `number` | Decimal number — supports `min`/`max` clamping |
+| `boolean` | `true` or `false` |
+| `json` | Arbitrary JSON value |
+
+The `text` type is useful for parameters that accept long-form content like prompts, code snippets, or message bodies. It behaves identically to `string` in the MCP schema and execution — the difference is only in UI rendering (multiline textarea vs single-line input).
+
+```yaml
+tools:
+  summarize:
+    type: rest
+    base_url: https://api.openai.com/v1
+    method: POST
+    path: /chat/completions
+    auth:
+      type: bearer
+      token: "{{vault:OPENAI_KEY}}"
+    parameters:
+      - name: content
+        type: text           # renders as textarea in the UI
+        required: true
+        description: "Text to summarize"
+      - name: model
+        type: string
+        default: "gpt-4o"
 ```
 
 ## Secret references
