@@ -86,7 +86,7 @@ func Register(cfg *config.Config, opts Options) {
 		Description: "Copy text to the system clipboard (overseen, logged, confirmable)",
 		Shadow:      &config.ShadowConfig{Confirm: true},
 		Parameters: []config.ParamConfig{
-			{Name: "text", Description: "Text to copy to clipboard", Required: true},
+			{Name: "text", Type: "text", Description: "Text to copy to clipboard", Required: true},
 		},
 	})
 }

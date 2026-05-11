@@ -6,6 +6,8 @@ Factorly includes a built-in web interface for browsing, testing, and managing y
 factorly ui
 ```
 
+![Screenshot of Factorly UI](images/screenshot-templates.png)
+
 ## What you can do
 
 - **Browse tools** — see all configured tools grouped by prefix, with type badges (CLI, REST, MCP, Built-in, Workflow)

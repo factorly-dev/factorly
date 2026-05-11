@@ -17,34 +17,19 @@
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-informational)](docs/)
 
-**Stop giving your AI agents your API keys.** One command. All your tools. Credentials stay out of your agent's hands.
+**Build what your agent can do.**
+
+Define tools, compose workflows, test and run them.
+MCP servers, REST APIs, and CLI commands in one config, one UI, one audit log.
 
 </center>
 
-Factorly is a local runtime for agent tool chains. It proxies agent tool calls, injects credentials from an encrypted vault, enforces governance rules, and logs everything.
+Factorly is a local runtime for agent tool chains. It manages tool calls, injects credentials from an encrypted vault, enforces governance rules, and logs everything. Your agent sees workflows, tools, and data. Secrets stay secret.
 
-REST APIs, CLI commands, and MCP servers run through one config, one audit log, one set of rules.
-
-Your agent sees workflows, tool names, and data. Never secrets.
-
-```
-┌────────────┐       ┌────────────┐       ┌────────────┐
-│            │       │            │       │            │
-│ Your Agent │──────▶│  Factorly  │──────▶│ Your Tools │
-│            │       │            │       │            │
-└────────────┘       └────────────┘       └────────────┘
-  Sees:                Vault               REST APIs
-  - tool names         Governance          CLI commands
-  - workflows          Audit log           MCP servers
-  - data               Rate limits
-
-  Never sees:
-  - API keys
-  - tokens
-  - credentials
-```
+![Screenshot of Factorly UI](docs/images/screenshot.png)
 
 ---
+
 
 ## Install
 
@@ -69,126 +54,58 @@ factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
 
 # 3. Connect to your agent (auto-detects Claude Code, Cursor, Codex)
 factorly sync
+
+# 3. Optional, start the UI
+factorly ui
 ```
 
-The agent never sees your credentials. Factorly injected it, made the API call, logged it, and returned the data.
+Your agent connects to Factorly as a single MCP server or CLI and sees every tool you've configured. Credentials never leave the vault.
 
 ---
 
+## What It Does
+
+**Define** — one config, every protocol, [36 templates](docs/templates.md) included
+
+**Test** — Try tools in the [UI](docs/ui.md), see the response, iterate before giving your agent access
+
+**Compose** — [workflows](docs/workflows.md) with per-step policies, deterministic sequences
+
+**Govern** — [vault](docs/vault.md), [policies](docs/examples/10-deny-dangerous-operations.md), [audit log](docs/logging.md). Built in, not bolted on.
+
+```
+┌────────────┐       ┌────────────┐       ┌────────────┐
+│            │       │            │       │            │
+│ Your Agent │──────▶│  Factorly  │──────▶│ Your Tools │
+│            │       │            │       │            │
+└────────────┘       └────────────┘       └────────────┘
+  Sees:                Vault               REST APIs
+  - tool names         Governance          CLI commands
+  - workflows          Audit log           MCP servers
+  - data               Rate limits
+
+  Never sees:
+  - API keys
+  - tokens
+  - credentials
+```
+
 ---
-
-## Features
-
-MCP servers, REST APIs, CLI commands. One config, one endpoint, one audit log.
-
-Your agent connects to Factorly once and sees all its approved tools.
-
-### Encrypted vault
-
-Your API keys, OAuth tokens, and secrets live in Factorly's fully encrypted local vault, using AES-256-GCM with per-entry encryption. Keys stay on your device. The agent sees tool names and data — never secrets.
-
-```bash
-# Store a secret — encrypted on disk, decrypted on demand
-$ factorly vault set GITHUB_TOKEN
-  Enter value: ••••••••••••••••
-
-# Reference it in any tool config
-  token: "{{vault:GITHUB_TOKEN}}"
-
-# Your agent calls a tool — Factorly injects the secret
-  Agent sees: data
-  Agent never sees: ghp_xxxx...
-```
-
-### 36 templates
-
-Pre-built configs for GitHub, Slack, Stripe, Linear, Gmail, Notion, Jira, HubSpot, Salesforce, and more. One command installs. One command connects to Claude Code, Cursor, or Codex.
-
-```bash
-$ factorly tools import templates github
-$ factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
-$ factorly sync
-```
-
-### Wrap any MCP server
-
-Already using an MCP server? Wrap it with zero config:
-
-```bash
-$ factorly wrap -- npx @modelcontextprotocol/server-github
-```
-
-Same tools, same interface. Now every call is logged, output is compressed, loops are detected, and calls are rate-limited.
-
-### Workflows
-
-Chain tools into governed pipelines. Steps run sequentially with variable passing, conditional branching, and state persistence. One call replaces many.
-
-```yaml
-tools:
-  deploy.staging:
-    type: workflow
-    steps:
-      - tool: make.test
-        store: output
-      - tool: make.deploy
-        require: "contains(output, 'PASS')"
-      - switch:
-          - condition: "contains(output, 'PASS')"
-            tool: slack.post
-            params: { text: "✓ Deployed" }
-          - condition: "true"
-            tool: slack.post
-            params: { text: "✗ Deploy blocked — tests failed" }
-```
-
-`if:` skips steps. `require:` stops the workflow. `switch:` branches. Full [expression language](docs/expressions.md) with comparisons, boolean logic, `contains()`, and `jsonpath()`. Every step is individually logged and governed.
-
-### Oversight
-
-Block destructive operations. Require confirmation before writes. Rate-limit calls. Loop detection is always on — Factorly fingerprints identical calls and blocks runaway agents after 12 repeats.
-
-```yaml
-shadow:
-  deny: [delete_repository, delete_branch]
-  confirm: [merge_pull_request, create_release]
-  rate_limit: 100/hour
-```
-
-Built-in tools block dangerous patterns like `rm -rf`, `curl | sh`, and `DROP TABLE` out of the box. Write and delete templates ship with `confirm: true` by default.
-
-```bash
-# Agent tries to run a destructive command
-$ factorly call shell --command "rm -rf /"
-  ✗ blocked: command matches deny pattern "rm -rf"
-
-# Logged and denied. The command never executed.
-```
-
-### Audit trail
-
-Every tool call logged: who called what, when, with what parameters, what was returned, what was blocked. Per-agent identity tracking for multi-agent setups.
-
-```bash
-$ factorly logs --tool github --status blocked
-$ factorly logs -f    # follow in real time
-```
-
-### Output compression
-
-Agent tools return too much data. Factorly compresses JSON, deduplicates log output, filters command-specific noise, and truncates to head + tail — saving tokens without losing signal. 27 built-in filters for common commands (git, make, npm, go, cargo, pytest, pip, docker, kubectl, terraform, and more) apply automatically. Savings tracked per-call in the audit log.
 
 ## Docs
 
-- [Installation](docs/getting-started.md)
+- [Getting Started](docs/getting-started.md)
 - [Configuration](docs/config-reference.md)
 - [CLI Reference](docs/cli-reference.md)
+- [Web UI](docs/ui.md)
 - [Workflows](docs/workflows.md)
 - [Expressions](docs/expressions.md)
 - [Output Filters](docs/filters.md)
-- [OAuth Setup](docs/oauth.md)
-- [Audit Logging](docs/logging.md)
-- [Template Library](docs/templates.md)
+- [Templates](docs/templates.md)
+- [Vault](docs/vault.md)
+- [OAuth](docs/oauth.md)
+- [Logging](docs/logging.md)
+- [OpenAPI Import](docs/openapi-import.md)
 - [Examples](docs/examples/)
 
 ## License
