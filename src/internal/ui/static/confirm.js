@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: gpl
 
 // Confirm modal — SSE stream for shadow confirm prompts with polling fallback
+// Guard against hx-boost re-execution: state lives on window, not in the IIFE.
 (function() {
-  var sse = null;
-  var pollTimer = null;
-  var reconnectTimer = null;
+  if (window._confirmInit) return;
+  window._confirmInit = true;
+  window._confirmSSE = null;
+  window._confirmPollTimer = null;
+  window._confirmReconnectTimer = null;
   var reconnectDelay = 1000;
 
   function renderConfirm(pending) {
@@ -46,16 +49,29 @@
   }
 
   function startPolling() {
-    if (pollTimer) return;
-    // Always poll as a safety net — catches prompts even if SSE is broken
-    pollTimer = setInterval(pollPending, 2000);
+    if (window._confirmPollTimer) return;
+    // Fallback only — runs when SSE is unavailable
+    window._confirmPollTimer = setInterval(pollPending, 2000);
+  }
+
+  function stopPolling() {
+    if (window._confirmPollTimer) {
+      clearInterval(window._confirmPollTimer);
+      window._confirmPollTimer = null;
+    }
   }
 
   function connectSSE() {
-    if (sse && sse.readyState !== EventSource.CLOSED) return;
+    if (window._confirmSSE && window._confirmSSE.readyState !== EventSource.CLOSED) return;
 
-    sse = new EventSource('/confirm/stream');
+    var sse = new EventSource('/confirm/stream');
+    window._confirmSSE = sse;
     reconnectDelay = 1000;
+
+    sse.onopen = function() {
+      // SSE is live — no need to poll
+      stopPolling();
+    };
 
     sse.onmessage = function(event) {
       try {
@@ -66,7 +82,9 @@
 
     sse.onerror = function() {
       if (sse.readyState === EventSource.CLOSED) {
-        sse = null;
+        window._confirmSSE = null;
+        // Resume polling while we're disconnected
+        startPolling();
         scheduleReconnect();
       }
       // If CONNECTING, EventSource is auto-reconnecting — do nothing
@@ -74,20 +92,19 @@
   }
 
   function scheduleReconnect() {
-    if (reconnectTimer) return;
-    reconnectTimer = setTimeout(function() {
-      reconnectTimer = null;
+    if (window._confirmReconnectTimer) return;
+    window._confirmReconnectTimer = setTimeout(function() {
+      window._confirmReconnectTimer = null;
       connectSSE();
     }, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 2, 15000);
   }
 
   function init() {
-    connectSSE();
     // Immediate check for anything pending right now
     pollPending();
-    // Always keep polling as a fallback — SSE provides instant updates,
-    // polling catches anything SSE misses (disconnects, races, etc.)
+    connectSSE();
+    // Poll until SSE opens; onopen will stop polling, onerror will resume it.
     startPolling();
   }
 

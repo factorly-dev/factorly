@@ -369,23 +369,9 @@
 <script src="/static/workflow.js"></script>
 <script>
 (function() {
-  var WORKFLOW_NAME = "{{.Name}}";
-  var stepsBox = document.getElementById('run-steps');
-  var stepsList = document.getElementById('run-steps-list');
-
-  // Reset live-steps area when the Run form is submitted
-  document.body.addEventListener('htmx:beforeRequest', function(e) {
-    if (e.detail.elt && e.detail.elt.matches('form[hx-post="/workflows/' + WORKFLOW_NAME + '/run"]')) {
-      stepsList.innerHTML = '';
-      stepsBox.classList.remove('hidden');
-    }
-  });
-  // Hide live-steps once final result swaps in
-  document.body.addEventListener('htmx:afterSwap', function(e) {
-    if (e.detail.target && e.detail.target.id === 'run-result') {
-      stepsBox.classList.add('hidden');
-    }
-  });
+  // Current workflow name — read fresh on each event so navigating
+  // between workflows doesn't accumulate stale closures.
+  window._currentWorkflow = "{{.Name}}";
 
   function statusBadge(status) {
     var cls = 'bg-gray-100 text-gray-500', icon = '…';
@@ -397,7 +383,10 @@
   }
 
   function renderStep(data) {
-    if (data.workflow !== WORKFLOW_NAME) return;
+    if (data.workflow !== window._currentWorkflow) return;
+    var stepsBox = document.getElementById('run-steps');
+    var stepsList = document.getElementById('run-steps-list');
+    if (!stepsBox || !stepsList) return;
     stepsBox.classList.remove('hidden');
 
     var key = 'step-' + data.run_id + '-' + data.index;
@@ -423,16 +412,36 @@
     }
   }
 
-  function _connectRunStream() {
-    if (window._activitySSE && window._activitySSE.readyState !== EventSource.CLOSED) {
-      window._activitySSE.addEventListener('workflow_step', function(ev) {
-        try { renderStep(JSON.parse(ev.data)); } catch(e) {}
-      });
-    } else {
-      setTimeout(_connectRunStream, 200);
-    }
+  // Install global listeners exactly once per page lifetime.
+  if (!window._workflowRunInit) {
+    window._workflowRunInit = true;
+
+    document.body.addEventListener('htmx:beforeRequest', function(e) {
+      var name = window._currentWorkflow;
+      if (e.detail.elt && e.detail.elt.matches('form[hx-post="/workflows/' + name + '/run"]')) {
+        var stepsBox = document.getElementById('run-steps');
+        var stepsList = document.getElementById('run-steps-list');
+        if (stepsList) stepsList.innerHTML = '';
+        if (stepsBox) stepsBox.classList.remove('hidden');
+      }
+    });
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+      if (e.detail.target && e.detail.target.id === 'run-result') {
+        var stepsBox = document.getElementById('run-steps');
+        if (stepsBox) stepsBox.classList.add('hidden');
+      }
+    });
+
+    (function connectRunStream() {
+      if (window._activitySSE && window._activitySSE.readyState !== EventSource.CLOSED) {
+        window._activitySSE.addEventListener('workflow_step', function(ev) {
+          try { renderStep(JSON.parse(ev.data)); } catch(e) {}
+        });
+      } else {
+        setTimeout(connectRunStream, 200);
+      }
+    })();
   }
-  _connectRunStream();
 })();
 </script>
 <script>
