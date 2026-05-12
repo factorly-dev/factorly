@@ -264,18 +264,18 @@ func Load(path string) (*Config, error) {
 				}
 			}
 		}
-		// Also scan .factorly/packs/ for installed packs.
-		packsSubDir := filepath.Join(configDir, "packs")
-		if info, err := os.Stat(packsSubDir); err == nil && info.IsDir() {
-			vlog("loading pack files from %s", packsSubDir)
-			packsCfg, err := loadDir(packsSubDir)
+		// Also scan .factorly/blueprints/ for installed blueprints.
+		blueprintsSubDir := filepath.Join(configDir, "blueprints")
+		if info, err := os.Stat(blueprintsSubDir); err == nil && info.IsDir() {
+			vlog("loading blueprint files from %s", blueprintsSubDir)
+			bpCfg, err := loadDir(blueprintsSubDir)
 			if err != nil {
 				return nil, err
 			}
-			if len(packsCfg.Tools) > 0 {
-				vlog("  found %d tools in %s", len(packsCfg.Tools), packsSubDir)
+			if len(bpCfg.Tools) > 0 {
+				vlog("  found %d tools in %s", len(bpCfg.Tools), blueprintsSubDir)
 			}
-			if err := mergeConfigs(&cfg, packsCfg, packsSubDir); err != nil {
+			if err := mergeConfigs(&cfg, bpCfg, blueprintsSubDir); err != nil {
 				return nil, err
 			}
 		}
@@ -516,18 +516,18 @@ func mergeProjectDir(cfg *Config, baseDir string) error {
 		}
 	}
 
-	// Also scan .factorly/packs/ for installed packs.
-	packsSubDir := filepath.Join(projectDir, "packs")
-	if info, err := os.Stat(packsSubDir); err == nil && info.IsDir() {
-		vlog("loading pack files from %s", packsSubDir)
-		packsCfg, err := loadDir(packsSubDir)
+	// Also scan .factorly/blueprints/ for installed blueprints.
+	blueprintsSubDir := filepath.Join(projectDir, "blueprints")
+	if info, err := os.Stat(blueprintsSubDir); err == nil && info.IsDir() {
+		vlog("loading blueprint files from %s", blueprintsSubDir)
+		bpCfg, err := loadDir(blueprintsSubDir)
 		if err != nil {
 			return err
 		}
-		if len(packsCfg.Tools) > 0 {
-			vlog("  found %d tools in %s", len(packsCfg.Tools), packsSubDir)
+		if len(bpCfg.Tools) > 0 {
+			vlog("  found %d tools in %s", len(bpCfg.Tools), blueprintsSubDir)
 		}
-		if err := mergeConfigs(cfg, packsCfg, packsSubDir); err != nil {
+		if err := mergeConfigs(cfg, bpCfg, blueprintsSubDir); err != nil {
 			return err
 		}
 	}
@@ -695,7 +695,7 @@ func validate(cfg *Config) error {
 // Checks:
 //   - Every workflow step's tool reference resolves to either a configured
 //     tool or a builtin.
-//   - Aggregate Requires (from packs) are satisfied by the merged config.
+//   - Aggregate Requires (from blueprints) are satisfied by the merged config.
 //
 // builtinTools is a set of tool names registered by the builtins package.
 // Pass nil if no builtins are registered — references to anything not in

@@ -12,17 +12,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/factorly-dev/factorly/internal/blueprints"
 	"github.com/factorly-dev/factorly/internal/config"
-	"github.com/factorly-dev/factorly/internal/packs"
 )
 
-// writePackOnDisk writes a YAML pack file in the test's temp dir and returns
-// its absolute path. The caller passes that path to /packs/preview or
-// /packs/install as the "source" field.
-func writePackOnDisk(t *testing.T, content string) string {
+// writeBlueprintOnDisk writes a YAML pack file in the test's temp dir and returns
+// its absolute path. The caller passes that path to /blueprints/preview or
+// /blueprints/install as the "source" field.
+func writeBlueprintOnDisk(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "pack.yaml")
+	path := filepath.Join(dir, "blueprint.yaml")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -43,9 +43,9 @@ func postJSON(t *testing.T, srv *Server, path string, body any) (*httptest.Respo
 	return rec, resp
 }
 
-func TestPackPreviewHappyPath(t *testing.T) {
+func TestBlueprintPreviewHappyPath(t *testing.T) {
 	srv, _ := testServerWithProxy(t, nil)
-	pack := writePackOnDisk(t, `
+	pack := writeBlueprintOnDisk(t, `
 name: previewable
 version: 0.1
 description: testing preview
@@ -55,7 +55,7 @@ tools:
     command: echo
     description: t
 `)
-	rec, resp := postJSON(t, srv, "/packs/preview", previewRequest{Source: pack})
+	rec, resp := postJSON(t, srv, "/blueprints/preview", previewRequest{Source: pack})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
@@ -73,9 +73,9 @@ tools:
 	}
 }
 
-func TestPackPreviewMissingSource(t *testing.T) {
+func TestBlueprintPreviewMissingSource(t *testing.T) {
 	srv, _ := testServerWithProxy(t, nil)
-	rec, resp := postJSON(t, srv, "/packs/preview", previewRequest{Source: ""})
+	rec, resp := postJSON(t, srv, "/blueprints/preview", previewRequest{Source: ""})
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
@@ -84,9 +84,9 @@ func TestPackPreviewMissingSource(t *testing.T) {
 	}
 }
 
-func TestPackPreviewBadSource(t *testing.T) {
+func TestBlueprintPreviewBadSource(t *testing.T) {
 	srv, _ := testServerWithProxy(t, nil)
-	rec, resp := postJSON(t, srv, "/packs/preview", previewRequest{Source: "/no/such/file.yaml"})
+	rec, resp := postJSON(t, srv, "/blueprints/preview", previewRequest{Source: "/no/such/file.yaml"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (errors come back in body)", rec.Code)
 	}
@@ -95,9 +95,9 @@ func TestPackPreviewBadSource(t *testing.T) {
 	}
 }
 
-func TestPackInstallWritesFileAndReloads(t *testing.T) {
+func TestBlueprintInstallWritesFileAndReloads(t *testing.T) {
 	srv, cfgPath := testServerWithProxy(t, nil)
-	pack := writePackOnDisk(t, `
+	pack := writeBlueprintOnDisk(t, `
 name: install-me
 tools:
   installed.tool:
@@ -106,7 +106,7 @@ tools:
     description: t
 `)
 
-	rec, resp := postJSON(t, srv, "/packs/install", installRequest{Source: pack})
+	rec, resp := postJSON(t, srv, "/blueprints/install", installRequest{Source: pack})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
@@ -114,10 +114,10 @@ tools:
 		t.Fatalf("unexpected error: %s", resp.Error)
 	}
 
-	// Pack file should now exist on disk.
-	packFile := filepath.Join(filepath.Dir(cfgPath), ".factorly", "packs", "install-me.yaml")
-	if _, err := os.Stat(packFile); err != nil {
-		t.Fatalf("expected pack file at %s: %v", packFile, err)
+	// Blueprint file should now exist on disk.
+	blueprintFile := filepath.Join(filepath.Dir(cfgPath), ".factorly", "blueprints", "install-me.yaml")
+	if _, err := os.Stat(blueprintFile); err != nil {
+		t.Fatalf("expected blueprint file at %s: %v", blueprintFile, err)
 	}
 
 	// Server's live config should now include the new tool (reload happened).
@@ -126,9 +126,9 @@ tools:
 	}
 }
 
-func TestPackInstallWritesVaultValues(t *testing.T) {
+func TestBlueprintInstallWritesVaultValues(t *testing.T) {
 	srv, _ := testServerWithProxy(t, nil)
-	pack := writePackOnDisk(t, `
+	pack := writeBlueprintOnDisk(t, `
 name: needs-keys
 requires:
   vault_keys:
@@ -140,7 +140,7 @@ tools:
     description: t
 `)
 
-	rec, resp := postJSON(t, srv, "/packs/install", installRequest{
+	rec, resp := postJSON(t, srv, "/blueprints/install", installRequest{
 		Source:      pack,
 		VaultValues: map[string]string{"MY_KEY": "my-value"},
 	})
@@ -161,9 +161,9 @@ tools:
 	}
 }
 
-func TestPackInstallSkipsBlankVaultValues(t *testing.T) {
+func TestBlueprintInstallSkipsBlankVaultValues(t *testing.T) {
 	srv, _ := testServerWithProxy(t, nil)
-	pack := writePackOnDisk(t, `
+	pack := writeBlueprintOnDisk(t, `
 name: skip-blank
 requires:
   vault_keys:
@@ -175,7 +175,7 @@ tools:
     description: t
 `)
 
-	_, resp := postJSON(t, srv, "/packs/install", installRequest{
+	_, resp := postJSON(t, srv, "/blueprints/install", installRequest{
 		Source:      pack,
 		VaultValues: map[string]string{"OPTIONAL_KEY": ""},
 	})
@@ -188,7 +188,7 @@ tools:
 	}
 }
 
-func TestPackInstallReportsConflictError(t *testing.T) {
+func TestBlueprintInstallReportsConflictError(t *testing.T) {
 	// Pre-populate the server with a tool the pack will collide with.
 	cfg := &config.Config{
 		Tools: map[string]config.ToolConfig{
@@ -196,7 +196,7 @@ func TestPackInstallReportsConflictError(t *testing.T) {
 		},
 	}
 	srv, _ := testServerWithProxy(t, cfg)
-	// The on-disk config also needs the tool for packs.Install's view.
+	// The on-disk config also needs the tool for blueprints.Install's view.
 	_ = os.WriteFile(srv.cfgPath, []byte(`
 tools:
   shared.tool:
@@ -205,7 +205,7 @@ tools:
     description: existing
 `), 0o644)
 
-	pack := writePackOnDisk(t, `
+	pack := writeBlueprintOnDisk(t, `
 name: conflicty
 tools:
   shared.tool:
@@ -214,7 +214,7 @@ tools:
     description: new
 `)
 
-	rec, resp := postJSON(t, srv, "/packs/install", installRequest{Source: pack})
+	rec, resp := postJSON(t, srv, "/blueprints/install", installRequest{Source: pack})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
 	}
@@ -226,13 +226,13 @@ tools:
 	}
 }
 
-func TestPackPreviewReportsAlreadyInstalled(t *testing.T) {
+func TestBlueprintPreviewReportsAlreadyInstalled(t *testing.T) {
 	srv, _ := testServerWithProxy(t, nil)
-	pack := writePackOnDisk(t, "name: already-here\ntools: {}\n")
+	pack := writeBlueprintOnDisk(t, "name: already-here\ntools: {}\n")
 
 	// First install via the in-package API (not the handler) to bypass the
 	// reload path noise.
-	if _, err := packs.Install(packs.InstallOptions{
+	if _, err := blueprints.Install(blueprints.InstallOptions{
 		Source:  pack,
 		CfgPath: srv.cfgPath,
 	}); err != nil {
@@ -241,7 +241,7 @@ func TestPackPreviewReportsAlreadyInstalled(t *testing.T) {
 
 	// Now preview the same pack — should report already-installed without an
 	// error so the UI can render the preview cleanly.
-	rec, resp := postJSON(t, srv, "/packs/preview", previewRequest{Source: pack})
+	rec, resp := postJSON(t, srv, "/blueprints/preview", previewRequest{Source: pack})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
 	}
@@ -253,11 +253,11 @@ func TestPackPreviewReportsAlreadyInstalled(t *testing.T) {
 	}
 }
 
-func TestPackUninstallRemovesFileAndReloads(t *testing.T) {
+func TestBlueprintUninstallRemovesFileAndReloads(t *testing.T) {
 	srv, cfgPath := testServerWithProxy(t, nil)
 
 	// Install via the handler so registry state matches an install flow.
-	pack := writePackOnDisk(t, `
+	pack := writeBlueprintOnDisk(t, `
 name: removable
 tools:
   rm.tool:
@@ -265,24 +265,24 @@ tools:
     command: echo
     description: t
 `)
-	if rec, resp := postJSON(t, srv, "/packs/install", installRequest{Source: pack}); rec.Code != http.StatusOK || resp.Error != "" {
+	if rec, resp := postJSON(t, srv, "/blueprints/install", installRequest{Source: pack}); rec.Code != http.StatusOK || resp.Error != "" {
 		t.Fatalf("install failed: status=%d err=%q", rec.Code, resp.Error)
 	}
 
-	req := httptest.NewRequest(http.MethodDelete, "/packs/removable", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/blueprints/removable", nil)
 	rec := httptest.NewRecorder()
 	srv.mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d; body=%s", rec.Code, rec.Body.String())
 	}
-	if rec.Header().Get("HX-Redirect") != "/packs" {
-		t.Errorf("expected HX-Redirect: /packs, got %q", rec.Header().Get("HX-Redirect"))
+	if rec.Header().Get("HX-Redirect") != "/blueprints" {
+		t.Errorf("expected HX-Redirect: /blueprints, got %q", rec.Header().Get("HX-Redirect"))
 	}
 
-	// Pack file should be gone.
-	packFile := filepath.Join(filepath.Dir(cfgPath), ".factorly", "packs", "removable.yaml")
-	if _, err := os.Stat(packFile); err == nil {
-		t.Fatal("pack file should be removed")
+	// Blueprint file should be gone.
+	blueprintFile := filepath.Join(filepath.Dir(cfgPath), ".factorly", "blueprints", "removable.yaml")
+	if _, err := os.Stat(blueprintFile); err == nil {
+		t.Fatal("blueprint file should be removed")
 	}
 
 	// Live config should no longer have the tool.
@@ -291,9 +291,9 @@ tools:
 	}
 }
 
-func TestPackUninstallNotFound(t *testing.T) {
+func TestBlueprintUninstallNotFound(t *testing.T) {
 	srv, _ := testServerWithProxy(t, nil)
-	req := httptest.NewRequest(http.MethodDelete, "/packs/nonexistent", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/blueprints/nonexistent", nil)
 	rec := httptest.NewRecorder()
 	srv.mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
@@ -301,28 +301,28 @@ func TestPackUninstallNotFound(t *testing.T) {
 	}
 }
 
-func TestPacksListRoute(t *testing.T) {
+func TestBlueprintsListRoute(t *testing.T) {
 	srv, _ := testServerWithProxy(t, nil)
-	req := httptest.NewRequest(http.MethodGet, "/packs", nil)
+	req := httptest.NewRequest(http.MethodGet, "/blueprints", nil)
 	rec := httptest.NewRecorder()
 	srv.mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d; body=%s", rec.Code, rec.Body.String())
 	}
 	// Empty-state copy should appear.
-	if !strings.Contains(rec.Body.String(), "No packs installed yet") {
+	if !strings.Contains(rec.Body.String(), "No blueprints installed") {
 		t.Errorf("expected empty-state copy, got %s", rec.Body.String())
 	}
 }
 
-func TestPacksListShowsInstalled(t *testing.T) {
+func TestBlueprintsListShowsInstalled(t *testing.T) {
 	srv, _ := testServerWithProxy(t, nil)
-	pack := writePackOnDisk(t, "name: visible\nversion: 1.2.3\ndescription: shows up\ntools: {}\n")
-	if _, err := packs.Install(packs.InstallOptions{Source: pack, CfgPath: srv.cfgPath}); err != nil {
+	pack := writeBlueprintOnDisk(t, "name: visible\nversion: 1.2.3\ndescription: shows up\ntools: {}\n")
+	if _, err := blueprints.Install(blueprints.InstallOptions{Source: pack, CfgPath: srv.cfgPath}); err != nil {
 		t.Fatalf("priming: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/packs", nil)
+	req := httptest.NewRequest(http.MethodGet, "/blueprints", nil)
 	rec := httptest.NewRecorder()
 	srv.mux.ServeHTTP(rec, req)
 	body := rec.Body.String()
@@ -351,5 +351,57 @@ func TestBuiltinNamesFromConfig(t *testing.T) {
 	}
 	if names["my.custom"] {
 		t.Errorf("my.custom should NOT be flagged as a builtin, got %v", names)
+	}
+}
+
+// --- Inline content (paste-YAML) handler tests ---
+
+func TestBlueprintPreviewAcceptsInlineContent(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+	rec, resp := postJSON(t, srv, "/blueprints/preview", previewRequest{
+		Content: "name: pasted\ntools:\n  p.tool:\n    type: cli\n    command: echo\n    description: x\n",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if resp.Error != "" {
+		t.Fatalf("unexpected error: %s", resp.Error)
+	}
+	if resp.Result == nil || resp.Result.Header.Name != "pasted" {
+		t.Fatalf("expected pasted result, got %+v", resp.Result)
+	}
+	if !resp.Result.DryRun {
+		t.Error("preview should be a dry-run")
+	}
+}
+
+func TestBlueprintInstallAcceptsInlineContent(t *testing.T) {
+	srv, cfgPath := testServerWithProxy(t, nil)
+	rec, resp := postJSON(t, srv, "/blueprints/install", installRequest{
+		Content: "name: pasted-install\ntools:\n  pi.tool:\n    type: cli\n    command: echo\n    description: x\n",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if resp.Error != "" {
+		t.Fatalf("unexpected error: %s", resp.Error)
+	}
+	blueprintFile := filepath.Join(filepath.Dir(cfgPath), ".factorly", "blueprints", "pasted-install.yaml")
+	if _, err := os.Stat(blueprintFile); err != nil {
+		t.Fatalf("expected blueprint file at %s: %v", blueprintFile, err)
+	}
+	if _, ok := srv.cfg.Tools["pi.tool"]; !ok {
+		t.Errorf("expected pi.tool registered after install, got %v", srv.cfg.Tools)
+	}
+}
+
+func TestBlueprintInstallRequiresSourceOrContent(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+	rec, resp := postJSON(t, srv, "/blueprints/install", installRequest{})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if resp.Error == "" {
+		t.Fatal("expected error in response")
 	}
 }

@@ -13,68 +13,76 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/factorly-dev/factorly/internal/blueprints"
 	"github.com/factorly-dev/factorly/internal/config"
-	"github.com/factorly-dev/factorly/internal/packs"
 )
 
 var (
-	installDryRun   bool
-	installNoPrompt bool
+	blueprintInstallDryRun   bool
+	blueprintInstallNoPrompt bool
 )
 
-var installCmd = &cobra.Command{
-	Use:   "install <source>",
-	Short: "Install a tool/workflow pack from a GitHub repo, URL, or file",
-	Long: `Install a sharable pack of tools and workflows.
+var blueprintCmd = &cobra.Command{
+	Use:   "blueprint",
+	Short: "Install and manage sharable tool/workflow blueprints",
+	Long: `A blueprint is a single YAML file that bundles tools, workflows, OAuth
+provider definitions, and vault-key requirements into one shareable unit.
 
-The pack is a single YAML file with optional pack header
-(name, version, description) and a top-level requires block. After
-install, the pack lives in .factorly/packs/<name>.yaml and its
-tools/workflows/oauth_providers merge into the project config on next load.
+Run 'factorly blueprint install <source>' to install one from a GitHub repo,
+URL, or local file. After install, the blueprint lives at
+.factorly/blueprints/<name>.yaml and its tools/workflows/oauth_providers
+merge into the project config on next load.`,
+}
+
+var blueprintInstallCmd = &cobra.Command{
+	Use:   "install <source>",
+	Short: "Install a blueprint from a GitHub repo, URL, or file",
+	Long: `Install a sharable blueprint.
 
 Sources:
-  Local file:        ./packs/gmail.yaml
-  Raw URL:           https://raw.githubusercontent.com/widefido/gmail/main/pack.yaml
+  Local file:        ./blueprints/gmail.yaml
+  Raw URL:           https://raw.githubusercontent.com/widefido/gmail/main/blueprint.yaml
   GitHub shorthand:  github.com/widefido/factorly-gmail
                      github.com/widefido/factorly-gmail@v1.0.0
-                     github.com/widefido/factorly-gmail/packs/search.yaml
+                     github.com/widefido/factorly-gmail/blueprints/search.yaml
 
 Examples:
-  factorly install github.com/widefido/factorly-gmail
-  factorly install ./packs/gmail.yaml
-  factorly install ./packs/gmail.yaml --dry-run`,
+  factorly blueprint install github.com/widefido/factorly-gmail
+  factorly blueprint install ./blueprints/gmail.yaml
+  factorly blueprint install ./blueprints/gmail.yaml --dry-run`,
 	Args: cobra.ExactArgs(1),
-	RunE: runInstall,
+	RunE: runBlueprintInstall,
 }
 
-var uninstallCmd = &cobra.Command{
+var blueprintUninstallCmd = &cobra.Command{
 	Use:   "uninstall <name>",
-	Short: "Remove an installed pack",
-	Long: `Remove a previously-installed pack by its name (as shown in 'factorly packs').
+	Short: "Remove an installed blueprint",
+	Long: `Remove a previously-installed blueprint by its name (as shown in
+'factorly blueprint list').
 
-The pack file in .factorly/packs/<name>.yaml is deleted. Any vault
-keys or oauth provider credentials the pack used are left intact;
+The blueprint file in .factorly/blueprints/<name>.yaml is deleted. Any vault
+keys or oauth provider credentials the blueprint used are left intact;
 remove them manually with 'factorly vault remove' if desired.`,
 	Args: cobra.ExactArgs(1),
-	RunE: runUninstall,
+	RunE: runBlueprintUninstall,
 }
 
-var packsCmd = &cobra.Command{
-	Use:   "packs",
-	Short: "List installed packs",
-	RunE:  runPacksList,
+var blueprintListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List installed blueprints",
+	RunE:  runBlueprintList,
 }
 
-func runInstall(cmd *cobra.Command, args []string) error {
+func runBlueprintInstall(cmd *cobra.Command, args []string) error {
 	source := args[0]
 	cfgPath := resolveCfgPath()
 
-	opts := packs.InstallOptions{
+	opts := blueprints.InstallOptions{
 		Source:  source,
 		CfgPath: cfgPath,
-		DryRun:  installDryRun,
+		DryRun:  blueprintInstallDryRun,
 	}
-	res, err := packs.Install(opts)
+	res, err := blueprints.Install(opts)
 	if err != nil {
 		// Print whatever the result tells us (conflicts, missing requires)
 		// even when install fails, so the user has actionable context.
@@ -86,20 +94,20 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	printInstallSummary(res)
 
-	if installDryRun {
+	if blueprintInstallDryRun {
 		fmt.Println()
 		fmt.Println("  Dry run — no changes written.")
 		return nil
 	}
 
 	// Vault keys: collect values interactively if any are reported missing.
-	if len(res.VaultKeysMissing) > 0 && !installNoPrompt {
+	if len(res.VaultKeysMissing) > 0 && !blueprintInstallNoPrompt {
 		fmt.Println()
-		fmt.Printf("  This pack uses %d vault key(s). Provide values now to enable it.\n", len(res.VaultKeysMissing))
+		fmt.Printf("  This blueprint uses %d vault key(s). Provide values now to enable it.\n", len(res.VaultKeysMissing))
 		if err := promptAndStoreVaultKeys(res.VaultKeysMissing); err != nil {
 			return err
 		}
-	} else if len(res.VaultKeysMissing) > 0 && installNoPrompt {
+	} else if len(res.VaultKeysMissing) > 0 && blueprintInstallNoPrompt {
 		fmt.Println()
 		fmt.Printf("  Vault keys not set (--no-prompt): %s\n", strings.Join(res.VaultKeysMissing, ", "))
 		fmt.Println("  Use 'factorly vault set <key> <value>' to provide them.")
@@ -110,25 +118,25 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runUninstall(cmd *cobra.Command, args []string) error {
+func runBlueprintUninstall(cmd *cobra.Command, args []string) error {
 	cfgPath := resolveCfgPath()
 	name := args[0]
-	if err := packs.Uninstall(cfgPath, name); err != nil {
+	if err := blueprints.Uninstall(cfgPath, name); err != nil {
 		return err
 	}
 	fmt.Printf("Uninstalled %s\n", name)
 	return nil
 }
 
-func runPacksList(cmd *cobra.Command, args []string) error {
+func runBlueprintList(cmd *cobra.Command, args []string) error {
 	cfgPath := resolveCfgPath()
-	list, err := packs.List(cfgPath)
+	list, err := blueprints.List(cfgPath)
 	if err != nil {
 		return err
 	}
 	if len(list) == 0 {
-		fmt.Println("No packs installed.")
-		fmt.Println("Try: factorly install github.com/<owner>/<repo>")
+		fmt.Println("No blueprints installed.")
+		fmt.Println("Try: factorly blueprint install github.com/<owner>/<repo>")
 		return nil
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -151,7 +159,7 @@ func runPacksList(cmd *cobra.Command, args []string) error {
 // Called both on success and on failure (with whatever partial result is
 // available), so the user sees conflicts/missing requires inline with the
 // error message.
-func printInstallSummary(res *packs.InstallResult) {
+func printInstallSummary(res *blueprints.InstallResult) {
 	if res == nil {
 		return
 	}
@@ -167,7 +175,7 @@ func printInstallSummary(res *packs.InstallResult) {
 			fmt.Printf("  %s\n", h.Description)
 		}
 	} else {
-		fmt.Printf("  (unnamed pack)\n")
+		fmt.Printf("  (unnamed blueprint)\n")
 	}
 
 	if len(res.ToolsAdded) > 0 {
@@ -213,7 +221,7 @@ func printInstallSummary(res *packs.InstallResult) {
 		}
 	}
 	if res.AlreadyInstalled {
-		fmt.Printf("\n  Already installed — uninstall first with 'factorly uninstall %s'.\n", res.Header.Name)
+		fmt.Printf("\n  Already installed — uninstall first with 'factorly blueprint uninstall %s'.\n", res.Header.Name)
 	}
 }
 
@@ -239,19 +247,20 @@ func promptAndStoreVaultKeys(keys []string) error {
 	return nil
 }
 
-// resolveCfgPath finds the config file the install/list/uninstall command
-// should target. Falls back to a sensible default if no config is found,
-// so a fresh project can install its first pack without 'factorly init'.
+// resolveCfgPath finds the config file the blueprint commands should target.
+// Falls back to a sensible default if no config is found, so a fresh project
+// can install its first blueprint without 'factorly init'.
 func resolveCfgPath() string {
 	if p := config.FindConfig(); p != "" {
 		return p
 	}
 	// No config file found — default to ./.factorly/factorly.yaml so the
-	// pack writes into a sensible location relative to CWD.
+	// blueprint writes into a sensible location relative to CWD.
 	return ".factorly/factorly.yaml"
 }
 
 func init() {
-	installCmd.Flags().BoolVar(&installDryRun, "dry-run", false, "preview without writing")
-	installCmd.Flags().BoolVar(&installNoPrompt, "no-prompt", false, "skip interactive vault key prompts")
+	blueprintInstallCmd.Flags().BoolVar(&blueprintInstallDryRun, "dry-run", false, "preview without writing")
+	blueprintInstallCmd.Flags().BoolVar(&blueprintInstallNoPrompt, "no-prompt", false, "skip interactive vault key prompts")
+	blueprintCmd.AddCommand(blueprintInstallCmd, blueprintUninstallCmd, blueprintListCmd)
 }

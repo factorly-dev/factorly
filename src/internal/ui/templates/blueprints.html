@@ -1,0 +1,101 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+{{define "content"}}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Blueprints</h1>
+  <button type="button" data-blueprint-action="open-import"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">{{icon "plus"}} Install Blueprint</button>
+</div>
+
+{{if not .Blueprints}}
+<div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-400">
+  <p class="text-lg mb-2">No blueprints installed</p>
+  <p class="text-sm">Click "+ Install Blueprint" above to install one from a GitHub repo or YAML file.</p>
+</div>
+{{else}}
+<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 border-b border-gray-200">
+      <tr class="text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+        <th class="px-4 py-2.5">Name</th>
+        <th class="px-4 py-2.5">Version</th>
+        <th class="px-4 py-2.5">Description</th>
+        <th class="px-4 py-2.5 text-right">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Blueprints}}
+      <tr class="border-b border-gray-100 last:border-b-0">
+        <td class="px-4 py-3">
+          <span class="font-mono text-sm text-gray-900">{{.Name}}</span>
+          {{if .Homepage}}
+          <a href="{{.Homepage}}" target="_blank" rel="noopener" class="ml-1 text-[10px] text-indigo-500 hover:text-indigo-700">↗</a>
+          {{end}}
+        </td>
+        <td class="px-4 py-3 text-xs text-gray-600">{{if .Version}}{{.Version}}{{else}}<span class="text-gray-300">—</span>{{end}}</td>
+        <td class="px-4 py-3 text-xs text-gray-600">{{if .Description}}{{.Description}}{{else}}<span class="text-gray-300">—</span>{{end}}</td>
+        <td class="px-4 py-3 text-right">
+          <button data-blueprint-action="uninstall" data-blueprint-name="{{.Name}}"
+                  class="text-red-400 hover:text-red-600 text-xs">Uninstall</button>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+<!-- Import modal -->
+<div id="blueprint-import-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+      <h2 class="text-sm font-medium text-gray-900">Install Blueprint</h2>
+      <button data-blueprint-action="close-import" class="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
+    </div>
+    <div class="p-5">
+      <!-- Stage 1: source input -->
+      <div id="blueprint-import-source-stage">
+        <label class="block text-xs font-medium text-gray-600 mb-1.5">Source</label>
+        <input id="blueprint-import-source-input" type="text" autocomplete="off"
+               placeholder="github.com/owner/repo, https://..., or ./blueprint.yaml"
+               class="w-full px-3 py-2 text-sm font-mono border border-gray-200 rounded focus:outline-none focus:ring-2 focus:ring-indigo-200">
+        <p class="mt-1 text-[10px] text-gray-400">
+          Examples: <code class="bg-gray-100 px-1 rounded">github.com/widefido/factorly-gmail</code>,
+          <code class="bg-gray-100 px-1 rounded">https://example.com/blueprint.yaml</code>,
+          <code class="bg-gray-100 px-1 rounded">./examples/blueprints/gmail.yaml</code>
+        </p>
+
+        <div class="my-3 flex items-center gap-3 text-[10px] text-gray-400 uppercase tracking-wide">
+          <div class="flex-1 border-t border-gray-200"></div>
+          <span>or paste YAML</span>
+          <div class="flex-1 border-t border-gray-200"></div>
+        </div>
+
+        <label class="block text-xs font-medium text-gray-600 mb-1.5">Blueprint YAML</label>
+        <textarea id="blueprint-import-content-input" rows="8" spellcheck="false"
+                  placeholder="name: my-blueprint&#10;version: 1.0.0&#10;tools:&#10;  ..."
+                  class="w-full px-3 py-2 text-xs font-mono border border-gray-200 rounded focus:outline-none focus:ring-2 focus:ring-indigo-200 resize-y"></textarea>
+        <p class="mt-1 text-[10px] text-gray-400">Either provide a source above or paste a blueprint here.</p>
+
+        <div class="mt-4 flex justify-end gap-2">
+          <button data-blueprint-action="close-import"
+                  class="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Cancel</button>
+          <button data-blueprint-action="preview"
+                  class="px-4 py-1.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700">Preview</button>
+        </div>
+      </div>
+
+      <!-- Stage 2: preview + confirm. Rendered into #blueprint-import-preview-stage by JS. -->
+      <div id="blueprint-import-preview-stage" class="hidden"></div>
+
+      <!-- Error display -->
+      <div id="blueprint-import-error" class="hidden mt-3 bg-red-50 border border-red-200 rounded p-2 text-xs text-red-700"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/blueprints.js"></script>
+{{end}}

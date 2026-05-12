@@ -1,7 +1,7 @@
 // Copyright 2026 Jordan Sherer <hi@jordansherer.com>
 // SPDX-License-Identifier: gpl
 
-package packs
+package blueprints
 
 import (
 	"errors"
@@ -18,9 +18,9 @@ import (
 	"github.com/factorly-dev/factorly/internal/config"
 )
 
-// PackHeader is the identity portion of a pack: the pack's own metadata. Used
-// by listings and previews.
-type PackHeader struct {
+// BlueprintHeader is the identity portion of a blueprint: its own metadata.
+// Used by listings and previews.
+type BlueprintHeader struct {
 	Name        string `json:"name,omitempty"`
 	Version     string `json:"version,omitempty"`
 	Description string `json:"description,omitempty"`
@@ -34,7 +34,7 @@ type PackHeader struct {
 // or did (in commit mode). Fields are populated even on the dry-run path so
 // the UI can render a preview.
 type InstallResult struct {
-	Header           PackHeader       `json:"header"`
+	Header           BlueprintHeader  `json:"header"`
 	ToolsAdded       []string         `json:"tools_added,omitempty"`
 	WorkflowsAdded   []string         `json:"workflows_added,omitempty"`
 	ProvidersAdded   []string         `json:"providers_added,omitempty"`
@@ -43,18 +43,18 @@ type InstallResult struct {
 	Conflicts        []Conflict       `json:"conflicts,omitempty"`
 	RequiresMissing  []MissingRequire `json:"requires_missing,omitempty"`
 	// FilePath is set on a real install; it's the path on disk where the
-	// pack was written.
+	// blueprint was written.
 	FilePath string `json:"file_path,omitempty"`
 	// DryRun is true if no changes were written.
 	DryRun bool `json:"dry_run,omitempty"`
-	// AlreadyInstalled is true when a pack with this name is already on disk.
-	// In dry-run, this is reported without an error so the UI can render a
-	// "you already have this — uninstall first" preview. In commit mode the
+	// AlreadyInstalled is true when a blueprint with this name is already on
+	// disk. In dry-run, this is reported without an error so the UI can render
+	// a "you already have this — uninstall first" preview. In commit mode the
 	// caller also receives a non-nil error.
 	AlreadyInstalled bool `json:"already_installed,omitempty"`
 }
 
-// Conflict is a name that the incoming pack would shadow.
+// Conflict is a name that the incoming blueprint would shadow.
 type Conflict struct {
 	Kind string `json:"kind"` // "tool", "oauth_provider", "vault_backend"
 	Name string `json:"name"`
@@ -68,11 +68,17 @@ type MissingRequire struct {
 
 // InstallOptions controls what Install does.
 type InstallOptions struct {
-	// Source is the raw input — file path, URL, or github shorthand.
+	// Source is the raw input — file path, URL, or github shorthand. Ignored
+	// when Content is set.
 	Source string
-	// CfgPath is the user's primary config file. Pack files are written
-	// alongside it in <cfg-dir>/.factorly/packs/ (or <cfg-dir>/packs/ if
-	// CfgPath is already inside a .factorly/ directory).
+	// Content, when non-nil, is the raw blueprint YAML to install directly.
+	// Used by the UI's "paste YAML" flow. When Content is set, Source/Resolve/
+	// Fetch are skipped and only the pack's own metadata (name) is used to
+	// derive the install filename.
+	Content []byte
+	// CfgPath is the user's primary config file. Blueprint files are written
+	// alongside it in <cfg-dir>/.factorly/blueprints/ (or <cfg-dir>/blueprints/
+	// if CfgPath is already inside a .factorly/ directory).
 	CfgPath string
 	// DryRun, when true, validates and reports without writing anything.
 	DryRun bool
@@ -84,75 +90,93 @@ type InstallOptions struct {
 	BuiltinTools map[string]bool
 }
 
-// Install fetches, validates, and writes a pack. In dry-run mode it stops
+// Install fetches, validates, and writes a blueprint. In dry-run mode it stops
 // short of writing and returns a populated InstallResult so the caller (UI)
 // can render a preview before committing.
 //
 // Vault key collection is the caller's responsibility: the returned
 // InstallResult.VaultKeysMissing tells the caller which keys need values.
-// The pack file is written even if vault keys aren't yet set — the tools in
-// the pack will fail at execution time until the keys are provided. This
-// matches existing behavior for inline vault refs.
+// The blueprint file is written even if vault keys aren't yet set — the tools
+// will fail at execution time until the keys are provided. This matches
+// existing behavior for inline vault refs.
 func Install(opts InstallOptions) (*InstallResult, error) {
 	if opts.CfgPath == "" {
-		return nil, errors.New("packs: CfgPath required")
-	}
-	src, err := Resolve(opts.Source)
-	if err != nil {
-		return nil, err
-	}
-	data, err := Fetch(src, opts.HTTPClient)
-	if err != nil {
-		return nil, err
+		return nil, errors.New("blueprints: CfgPath required")
 	}
 
-	pack, err := ParsePack(data)
-	if err != nil {
-		return nil, fmt.Errorf("packs: parsing %s: %w", src.DisplayName, err)
+	var (
+		data        []byte
+		displayName string
+	)
+	if opts.Content != nil {
+		// Inline content path (UI "paste YAML" flow). Cap size at parse time
+		// rather than fetch time since there's no fetch.
+		if len(opts.Content) > MaxBlueprintSize {
+			return nil, fmt.Errorf("blueprints: pasted content is larger than %d bytes", MaxBlueprintSize)
+		}
+		data = opts.Content
+		displayName = "pasted"
+	} else {
+		src, err := Resolve(opts.Source)
+		if err != nil {
+			return nil, err
+		}
+		data, err = Fetch(src, opts.HTTPClient)
+		if err != nil {
+			return nil, err
+		}
+		displayName = src.DisplayName
 	}
 
-	// Compute the install file name. Prefer the pack's declared name; fall
-	// back to a name derived from the source.
-	installName := sanitizeName(pack.Name)
+	bp, err := ParseBlueprint(data)
+	if err != nil {
+		return nil, fmt.Errorf("blueprints: parsing %s: %w", displayName, err)
+	}
+
+	// Compute the install file name. Prefer the blueprint's declared name;
+	// fall back to a name derived from the source. For pasted content with no
+	// declared name, the fallback "pasted" gives a clear hint.
+	installName := sanitizeName(bp.Name)
 	if installName == "" {
-		installName = sanitizeName(src.DisplayName)
+		installName = sanitizeName(displayName)
 	}
 	if installName == "" {
-		return nil, errors.New("packs: cannot derive an install name from the pack")
+		return nil, errors.New("blueprints: cannot derive an install name from the blueprint")
 	}
 
-	// Build the merged view of (existing project config) + (incoming pack)
+	// Build the merged view of (existing project config) + (incoming blueprint)
 	// so we can validate references and surface conflicts.
 	existing, err := config.Load(opts.CfgPath)
 	if err != nil {
 		// A missing or empty project config is fine — install proceeds with
-		// just the incoming pack as the visible state.
+		// just the incoming blueprint as the visible state.
 		existing = &config.Config{Tools: map[string]config.ToolConfig{}}
 	}
 
 	result := &InstallResult{
-		Header: PackHeader{
-			Name:        pack.Name,
-			Version:     pack.Version,
-			Description: pack.Description,
-			Author:      pack.Author,
-			Homepage:    pack.Homepage,
-			License:     pack.License,
+		Header: BlueprintHeader{
+			Name:        bp.Name,
+			Version:     bp.Version,
+			Description: bp.Description,
+			Author:      bp.Author,
+			Homepage:    bp.Homepage,
+			License:     bp.License,
 			Filename:    installName + ".yaml",
 		},
 		DryRun: opts.DryRun,
 	}
 
-	// Check for a same-named pack already on disk before walking conflicts.
-	// Without this, re-installing the exact same pack produces a generic
-	// "conflict with N definitions" error (because the first install's tools
-	// are now in the merged config). Surface the more actionable signal.
+	// Check for a same-named blueprint already on disk before walking
+	// conflicts. Without this, re-installing the exact same blueprint produces
+	// a generic "conflict with N definitions" error (because the first
+	// install's tools are now in the merged config). Surface the more
+	// actionable signal.
 	//
 	// In dry-run mode we report this structurally on the result without an
 	// error, so a UI preview can render "already installed" alongside the
 	// other preview fields. In commit mode we also return an error so the
 	// CLI fails fast.
-	dir, err := packsDir(opts.CfgPath)
+	dir, err := blueprintsDir(opts.CfgPath)
 	if err != nil {
 		return result, err
 	}
@@ -162,13 +186,13 @@ func Install(opts InstallOptions) (*InstallResult, error) {
 		if opts.DryRun {
 			return result, nil
 		}
-		return result, fmt.Errorf("packs: pack %q is already installed (uninstall first or pick a different source)", installName)
+		return result, fmt.Errorf("blueprints: blueprint %q is already installed (uninstall first or pick a different source)", installName)
 	}
 
 	// Detect conflicts. Don't fail yet — let the caller decide based on the
 	// returned result whether to proceed. We do fail before writing if any
 	// conflicts exist (no --force in v1).
-	for name, tool := range pack.Tools {
+	for name, tool := range bp.Tools {
 		if _, exists := existing.Tools[name]; exists {
 			result.Conflicts = append(result.Conflicts, Conflict{Kind: "tool", Name: name})
 		}
@@ -178,13 +202,13 @@ func Install(opts InstallOptions) (*InstallResult, error) {
 			result.ToolsAdded = append(result.ToolsAdded, name)
 		}
 	}
-	for name := range pack.OAuthProviders {
+	for name := range bp.OAuthProviders {
 		if _, exists := existing.OAuthProviders[name]; exists {
 			result.Conflicts = append(result.Conflicts, Conflict{Kind: "oauth_provider", Name: name})
 		}
 		result.ProvidersAdded = append(result.ProvidersAdded, name)
 	}
-	for name := range pack.VaultBackends {
+	for name := range bp.VaultBackends {
 		if _, exists := existing.VaultBackends[name]; exists {
 			result.Conflicts = append(result.Conflicts, Conflict{Kind: "vault_backend", Name: name})
 		}
@@ -197,7 +221,7 @@ func Install(opts InstallOptions) (*InstallResult, error) {
 	sort.Strings(result.VaultBackends)
 
 	// Validate references against the merged config.
-	merged := mergeForValidation(existing, pack)
+	merged := mergeForValidation(existing, bp)
 	if err := config.ValidateReferences(merged, opts.BuiltinTools); err != nil {
 		// Translate workflow-ref / Requires errors into structured missing-require
 		// entries when possible, so the UI can render them cleanly.
@@ -210,10 +234,10 @@ func Install(opts InstallOptions) (*InstallResult, error) {
 
 	// Vault keys: report which Requires.vault_keys aren't present in env or
 	// the user's vault. We can't check the vault from here without locking
-	// it, so we conservatively list every key the pack declares and let the
-	// caller intersect with the vault's actual state.
-	if pack.Requires != nil {
-		result.VaultKeysMissing = append(result.VaultKeysMissing, pack.Requires.VaultKeys...)
+	// it, so we conservatively list every key the blueprint declares and let
+	// the caller intersect with the vault's actual state.
+	if bp.Requires != nil {
+		result.VaultKeysMissing = append(result.VaultKeysMissing, bp.Requires.VaultKeys...)
 	}
 
 	if opts.DryRun {
@@ -221,47 +245,47 @@ func Install(opts InstallOptions) (*InstallResult, error) {
 	}
 
 	if len(result.Conflicts) > 0 {
-		return result, fmt.Errorf("packs: install would conflict with %d existing definition(s); resolve before installing", len(result.Conflicts))
+		return result, fmt.Errorf("blueprints: install would conflict with %d existing definition(s); resolve before installing", len(result.Conflicts))
 	}
 	if len(result.RequiresMissing) > 0 {
 		return result, formatMissingRequiresError(result.RequiresMissing)
 	}
 
-	// Write the pack file. dir/dst computed earlier for the already-installed
-	// check.
+	// Write the blueprint file. dir/dst computed earlier for the
+	// already-installed check.
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return result, fmt.Errorf("packs: mkdir %s: %w", dir, err)
+		return result, fmt.Errorf("blueprints: mkdir %s: %w", dir, err)
 	}
 	if err := os.WriteFile(dst, data, 0o644); err != nil {
-		return result, fmt.Errorf("packs: write %s: %w", dst, err)
+		return result, fmt.Errorf("blueprints: write %s: %w", dst, err)
 	}
 	result.FilePath = dst
 	return result, nil
 }
 
-// Uninstall removes a previously-installed pack by its install name (basename
-// without extension).
+// Uninstall removes a previously-installed blueprint by its install name
+// (basename without extension).
 func Uninstall(cfgPath, name string) error {
-	dir, err := packsDir(cfgPath)
+	dir, err := blueprintsDir(cfgPath)
 	if err != nil {
 		return err
 	}
 	path := filepath.Join(dir, name+".yaml")
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("packs: %q is not installed", name)
+			return fmt.Errorf("blueprints: %q is not installed", name)
 		}
 		return err
 	}
 	if err := os.Remove(path); err != nil {
-		return fmt.Errorf("packs: remove %s: %w", path, err)
+		return fmt.Errorf("blueprints: remove %s: %w", path, err)
 	}
 	return nil
 }
 
-// List returns the headers of all installed packs.
-func List(cfgPath string) ([]PackHeader, error) {
-	dir, err := packsDir(cfgPath)
+// List returns the headers of all installed blueprints.
+func List(cfgPath string) ([]BlueprintHeader, error) {
+	dir, err := blueprintsDir(cfgPath)
 	if err != nil {
 		return nil, err
 	}
@@ -270,9 +294,9 @@ func List(cfgPath string) ([]PackHeader, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("packs: reading %s: %w", dir, err)
+		return nil, fmt.Errorf("blueprints: reading %s: %w", dir, err)
 	}
-	var out []PackHeader
+	var out []BlueprintHeader
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -285,19 +309,19 @@ func List(cfgPath string) ([]PackHeader, error) {
 		if err != nil {
 			continue
 		}
-		pack, err := ParsePack(data)
+		bp, err := ParseBlueprint(data)
 		if err != nil {
 			// Surface an unidentified entry for the user to investigate.
-			out = append(out, PackHeader{Filename: name})
+			out = append(out, BlueprintHeader{Filename: name})
 			continue
 		}
-		h := PackHeader{
-			Name:        pack.Name,
-			Version:     pack.Version,
-			Description: pack.Description,
-			Author:      pack.Author,
-			Homepage:    pack.Homepage,
-			License:     pack.License,
+		h := BlueprintHeader{
+			Name:        bp.Name,
+			Version:     bp.Version,
+			Description: bp.Description,
+			Author:      bp.Author,
+			Homepage:    bp.Homepage,
+			License:     bp.License,
 			Filename:    name,
 		}
 		if h.Name == "" {
@@ -309,11 +333,11 @@ func List(cfgPath string) ([]PackHeader, error) {
 	return out, nil
 }
 
-// ParsePack unmarshals YAML pack bytes into a Config. Exposed for callers
-// (preview handlers, tests) that have already fetched the bytes.
-func ParsePack(data []byte) (*config.Config, error) {
+// ParseBlueprint unmarshals YAML blueprint bytes into a Config. Exposed for
+// callers (preview handlers, tests) that have already fetched the bytes.
+func ParseBlueprint(data []byte) (*config.Config, error) {
 	if len(data) == 0 {
-		return nil, errors.New("packs: empty pack")
+		return nil, errors.New("blueprints: empty blueprint")
 	}
 	var cfg config.Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
@@ -325,43 +349,44 @@ func ParsePack(data []byte) (*config.Config, error) {
 	return &cfg, nil
 }
 
-// packsDir resolves the directory where pack files are written. If CfgPath
-// is inside a .factorly/ directory, packs go to <cfg-dir>/packs/. Otherwise
-// they go to <cfg-dir>/.factorly/packs/ (creating .factorly/ as needed).
-func packsDir(cfgPath string) (string, error) {
+// blueprintsDir resolves the directory where blueprint files are written. If
+// CfgPath is inside a .factorly/ directory, blueprints go to
+// <cfg-dir>/blueprints/. Otherwise they go to <cfg-dir>/.factorly/blueprints/
+// (creating .factorly/ as needed).
+func blueprintsDir(cfgPath string) (string, error) {
 	cfgPath = filepath.Clean(cfgPath)
 	cfgDir := filepath.Dir(cfgPath)
 	if filepath.Base(cfgDir) == ".factorly" {
-		return filepath.Join(cfgDir, "packs"), nil
+		return filepath.Join(cfgDir, "blueprints"), nil
 	}
-	return filepath.Join(cfgDir, ".factorly", "packs"), nil
+	return filepath.Join(cfgDir, ".factorly", "blueprints"), nil
 }
 
-// mergeForValidation produces a Config that combines existing + pack for
+// mergeForValidation produces a Config that combines existing + blueprint for
 // purposes of reference validation. It does not mutate either input.
-func mergeForValidation(existing, pack *config.Config) *config.Config {
+func mergeForValidation(existing, bp *config.Config) *config.Config {
 	merged := &config.Config{
 		Tools:          map[string]config.ToolConfig{},
 		OAuthProviders: map[string]config.OAuthProviderConfig{},
-		Requires:       pack.Requires,
+		Requires:       bp.Requires,
 	}
 	for k, v := range existing.Tools {
 		merged.Tools[k] = v
 	}
-	for k, v := range pack.Tools {
+	for k, v := range bp.Tools {
 		merged.Tools[k] = v
 	}
 	for k, v := range existing.OAuthProviders {
 		merged.OAuthProviders[k] = v
 	}
-	for k, v := range pack.OAuthProviders {
+	for k, v := range bp.OAuthProviders {
 		merged.OAuthProviders[k] = v
 	}
 	return merged
 }
 
-// sanitizeName produces a filesystem-safe install name from a pack name or
-// source string.
+// sanitizeName produces a filesystem-safe install name from a blueprint name
+// or source string.
 var nameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 
 func sanitizeName(s string) string {
@@ -399,5 +424,5 @@ func formatMissingRequiresError(reqs []MissingRequire) error {
 	for _, r := range reqs {
 		parts = append(parts, fmt.Sprintf("%s %q", r.Kind, r.Name))
 	}
-	return fmt.Errorf("packs: pack requires %s which is not installed", strings.Join(parts, ", "))
+	return fmt.Errorf("blueprints: blueprint requires %s which is not installed", strings.Join(parts, ", "))
 }

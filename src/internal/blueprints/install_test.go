@@ -1,7 +1,7 @@
 // Copyright 2026 Jordan Sherer <hi@jordansherer.com>
 // SPDX-License-Identifier: gpl
 
-package packs
+package blueprints
 
 import (
 	"net/http"
@@ -27,10 +27,11 @@ func tempProject(t *testing.T, existingCfg string) string {
 	return cfgPath
 }
 
-// writePackFile writes a pack YAML to a temp location and returns its path.
-func writePackFile(t *testing.T, content string) string {
+// writeBlueprintFile writes a blueprint YAML to a temp location and returns
+// its path.
+func writeBlueprintFile(t *testing.T, content string) string {
 	t.Helper()
-	f, err := os.CreateTemp(t.TempDir(), "pack-*.yaml")
+	f, err := os.CreateTemp(t.TempDir(), "blueprint-*.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +43,7 @@ func writePackFile(t *testing.T, content string) string {
 }
 
 func TestResolveLocalFile(t *testing.T) {
-	path := writePackFile(t, "name: foo\ntools: {}\n")
+	path := writeBlueprintFile(t, "name: foo\ntools: {}\n")
 	src, err := Resolve(path)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
@@ -108,21 +109,21 @@ func TestResolveGitHubWithRef(t *testing.T) {
 }
 
 func TestResolveGitHubWithPath(t *testing.T) {
-	src, err := Resolve("github.com/widefido/factorly-gmail/packs/search.yaml")
+	src, err := Resolve("github.com/widefido/factorly-gmail/blueprints/search.yaml")
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
 	if len(src.URLs) != 2 {
 		t.Fatalf("URLs = %d, want 2: %v", len(src.URLs), src.URLs)
 	}
-	if !strings.HasSuffix(src.URLs[0], "/packs/search.yaml") {
+	if !strings.HasSuffix(src.URLs[0], "/blueprints/search.yaml") {
 		t.Fatalf("URLs[0] = %q", src.URLs[0])
 	}
 }
 
-func TestInstallLocalPackDryRun(t *testing.T) {
+func TestInstallLocalBlueprintDryRun(t *testing.T) {
 	cfgPath := tempProject(t, "")
-	pack := writePackFile(t, `
+	pack := writeBlueprintFile(t, `
 name: gmail-toolkit
 version: 1.0.0
 description: Gmail integration
@@ -161,14 +162,14 @@ tools:
 	if res.FilePath != "" {
 		t.Fatalf("FilePath should be empty on dry-run, got %q", res.FilePath)
 	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(cfgPath), ".factorly", "packs")); err == nil {
+	if _, err := os.Stat(filepath.Join(filepath.Dir(cfgPath), ".factorly", "blueprints")); err == nil {
 		t.Fatal("packs/ directory should not exist after dry-run")
 	}
 }
 
-func TestInstallLocalPackCommits(t *testing.T) {
+func TestInstallLocalBlueprintCommits(t *testing.T) {
 	cfgPath := tempProject(t, "")
-	pack := writePackFile(t, `
+	pack := writeBlueprintFile(t, `
 name: simple
 tools:
   simple.tool:
@@ -201,7 +202,7 @@ tools:
     command: existing
     description: existing
 `)
-	pack := writePackFile(t, `
+	pack := writeBlueprintFile(t, `
 name: simple
 tools:
   simple.tool:
@@ -227,7 +228,7 @@ tools:
 
 func TestInstallMissingRequiresFails(t *testing.T) {
 	cfgPath := tempProject(t, "")
-	pack := writePackFile(t, `
+	pack := writeBlueprintFile(t, `
 name: needs-ghost
 requires:
   tools: [does.not.exist]
@@ -250,7 +251,7 @@ tools:
 
 func TestInstallSatisfiedRequiresPasses(t *testing.T) {
 	cfgPath := tempProject(t, "")
-	pack := writePackFile(t, `
+	pack := writeBlueprintFile(t, `
 name: uses-fetch
 requires:
   tools: [factorly.fetch]
@@ -273,7 +274,7 @@ tools:
 
 func TestInstallVaultKeysReported(t *testing.T) {
 	cfgPath := tempProject(t, "")
-	pack := writePackFile(t, `
+	pack := writeBlueprintFile(t, `
 name: needs-vault
 requires:
   vault_keys:
@@ -300,7 +301,7 @@ tools:
 
 func TestInstallTwiceFails(t *testing.T) {
 	cfgPath := tempProject(t, "")
-	pack := writePackFile(t, "name: twice\ntools: {}\n")
+	pack := writeBlueprintFile(t, "name: twice\ntools: {}\n")
 	if _, err := Install(InstallOptions{Source: pack, CfgPath: cfgPath}); err != nil {
 		t.Fatalf("first install: %v", err)
 	}
@@ -318,7 +319,7 @@ func TestInstallDryRunReportsAlreadyInstalledWithoutError(t *testing.T) {
 	// structured info (AlreadyInstalled=true) instead of an error so the UI
 	// can render a preview with an Uninstall hint.
 	cfgPath := tempProject(t, "")
-	pack := writePackFile(t, "name: preview-installed\ntools: {}\n")
+	pack := writeBlueprintFile(t, "name: preview-installed\ntools: {}\n")
 	if _, err := Install(InstallOptions{Source: pack, CfgPath: cfgPath}); err != nil {
 		t.Fatalf("first install: %v", err)
 	}
@@ -336,7 +337,7 @@ func TestInstallDryRunReportsAlreadyInstalledWithoutError(t *testing.T) {
 
 func TestUninstall(t *testing.T) {
 	cfgPath := tempProject(t, "")
-	pack := writePackFile(t, "name: removable\ntools: {}\n")
+	pack := writeBlueprintFile(t, "name: removable\ntools: {}\n")
 	if _, err := Install(InstallOptions{Source: pack, CfgPath: cfgPath}); err != nil {
 		t.Fatalf("install: %v", err)
 	}
@@ -350,10 +351,10 @@ func TestUninstall(t *testing.T) {
 
 func TestList(t *testing.T) {
 	cfgPath := tempProject(t, "")
-	if _, err := Install(InstallOptions{Source: writePackFile(t, "name: a\ntools: {}\n"), CfgPath: cfgPath}); err != nil {
+	if _, err := Install(InstallOptions{Source: writeBlueprintFile(t, "name: a\ntools: {}\n"), CfgPath: cfgPath}); err != nil {
 		t.Fatalf("install a: %v", err)
 	}
-	if _, err := Install(InstallOptions{Source: writePackFile(t, "name: b\nversion: 2.0\ntools: {}\n"), CfgPath: cfgPath}); err != nil {
+	if _, err := Install(InstallOptions{Source: writeBlueprintFile(t, "name: b\nversion: 2.0\ntools: {}\n"), CfgPath: cfgPath}); err != nil {
 		t.Fatalf("install b: %v", err)
 	}
 	packs, err := List(cfgPath)
@@ -406,8 +407,8 @@ func TestInstallURL404Errors(t *testing.T) {
 	}
 }
 
-func TestParsePackEmpty(t *testing.T) {
-	_, err := ParsePack(nil)
+func TestParseBlueprintEmpty(t *testing.T) {
+	_, err := ParseBlueprint(nil)
 	if err == nil {
 		t.Fatal("expected error for empty pack")
 	}
@@ -444,11 +445,11 @@ func TestResolveEmptySource(t *testing.T) {
 }
 
 func TestResolveOversizedFile(t *testing.T) {
-	// Build a file larger than MaxPackSize and verify Resolve rejects it
+	// Build a file larger than MaxBlueprintSize and verify Resolve rejects it
 	// before any parsing happens.
 	dir := t.TempDir()
 	big := filepath.Join(dir, "big.yaml")
-	data := make([]byte, MaxPackSize+1024)
+	data := make([]byte, MaxBlueprintSize+1024)
 	for i := range data {
 		data[i] = 'a'
 	}
@@ -484,7 +485,7 @@ oauth_providers:
     token_url: https://example/token
 tools: {}
 `)
-	pack := writePackFile(t, `
+	pack := writeBlueprintFile(t, `
 name: provider-conflict
 oauth_providers:
   shared:
@@ -519,7 +520,7 @@ oauth_providers:
     token_url: https://x
 tools: {}
 `)
-	pack := writePackFile(t, `
+	pack := writeBlueprintFile(t, `
 name: needs-google
 requires:
   oauth_providers: [google]
@@ -534,11 +535,11 @@ tools:
 	}
 }
 
-func TestInstallRequiresOAuthProviderShippedInSamePack(t *testing.T) {
+func TestInstallRequiresOAuthProviderShippedInSameBlueprint(t *testing.T) {
 	// A pack can declare requires.oauth_providers AND ship the provider
 	// itself; the merged-view check should pass.
 	cfgPath := tempProject(t, "")
-	pack := writePackFile(t, `
+	pack := writeBlueprintFile(t, `
 name: self-contained
 requires:
   oauth_providers: [own]
@@ -558,8 +559,8 @@ tools:
 	}
 }
 
-func TestParsePackInvalidYAML(t *testing.T) {
-	if _, err := ParsePack([]byte("this: is: not: valid")); err == nil {
+func TestParseBlueprintInvalidYAML(t *testing.T) {
+	if _, err := ParseBlueprint([]byte("this: is: not: valid")); err == nil {
 		t.Fatal("expected error for malformed YAML")
 	}
 }
@@ -567,10 +568,10 @@ func TestParsePackInvalidYAML(t *testing.T) {
 func TestListSkipsNonYAMLFiles(t *testing.T) {
 	cfgPath := tempProject(t, "")
 	// Install one real pack, then drop a stray non-yaml file.
-	if _, err := Install(InstallOptions{Source: writePackFile(t, "name: real\ntools: {}\n"), CfgPath: cfgPath}); err != nil {
+	if _, err := Install(InstallOptions{Source: writeBlueprintFile(t, "name: real\ntools: {}\n"), CfgPath: cfgPath}); err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	dir := filepath.Join(filepath.Dir(cfgPath), ".factorly", "packs")
+	dir := filepath.Join(filepath.Dir(cfgPath), ".factorly", "blueprints")
 	if err := os.WriteFile(filepath.Join(dir, "stray.txt"), []byte("ignored"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -583,10 +584,10 @@ func TestListSkipsNonYAMLFiles(t *testing.T) {
 	}
 }
 
-func TestListUnnamedPack(t *testing.T) {
+func TestListUnnamedBlueprint(t *testing.T) {
 	cfgPath := tempProject(t, "")
 	// Hand-write a pack file with no name field.
-	dir := filepath.Join(filepath.Dir(cfgPath), ".factorly", "packs")
+	dir := filepath.Join(filepath.Dir(cfgPath), ".factorly", "blueprints")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -598,9 +599,79 @@ func TestListUnnamedPack(t *testing.T) {
 		t.Fatalf("list: %v", err)
 	}
 	if len(list) != 1 {
-		t.Fatalf("want 1 pack, got %d", len(list))
+		t.Fatalf("want 1 blueprint, got %d", len(list))
 	}
 	if !strings.HasPrefix(list[0].Name, "unnamed-") {
 		t.Errorf("expected synthesized name, got %q", list[0].Name)
+	}
+}
+
+// --- Inline content (paste-YAML) path ---
+
+func TestInstallInlineContent(t *testing.T) {
+	cfgPath := tempProject(t, "")
+	res, err := Install(InstallOptions{
+		Content: []byte("name: pasted-bp\ntools:\n  pasted.tool:\n    type: cli\n    command: echo\n    description: x\n"),
+		CfgPath: cfgPath,
+	})
+	if err != nil {
+		t.Fatalf("install inline: %v", err)
+	}
+	if res.Header.Name != "pasted-bp" {
+		t.Errorf("Header.Name = %q, want pasted-bp", res.Header.Name)
+	}
+	if res.FilePath == "" {
+		t.Fatal("expected FilePath set after inline install")
+	}
+	if _, err := os.Stat(res.FilePath); err != nil {
+		t.Fatalf("expected file on disk: %v", err)
+	}
+}
+
+func TestInstallInlineContentDryRun(t *testing.T) {
+	cfgPath := tempProject(t, "")
+	res, err := Install(InstallOptions{
+		Content: []byte("name: previewed\ntools: {}\n"),
+		CfgPath: cfgPath,
+		DryRun:  true,
+	})
+	if err != nil {
+		t.Fatalf("dry-run: %v", err)
+	}
+	if !res.DryRun || res.Header.Name != "previewed" {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+	if res.FilePath != "" {
+		t.Error("dry-run should not set FilePath")
+	}
+}
+
+func TestInstallInlineContentRejectsOversize(t *testing.T) {
+	cfgPath := tempProject(t, "")
+	big := make([]byte, MaxBlueprintSize+1024)
+	for i := range big {
+		big[i] = 'a'
+	}
+	_, err := Install(InstallOptions{
+		Content: big,
+		CfgPath: cfgPath,
+	})
+	if err == nil {
+		t.Fatal("expected size-limit error for oversize inline content")
+	}
+}
+
+func TestInstallInlineContentFallbackName(t *testing.T) {
+	// No `name:` field — installName should fall back to "pasted".
+	cfgPath := tempProject(t, "")
+	res, err := Install(InstallOptions{
+		Content: []byte("tools:\n  x:\n    type: cli\n    command: echo\n    description: x\n"),
+		CfgPath: cfgPath,
+	})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if !strings.Contains(res.FilePath, "pasted") {
+		t.Errorf("expected fallback filename containing 'pasted', got %q", res.FilePath)
 	}
 }

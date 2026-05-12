@@ -1,29 +1,29 @@
 // Copyright 2026 Jordan Sherer <hi@jordansherer.com>
 // SPDX-License-Identifier: gpl
 
-// Pack import modal — two-stage flow:
+// Blueprint import modal — two-stage flow:
 //   1. User enters a source (GitHub shorthand / URL / local path) and clicks
-//      Preview. We POST /packs/preview, which returns a structured
+//      Preview. We POST /blueprints/preview, which returns a structured
 //      InstallResult describing what would be added, conflicts, missing
 //      dependencies, vault keys needed, and an already-installed flag.
 //   2. User reviews the preview, fills in any vault key values, and clicks
-//      Install. We POST /packs/install with the vault values; the server
-//      writes the pack file, stores the vault values, and reloads config.
+//      Install. We POST /blueprints/install with the vault values; the server
+//      writes the blueprint file, stores the vault values, and reloads config.
 //
-// All interactions use data-pack-action attributes routed through a single
+// All interactions use data-blueprint-action attributes routed through a single
 // delegated click handler, so the template never needs to inject names into
 // onclick="..." strings — eliminates an XSS-shaped risk and a stale state
 // class of bugs from per-element handlers.
 //
 // Guard against hx-boost re-execution: bind once.
 
-if (typeof window._packsInit === 'undefined') {
-  window._packsInit = true;
+if (typeof window._blueprintsInit === 'undefined') {
+  window._blueprintsInit = true;
 
   document.addEventListener('click', function(e) {
-    var btn = e.target.closest('[data-pack-action]');
+    var btn = e.target.closest('[data-blueprint-action]');
     if (!btn) return;
-    var action = btn.getAttribute('data-pack-action');
+    var action = btn.getAttribute('data-blueprint-action');
     switch (action) {
       case 'open-import':
         openModal();
@@ -38,22 +38,22 @@ if (typeof window._packsInit === 'undefined') {
         resetPreview();
         break;
       case 'install':
-        runInstall(btn.getAttribute('data-pack-source'));
+        runInstall();
         break;
       case 'uninstall':
-        runUninstall(btn.getAttribute('data-pack-name'));
+        runUninstall(btn.getAttribute('data-blueprint-name'));
         break;
     }
   });
 
   // Modal keyboard shortcuts: Enter submits stage 1, ESC closes the modal.
   document.addEventListener('keydown', function(e) {
-    var modal = document.getElementById('pack-import-modal');
+    var modal = document.getElementById('blueprint-import-modal');
     if (!modal || modal.classList.contains('hidden')) return;
     if (e.key === 'Escape') {
       closeModal();
     } else if (e.key === 'Enter') {
-      var input = document.getElementById('pack-import-source-input');
+      var input = document.getElementById('blueprint-import-source-input');
       if (input && document.activeElement === input) {
         e.preventDefault();
         runPreview();
@@ -62,36 +62,51 @@ if (typeof window._packsInit === 'undefined') {
   });
 
   function openModal() {
-    var m = document.getElementById('pack-import-modal');
+    var m = document.getElementById('blueprint-import-modal');
     if (!m) return;
     m.classList.remove('hidden');
-    document.getElementById('pack-import-source-stage').classList.remove('hidden');
-    document.getElementById('pack-import-preview-stage').classList.add('hidden');
-    document.getElementById('pack-import-preview-stage').innerHTML = '';
+    document.getElementById('blueprint-import-source-stage').classList.remove('hidden');
+    document.getElementById('blueprint-import-preview-stage').classList.add('hidden');
+    document.getElementById('blueprint-import-preview-stage').innerHTML = '';
     hideError();
-    var input = document.getElementById('pack-import-source-input');
-    if (input) {
-      input.value = '';
-      setTimeout(function() { input.focus(); }, 50);
-    }
+    window._pendingBlueprintInstall = null;
+    var input = document.getElementById('blueprint-import-source-input');
+    if (input) input.value = '';
+    var ta = document.getElementById('blueprint-import-content-input');
+    if (ta) ta.value = '';
+    if (input) setTimeout(function() { input.focus(); }, 50);
   }
 
   function closeModal() {
-    var m = document.getElementById('pack-import-modal');
+    var m = document.getElementById('blueprint-import-modal');
     if (m) m.classList.add('hidden');
   }
 
   function runPreview() {
-    var source = (document.getElementById('pack-import-source-input').value || '').trim();
-    if (!source) {
-      showError('source is required');
+    var source = (document.getElementById('blueprint-import-source-input').value || '').trim();
+    var content = (document.getElementById('blueprint-import-content-input').value || '').trim();
+    if (!source && !content) {
+      showError('enter a source URL or paste blueprint YAML');
       return;
     }
-    hideError();
-    fetch('/packs/preview', {
+    // If both are filled, content wins (matches server). Warn so the user
+    // isn't surprised.
+    if (source && content) {
+      showError('both source and YAML provided — using pasted YAML');
+    } else {
+      hideError();
+    }
+    var payload = content
+      ? { content: content }
+      : { source: source };
+    // Stash for the install step so we don't re-read the inputs (the modal
+    // shows the preview UI, but the source-stage inputs are still in the DOM).
+    window._pendingBlueprintInstall = payload;
+
+    fetch('/blueprints/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: source })
+      body: JSON.stringify(payload)
     })
       .then(function(r) { return r.json().catch(function() { return { error: 'HTTP ' + r.status }; }); })
       .then(function(data) {
@@ -99,29 +114,31 @@ if (typeof window._packsInit === 'undefined') {
           showError(data.error);
           return;
         }
-        renderPreview(data.result, data.error, source);
+        renderPreview(data.result, data.error);
       })
       .catch(function(err) { showError(err.message || String(err)); });
   }
 
-  function runInstall(source) {
-    if (!source) {
-      showError('install source missing');
+  function runInstall() {
+    var payload = window._pendingBlueprintInstall;
+    if (!payload) {
+      showError('preview the blueprint before installing');
       return;
     }
-    var vaultInputs = document.querySelectorAll('#pack-import-preview-stage input[data-vault-key]');
+    var vaultInputs = document.querySelectorAll('#blueprint-import-preview-stage input[data-vault-key]');
     var vaultValues = {};
     vaultInputs.forEach(function(input) {
       var key = input.getAttribute('data-vault-key');
       var val = (input.value || '').trim();
       if (val) vaultValues[key] = val;
     });
+    payload = Object.assign({}, payload, { vault_values: vaultValues });
 
     hideError();
-    fetch('/packs/install', {
+    fetch('/blueprints/install', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: source, vault_values: vaultValues })
+      body: JSON.stringify(payload)
     })
       .then(function(r) { return r.json().catch(function() { return { error: 'HTTP ' + r.status }; }); })
       .then(function(data) {
@@ -137,8 +154,8 @@ if (typeof window._packsInit === 'undefined') {
 
   function runUninstall(name) {
     if (!name) return;
-    if (!confirm("Uninstall pack '" + name + "'?")) return;
-    fetch('/packs/' + encodeURIComponent(name), { method: 'DELETE' })
+    if (!confirm("Uninstall blueprint '" + name + "'?")) return;
+    fetch('/blueprints/' + encodeURIComponent(name), { method: 'DELETE' })
       .then(function(r) {
         if (r.ok) {
           window.location.reload();
@@ -149,15 +166,15 @@ if (typeof window._packsInit === 'undefined') {
       .catch(function(err) { alert('Uninstall failed: ' + (err.message || err)); });
   }
 
-  function renderPreview(result, errorMsg, source) {
-    document.getElementById('pack-import-source-stage').classList.add('hidden');
-    var stage = document.getElementById('pack-import-preview-stage');
+  function renderPreview(result, errorMsg) {
+    document.getElementById('blueprint-import-source-stage').classList.add('hidden');
+    var stage = document.getElementById('blueprint-import-preview-stage');
     stage.classList.remove('hidden');
 
     var header = (result && result.header) || {};
     var html = '';
 
-    var title = header.name || '(unnamed pack)';
+    var title = header.name || '(unnamed blueprint)';
     var subtitle = header.version ? (title + ' ' + header.version) : title;
     html += '<div class="mb-3">';
     html += '<div class="text-base font-medium text-gray-900">' + escapeHtml(subtitle) + '</div>';
@@ -175,7 +192,7 @@ if (typeof window._packsInit === 'undefined') {
 
     if (result && result.already_installed) {
       html += '<div class="mb-3 bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-800">';
-      html += 'This pack is already installed. Uninstall it first to reinstall.';
+      html += 'This blueprint is already installed. Uninstall it first to reinstall.';
       html += '</div>';
     }
 
@@ -223,12 +240,12 @@ if (typeof window._packsInit === 'undefined') {
                   (result.requires_missing && result.requires_missing.length > 0) ||
                   result.already_installed;
     html += '<div class="flex justify-end gap-2 mt-4">';
-    html += '<button data-pack-action="reset-preview" class="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Back</button>';
-    html += '<button data-pack-action="close-import" class="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Cancel</button>';
+    html += '<button data-blueprint-action="reset-preview" class="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Back</button>';
+    html += '<button data-blueprint-action="close-import" class="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Cancel</button>';
     if (blocked) {
       html += '<button disabled class="px-4 py-1.5 text-xs bg-gray-300 text-white rounded cursor-not-allowed">Install</button>';
     } else {
-      html += '<button data-pack-action="install" data-pack-source="' + escapeHtml(source) + '" class="px-4 py-1.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700">Install</button>';
+      html += '<button data-blueprint-action="install" class="px-4 py-1.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700">Install</button>';
     }
     html += '</div>';
 
@@ -238,11 +255,11 @@ if (typeof window._packsInit === 'undefined') {
   function resetPreview() {
     // Keep the previous source in the input so a failed preview is easy to
     // retry with a tweak.
-    document.getElementById('pack-import-source-stage').classList.remove('hidden');
-    document.getElementById('pack-import-preview-stage').classList.add('hidden');
-    document.getElementById('pack-import-preview-stage').innerHTML = '';
+    document.getElementById('blueprint-import-source-stage').classList.remove('hidden');
+    document.getElementById('blueprint-import-preview-stage').classList.add('hidden');
+    document.getElementById('blueprint-import-preview-stage').innerHTML = '';
     hideError();
-    var input = document.getElementById('pack-import-source-input');
+    var input = document.getElementById('blueprint-import-source-input');
     if (input) setTimeout(function() { input.focus(); }, 50);
   }
 
@@ -258,14 +275,14 @@ if (typeof window._packsInit === 'undefined') {
   }
 
   function showError(msg) {
-    var el = document.getElementById('pack-import-error');
+    var el = document.getElementById('blueprint-import-error');
     if (!el) return;
     el.textContent = msg;
     el.classList.remove('hidden');
   }
 
   function hideError() {
-    var el = document.getElementById('pack-import-error');
+    var el = document.getElementById('blueprint-import-error');
     if (el) el.classList.add('hidden');
   }
 }

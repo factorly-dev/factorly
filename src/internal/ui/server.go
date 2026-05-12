@@ -74,7 +74,7 @@ func New(opts Options) (*Server, error) {
 		"templates/history.html",
 		"templates/auth.html",
 		"templates/vault.html",
-		"templates/packs.html",
+		"templates/blueprints.html",
 	}
 	tmpls := make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
@@ -184,11 +184,11 @@ func (s *Server) routes() {
 	// Reload
 	s.mux.HandleFunc("POST /reload", s.handleReload)
 
-	// Packs
-	s.mux.HandleFunc("GET /packs", s.handlePacksList)
-	s.mux.HandleFunc("POST /packs/preview", s.handlePackPreview)
-	s.mux.HandleFunc("POST /packs/install", s.handlePackInstall)
-	s.mux.HandleFunc("DELETE /packs/{name}", s.handlePackUninstall)
+	// Blueprints
+	s.mux.HandleFunc("GET /blueprints", s.handleBlueprintsList)
+	s.mux.HandleFunc("POST /blueprints/preview", s.handleBlueprintPreview)
+	s.mux.HandleFunc("POST /blueprints/install", s.handleBlueprintInstall)
+	s.mux.HandleFunc("DELETE /blueprints/{name}", s.handleBlueprintUninstall)
 }
 
 // MountMCP sets the MCP handler. The StreamableHTTPServer is its own

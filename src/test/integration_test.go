@@ -3463,25 +3463,25 @@ tools:
 	}
 }
 
-// --- Pack install lifecycle ---
+// --- Blueprint install lifecycle ---
 
-func TestPacksEmptyList(t *testing.T) {
+func TestBlueprintsEmptyList(t *testing.T) {
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": "tools: {}\n",
 	})
-	stdout, _, code := run(t, dir, "packs")
+	stdout, _, code := run(t, dir, "blueprint", "list")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
-	if !strings.Contains(stdout, "No packs installed") {
+	if !strings.Contains(stdout, "No blueprints installed") {
 		t.Errorf("expected empty-state message, got %q", stdout)
 	}
 }
 
-func TestPackInstallFromLocalFile(t *testing.T) {
+func TestBlueprintInstallFromLocalFile(t *testing.T) {
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": "tools: {}\n",
-		"my-pack.yaml": `
+		"my-blueprint.yaml": `
 name: gmail-toolkit
 version: 1.0.0
 description: Gmail integration
@@ -3499,12 +3499,12 @@ tools:
 `,
 	})
 
-	stdout, _, code := run(t, dir, "install", "./my-pack.yaml", "--no-prompt")
+	stdout, _, code := run(t, dir, "blueprint", "install", "./my-blueprint.yaml", "--no-prompt")
 	if code != 0 {
 		t.Fatalf("install: exit %d, %s", code, stdout)
 	}
 	if !strings.Contains(stdout, "gmail-toolkit 1.0.0") {
-		t.Errorf("expected pack title in output, got %q", stdout)
+		t.Errorf("expected blueprint title in output, got %q", stdout)
 	}
 	if !strings.Contains(stdout, "+ gmail.search") {
 		t.Errorf("expected tools summary, got %q", stdout)
@@ -3513,10 +3513,10 @@ tools:
 		t.Errorf("expected workflows summary, got %q", stdout)
 	}
 
-	// Pack file should exist on disk
-	packFile := filepath.Join(dir, ".factorly", "packs", "gmail-toolkit.yaml")
-	if _, err := os.Stat(packFile); err != nil {
-		t.Fatalf("expected pack file at %s: %v", packFile, err)
+	// Blueprint file should exist on disk
+	blueprintFile := filepath.Join(dir, ".factorly", "blueprints", "gmail-toolkit.yaml")
+	if _, err := os.Stat(blueprintFile); err != nil {
+		t.Fatalf("expected blueprint file at %s: %v", blueprintFile, err)
 	}
 
 	// Tools should be visible via 'factorly tools'
@@ -3525,23 +3525,23 @@ tools:
 		t.Fatalf("tools list: exit %d", code)
 	}
 	if !strings.Contains(stdout, "gmail.search") || !strings.Contains(stdout, "gmail.daily") {
-		t.Errorf("expected pack tools in tools list, got %q", stdout)
+		t.Errorf("expected blueprint tools in tools list, got %q", stdout)
 	}
 
-	// Packs list should report the installed pack
-	stdout, _, code = run(t, dir, "packs")
+	// Blueprints list should report the installed blueprint
+	stdout, _, code = run(t, dir, "blueprint", "list")
 	if code != 0 {
-		t.Fatalf("packs list: exit %d", code)
+		t.Fatalf("blueprints list: exit %d", code)
 	}
 	if !strings.Contains(stdout, "gmail-toolkit") || !strings.Contains(stdout, "1.0.0") {
-		t.Errorf("expected gmail-toolkit in packs list, got %q", stdout)
+		t.Errorf("expected gmail-toolkit in blueprints list, got %q", stdout)
 	}
 }
 
-func TestPackInstallDryRun(t *testing.T) {
+func TestBlueprintInstallDryRun(t *testing.T) {
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": "tools: {}\n",
-		"my-pack.yaml": `
+		"my-blueprint.yaml": `
 name: dryrun-test
 tools:
   dry.tool:
@@ -3551,16 +3551,16 @@ tools:
 `,
 	})
 
-	stdout, _, code := run(t, dir, "install", "./my-pack.yaml", "--dry-run", "--no-prompt")
+	stdout, _, code := run(t, dir, "blueprint", "install", "./my-blueprint.yaml", "--dry-run", "--no-prompt")
 	if code != 0 {
 		t.Fatalf("dry-run install: exit %d, %s", code, stdout)
 	}
 	if !strings.Contains(stdout, "Dry run") {
 		t.Errorf("expected 'Dry run' message, got %q", stdout)
 	}
-	// Pack file should NOT exist
-	if _, err := os.Stat(filepath.Join(dir, ".factorly", "packs", "dryrun-test.yaml")); err == nil {
-		t.Fatal("dry-run should not write a pack file")
+	// Blueprint file should NOT exist
+	if _, err := os.Stat(filepath.Join(dir, ".factorly", "blueprints", "dryrun-test.yaml")); err == nil {
+		t.Fatal("dry-run should not write a blueprint file")
 	}
 	// Tool should NOT appear in tools list
 	stdout, _, _ = run(t, dir, "tools")
@@ -3569,10 +3569,10 @@ tools:
 	}
 }
 
-func TestPackUninstall(t *testing.T) {
+func TestBlueprintUninstall(t *testing.T) {
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": "tools: {}\n",
-		"my-pack.yaml": `
+		"my-blueprint.yaml": `
 name: removable
 tools:
   rm.test:
@@ -3582,19 +3582,19 @@ tools:
 `,
 	})
 
-	if _, _, code := run(t, dir, "install", "./my-pack.yaml", "--no-prompt"); code != 0 {
+	if _, _, code := run(t, dir, "blueprint", "install", "./my-blueprint.yaml", "--no-prompt"); code != 0 {
 		t.Fatalf("install: exit %d", code)
 	}
-	stdout, _, code := run(t, dir, "uninstall", "removable")
+	stdout, _, code := run(t, dir, "blueprint", "uninstall", "removable")
 	if code != 0 {
 		t.Fatalf("uninstall: exit %d, %s", code, stdout)
 	}
 	if !strings.Contains(stdout, "Uninstalled removable") {
 		t.Errorf("expected uninstall confirmation, got %q", stdout)
 	}
-	// Pack file should be gone
-	if _, err := os.Stat(filepath.Join(dir, ".factorly", "packs", "removable.yaml")); err == nil {
-		t.Fatal("pack file should be removed after uninstall")
+	// Blueprint file should be gone
+	if _, err := os.Stat(filepath.Join(dir, ".factorly", "blueprints", "removable.yaml")); err == nil {
+		t.Fatal("blueprint file should be removed after uninstall")
 	}
 	// Tool should disappear from tools list
 	stdout, _, _ = run(t, dir, "tools")
@@ -3602,17 +3602,17 @@ tools:
 		t.Errorf("uninstalled tool still in tools list: %q", stdout)
 	}
 	// Second uninstall should fail clearly
-	_, stderr, code := run(t, dir, "uninstall", "removable")
+	_, stderr, code := run(t, dir, "blueprint", "uninstall", "removable")
 	if code == 0 {
-		t.Fatal("expected uninstalling-missing-pack to error")
+		t.Fatal("expected uninstalling-missing-blueprint to error")
 	}
 	if !strings.Contains(stderr, "not installed") {
 		t.Errorf("expected 'not installed' error, got stderr=%q", stderr)
 	}
 }
 
-func TestPackInstallConflict(t *testing.T) {
-	// Existing project already defines a tool the pack would shadow.
+func TestBlueprintInstallConflict(t *testing.T) {
+	// Existing project already defines a tool the blueprint would shadow.
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": `
 tools:
@@ -3621,17 +3621,17 @@ tools:
     command: existing
     description: existing
 `,
-		"my-pack.yaml": `
+		"my-blueprint.yaml": `
 name: conflicty
 tools:
   shared.tool:
     type: cli
     command: new
-    description: from-pack
+    description: from-blueprint
 `,
 	})
 
-	stdout, stderr, code := run(t, dir, "install", "./my-pack.yaml", "--no-prompt")
+	stdout, stderr, code := run(t, dir, "blueprint", "install", "./my-blueprint.yaml", "--no-prompt")
 	if code == 0 {
 		t.Fatal("expected install to fail on conflict")
 	}
@@ -3641,13 +3641,13 @@ tools:
 	if !strings.Contains(stderr, "conflict") {
 		t.Errorf("expected conflict error on stderr, got %q", stderr)
 	}
-	// Pack must not be written
-	if _, err := os.Stat(filepath.Join(dir, ".factorly", "packs", "conflicty.yaml")); err == nil {
-		t.Fatal("conflicting pack should not have been written")
+	// Blueprint must not be written
+	if _, err := os.Stat(filepath.Join(dir, ".factorly", "blueprints", "conflicty.yaml")); err == nil {
+		t.Fatal("conflicting blueprint should not have been written")
 	}
 }
 
-func TestPackInstallFromHTTP(t *testing.T) {
+func TestBlueprintInstallFromHTTP(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`
 name: from-http
@@ -3665,12 +3665,12 @@ tools:
 		"factorly.yaml": "tools: {}\n",
 	})
 
-	stdout, _, code := run(t, dir, "install", srv.URL+"/pack.yaml", "--no-prompt")
+	stdout, _, code := run(t, dir, "blueprint", "install", srv.URL+"/blueprint.yaml", "--no-prompt")
 	if code != 0 {
 		t.Fatalf("install from URL: exit %d, %s", code, stdout)
 	}
 	if !strings.Contains(stdout, "from-http") {
-		t.Errorf("expected pack name in output, got %q", stdout)
+		t.Errorf("expected blueprint name in output, got %q", stdout)
 	}
 
 	stdout, _, _ = run(t, dir, "tools")
@@ -3679,14 +3679,14 @@ tools:
 	}
 }
 
-func TestPackInstallWithOAuthProvider(t *testing.T) {
-	// A pack ships its own oauth_providers entry. After install, the provider
+func TestBlueprintInstallWithOAuthProvider(t *testing.T) {
+	// A blueprint ships its own oauth_providers entry. After install, the provider
 	// must be visible via the merged config; we verify via 'factorly tools'
 	// for a tool that auth-references the provider (load failure would surface
 	// as a non-zero exit code from validate).
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": "tools: {}\n",
-		"linear-pack.yaml": `
+		"linear-blueprint.yaml": `
 name: linear
 oauth_providers:
   linear:
@@ -3709,7 +3709,7 @@ tools:
 `,
 	})
 
-	stdout, _, code := run(t, dir, "install", "./linear-pack.yaml", "--no-prompt")
+	stdout, _, code := run(t, dir, "blueprint", "install", "./linear-blueprint.yaml", "--no-prompt")
 	if code != 0 {
 		t.Fatalf("install: exit %d, %s", code, stdout)
 	}
@@ -3724,9 +3724,9 @@ tools:
 	}
 }
 
-func TestPackBackwardCompatWithFlatMapFile(t *testing.T) {
+func TestBlueprintBackwardCompatWithFlatMapFile(t *testing.T) {
 	// A user has a legacy flat-map .factorly/my-tools.yaml AND installs a new
-	// pack file. Both must coexist and both their tools must register.
+	// blueprint file. Both must coexist and both their tools must register.
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": "tools: {}\n",
 		".factorly/legacy.yaml": `
@@ -3735,13 +3735,13 @@ legacy.tool:
   command: echo
   description: legacy flat-map style
 `,
-		"new-pack.yaml": `
+		"new-blueprint.yaml": `
 name: newstyle
 tools:
   new.tool:
     type: cli
     command: echo
-    description: new pack style
+    description: new blueprint style
 `,
 	})
 
@@ -3754,7 +3754,7 @@ tools:
 		t.Fatalf("legacy flat-map tool should load: %q", stdout)
 	}
 
-	if _, _, code := run(t, dir, "install", "./new-pack.yaml", "--no-prompt"); code != 0 {
+	if _, _, code := run(t, dir, "blueprint", "install", "./new-blueprint.yaml", "--no-prompt"); code != 0 {
 		t.Fatal("install failed")
 	}
 
@@ -3766,15 +3766,15 @@ tools:
 		t.Errorf("legacy tool dropped after install: %q", stdout)
 	}
 	if !strings.Contains(stdout, "new.tool") {
-		t.Errorf("new pack tool missing: %q", stdout)
+		t.Errorf("new blueprint tool missing: %q", stdout)
 	}
 }
 
-func TestPackUnknownSourceFails(t *testing.T) {
+func TestBlueprintUnknownSourceFails(t *testing.T) {
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": "tools: {}\n",
 	})
-	_, stderr, code := run(t, dir, "install", "./does-not-exist.yaml", "--no-prompt")
+	_, stderr, code := run(t, dir, "blueprint", "install", "./does-not-exist.yaml", "--no-prompt")
 	if code == 0 {
 		t.Fatal("expected missing-source to fail")
 	}
@@ -3783,19 +3783,19 @@ func TestPackUnknownSourceFails(t *testing.T) {
 	}
 }
 
-// --- Pack CLI surface details ---
+// --- Blueprint CLI surface details ---
 
-func TestPacksListMultipleSorted(t *testing.T) {
-	// Two packs should list in name-sorted order regardless of install order.
+func TestBlueprintsListMultipleSorted(t *testing.T) {
+	// Two blueprints should list in name-sorted order regardless of install order.
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": "tools: {}\n",
-		"zeta-pack.yaml": `
+		"zeta-blueprint.yaml": `
 name: zeta
 version: 9.9
 description: last alphabetically
 tools: {}
 `,
-		"alpha-pack.yaml": `
+		"alpha-blueprint.yaml": `
 name: alpha
 version: 0.1
 description: first alphabetically
@@ -3803,16 +3803,16 @@ tools: {}
 `,
 	})
 
-	if _, _, code := run(t, dir, "install", "./zeta-pack.yaml", "--no-prompt"); code != 0 {
+	if _, _, code := run(t, dir, "blueprint", "install", "./zeta-blueprint.yaml", "--no-prompt"); code != 0 {
 		t.Fatal("install zeta failed")
 	}
-	if _, _, code := run(t, dir, "install", "./alpha-pack.yaml", "--no-prompt"); code != 0 {
+	if _, _, code := run(t, dir, "blueprint", "install", "./alpha-blueprint.yaml", "--no-prompt"); code != 0 {
 		t.Fatal("install alpha failed")
 	}
 
-	stdout, _, code := run(t, dir, "packs")
+	stdout, _, code := run(t, dir, "blueprint", "list")
 	if code != 0 {
-		t.Fatalf("packs list: exit %d", code)
+		t.Fatalf("blueprints list: exit %d", code)
 	}
 	alphaIdx := strings.Index(stdout, "alpha")
 	zetaIdx := strings.Index(stdout, "zeta")
@@ -3821,7 +3821,7 @@ tools: {}
 	}
 }
 
-func TestPackInstallNoPromptFlagListsKeys(t *testing.T) {
+func TestBlueprintInstallNoPromptFlagListsKeys(t *testing.T) {
 	// With --no-prompt and required vault keys, the install should succeed
 	// but mention the unset keys with the 'vault set' suggestion.
 	dir := setupDir(t, map[string]string{
@@ -3840,7 +3840,7 @@ tools:
 `,
 	})
 
-	stdout, _, code := run(t, dir, "install", "./needs-keys.yaml", "--no-prompt")
+	stdout, _, code := run(t, dir, "blueprint", "install", "./needs-keys.yaml", "--no-prompt")
 	if code != 0 {
 		t.Fatalf("install: exit %d, %s", code, stdout)
 	}
@@ -3852,8 +3852,8 @@ tools:
 	}
 }
 
-func TestPackInstallDoubleInstallFails(t *testing.T) {
-	// Installing the same pack twice should fail with a clear "already
+func TestBlueprintInstallDoubleInstallFails(t *testing.T) {
+	// Installing the same blueprint twice should fail with a clear "already
 	// installed" message, suggesting uninstall — not the generic
 	// "conflict with N definitions" message that the tool-collision path
 	// would otherwise produce.
@@ -3869,10 +3869,10 @@ tools:
 `,
 	})
 
-	if _, _, code := run(t, dir, "install", "./dup.yaml", "--no-prompt"); code != 0 {
+	if _, _, code := run(t, dir, "blueprint", "install", "./dup.yaml", "--no-prompt"); code != 0 {
 		t.Fatal("first install failed")
 	}
-	_, stderr, code := run(t, dir, "install", "./dup.yaml", "--no-prompt")
+	_, stderr, code := run(t, dir, "blueprint", "install", "./dup.yaml", "--no-prompt")
 	if code == 0 {
 		t.Fatal("expected second install to fail")
 	}
@@ -3884,8 +3884,8 @@ tools:
 	}
 }
 
-func TestPackInstallSummaryShowsMissingRequires(t *testing.T) {
-	// When a pack's requires can't be satisfied, the CLI should print the
+func TestBlueprintInstallSummaryShowsMissingRequires(t *testing.T) {
+	// When a blueprint's requires can't be satisfied, the CLI should print the
 	// summary section (with the proposed adds AND the missing deps) before
 	// the error — actionable context next to the failure.
 	dir := setupDir(t, map[string]string{
@@ -3901,12 +3901,12 @@ tools:
     description: x
 `,
 	})
-	stdout, _, code := run(t, dir, "install", "./needs.yaml", "--no-prompt")
+	stdout, _, code := run(t, dir, "blueprint", "install", "./needs.yaml", "--no-prompt")
 	if code == 0 {
 		t.Fatal("expected install to fail")
 	}
 	if !strings.Contains(stdout, "needs-ghost") {
-		t.Errorf("expected pack header in output, got %q", stdout)
+		t.Errorf("expected blueprint header in output, got %q", stdout)
 	}
 	if !strings.Contains(stdout, "Missing dependencies") {
 		t.Errorf("expected 'Missing dependencies' section, got %q", stdout)
@@ -3933,25 +3933,25 @@ func repoFile(t *testing.T, relPath string) string {
 	return ""
 }
 
-func TestExamplePackGmailInstalls(t *testing.T) {
-	// Dogfood test: the checked-in examples/packs/gmail.yaml is the canonical
-	// example of the pack format. If this test ever fails, it means a format
+func TestExampleBlueprintGmailInstalls(t *testing.T) {
+	// Dogfood test: the checked-in examples/blueprints/gmail.yaml is the canonical
+	// example of the blueprint format. If this test ever fails, it means a format
 	// change has broken the example — fix one or the other to keep them in
-	// sync. The pack is real: 6 REST tools and a self-shipped OAuth provider
+	// sync. The blueprint is real: 6 REST tools and a self-shipped OAuth provider
 	// using vault refs for client credentials.
-	gmailPack := repoFile(t, "examples/packs/gmail.yaml")
+	gmailBlueprint := repoFile(t, "examples/blueprints/gmail.yaml")
 
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": "tools: {}\n",
 	})
 
 	// Dry-run: confirms the structured preview the UI would render.
-	stdout, _, code := run(t, dir, "install", gmailPack, "--dry-run", "--no-prompt")
+	stdout, _, code := run(t, dir, "blueprint", "install", gmailBlueprint, "--dry-run", "--no-prompt")
 	if code != 0 {
 		t.Fatalf("dry-run install: exit %d, %s", code, stdout)
 	}
 	if !strings.Contains(stdout, "gmail 1.0.0") {
-		t.Errorf("expected pack header in dry-run output, got %q", stdout)
+		t.Errorf("expected blueprint header in dry-run output, got %q", stdout)
 	}
 	// Expect each of the 6 tools by name.
 	expectTools := []string{
@@ -3977,7 +3977,7 @@ func TestExamplePackGmailInstalls(t *testing.T) {
 	}
 
 	// Commit. --no-prompt skips the interactive vault prompts.
-	stdout, _, code = run(t, dir, "install", gmailPack, "--no-prompt")
+	stdout, _, code = run(t, dir, "blueprint", "install", gmailBlueprint, "--no-prompt")
 	if code != 0 {
 		t.Fatalf("install: exit %d, %s", code, stdout)
 	}
@@ -3985,7 +3985,7 @@ func TestExamplePackGmailInstalls(t *testing.T) {
 		t.Errorf("expected 'Installed gmail' confirmation, got %q", stdout)
 	}
 
-	// All six tools should be visible via 'factorly tools'. If the pack's
+	// All six tools should be visible via 'factorly tools'. If the blueprint's
 	// OAuth provider definition didn't merge correctly, validate would
 	// reject the tools' provider:gmail references and tools list would
 	// either be empty or error.
@@ -3999,17 +3999,17 @@ func TestExamplePackGmailInstalls(t *testing.T) {
 		}
 	}
 
-	// 'factorly packs' should report the installed pack.
-	stdout, _, code = run(t, dir, "packs")
+	// 'factorly blueprint list' should report the installed blueprint.
+	stdout, _, code = run(t, dir, "blueprint", "list")
 	if code != 0 {
-		t.Fatalf("packs list: exit %d, %s", code, stdout)
+		t.Fatalf("blueprints list: exit %d, %s", code, stdout)
 	}
 	if !strings.Contains(stdout, "gmail") || !strings.Contains(stdout, "1.0.0") {
-		t.Errorf("expected installed gmail 1.0.0 in packs list, got %q", stdout)
+		t.Errorf("expected installed gmail 1.0.0 in blueprints list, got %q", stdout)
 	}
 
 	// Uninstall and confirm everything is gone.
-	if _, _, code := run(t, dir, "uninstall", "gmail"); code != 0 {
+	if _, _, code := run(t, dir, "blueprint", "uninstall", "gmail"); code != 0 {
 		t.Fatal("uninstall failed")
 	}
 	stdout, _, _ = run(t, dir, "tools")

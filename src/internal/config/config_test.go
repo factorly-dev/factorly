@@ -975,7 +975,7 @@ tools:
 	}
 }
 
-// --- Pack format tests ---
+// --- Blueprint format tests ---
 
 // Writes a loose YAML file inside a .factorly/ directory and returns the
 // project root (parent of .factorly/), suitable for passing to LoadDir-via-Load
@@ -1016,7 +1016,7 @@ my.tool:
 	}
 }
 
-func TestLooseFilePackShapeParses(t *testing.T) {
+func TestLooseFileBlueprintShapeParses(t *testing.T) {
 	path := writeLooseFile(t, "gmail.yaml", `
 name: gmail-toolkit
 version: 1.0.0
@@ -1177,30 +1177,30 @@ func TestValidateReferencesPasses(t *testing.T) {
 	}
 }
 
-// --- Pack format unit gaps ---
+// --- Blueprint format unit gaps ---
 
-func TestPacksSubdirAutoLoaded(t *testing.T) {
-	// .factorly/packs/*.yaml should be picked up automatically by Load,
+func TestBlueprintsSubdirAutoLoaded(t *testing.T) {
+	// .factorly/blueprints/*.yaml should be picked up automatically by Load,
 	// alongside (and equivalent to) loose files in .factorly/.
 	dir := t.TempDir()
 	factorlyDir := filepath.Join(dir, ".factorly")
-	packsDir := filepath.Join(factorlyDir, "packs")
-	if err := os.MkdirAll(packsDir, 0o755); err != nil {
+	blueprintsDir := filepath.Join(factorlyDir, "blueprints")
+	if err := os.MkdirAll(blueprintsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	rootCfg := filepath.Join(dir, "factorly.yaml")
 	if err := os.WriteFile(rootCfg, []byte("tools: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	packYAML := `
+	bpYAML := `
 name: auto
 tools:
   auto.tool:
     type: cli
     command: echo
-    description: from packs subdir
+    description: from blueprints subdir
 `
-	if err := os.WriteFile(filepath.Join(packsDir, "auto.yaml"), []byte(packYAML), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(blueprintsDir, "auto.yaml"), []byte(bpYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1209,32 +1209,32 @@ tools:
 		t.Fatalf("Load: %v", err)
 	}
 	if _, ok := cfg.Tools["auto.tool"]; !ok {
-		t.Fatalf("expected auto.tool from .factorly/packs/, got %v", cfg.Tools)
+		t.Fatalf("expected auto.tool from .factorly/blueprints/, got %v", cfg.Tools)
 	}
 }
 
-func TestPacksSubdirMergedWhenConfigInsideFactorly(t *testing.T) {
+func TestBlueprintsSubdirMergedWhenConfigInsideFactorly(t *testing.T) {
 	// When the config file lives in .factorly/factorly.yaml, the sibling
-	// packs/ subdirectory must also be scanned. This is a separate code path
-	// from the root-config case above.
+	// blueprints/ subdirectory must also be scanned. This is a separate code
+	// path from the root-config case above.
 	dir := t.TempDir()
 	factorlyDir := filepath.Join(dir, ".factorly")
-	if err := os.MkdirAll(filepath.Join(factorlyDir, "packs"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(factorlyDir, "blueprints"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(factorlyDir, "factorly.yaml")
 	if err := os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	packYAML := `
+	bpYAML := `
 name: inside
 tools:
   inside.tool:
     type: cli
     command: echo
-    description: from inside-factorly packs
+    description: from inside-factorly blueprints
 `
-	if err := os.WriteFile(filepath.Join(factorlyDir, "packs", "inside.yaml"), []byte(packYAML), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(factorlyDir, "blueprints", "inside.yaml"), []byte(bpYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1243,7 +1243,7 @@ tools:
 		t.Fatalf("Load: %v", err)
 	}
 	if _, ok := cfg.Tools["inside.tool"]; !ok {
-		t.Fatalf("expected inside.tool from .factorly/packs/, got %v", cfg.Tools)
+		t.Fatalf("expected inside.tool from .factorly/blueprints/, got %v", cfg.Tools)
 	}
 }
 
