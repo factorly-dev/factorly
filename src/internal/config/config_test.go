@@ -972,3 +972,205 @@ tools:
 		t.Fatalf("if with tool should be valid: %v", err)
 	}
 }
+
+// --- Pack format tests ---
+
+// Writes a loose YAML file inside a .factorly/ directory and returns the
+// project root (parent of .factorly/), suitable for passing to LoadDir-via-Load
+// patterns that look for .factorly/ siblings.
+func writeLooseFile(t *testing.T, name, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	factorlyDir := filepath.Join(dir, ".factorly")
+	if err := os.MkdirAll(factorlyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(factorlyDir, name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Also write a minimal factorly.yaml at the root so Load() has an entry point.
+	rootCfg := filepath.Join(dir, "factorly.yaml")
+	if err := os.WriteFile(rootCfg, []byte("tools: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return rootCfg
+}
+
+func TestLooseFileFlatMapStillWorks(t *testing.T) {
+	// Existing users have .factorly/my-tools.yaml in the flat-map shape.
+	// Backward compatibility: this must keep loading without migration.
+	path := writeLooseFile(t, "my-tools.yaml", `
+my.tool:
+  type: cli
+  command: echo
+  description: hi
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("loading flat-map loose file: %v", err)
+	}
+	if _, ok := cfg.Tools["my.tool"]; !ok {
+		t.Fatalf("expected my.tool to load; got %v", cfg.Tools)
+	}
+}
+
+func TestLooseFilePackShapeParses(t *testing.T) {
+	path := writeLooseFile(t, "gmail.yaml", `
+name: gmail-toolkit
+version: 1.0.0
+description: Gmail integration
+author: widefido
+license: MIT
+tools:
+  gmail.search:
+    type: cli
+    command: echo
+    description: search
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("loading pack shape: %v", err)
+	}
+	if _, ok := cfg.Tools["gmail.search"]; !ok {
+		t.Fatalf("expected gmail.search to load; got %v", cfg.Tools)
+	}
+}
+
+func TestLooseFileWithOAuthProvider(t *testing.T) {
+	// A pack file shipping its own oauth_providers entry should merge into
+	// the main config — that's the whole point of the format change.
+	path := writeLooseFile(t, "linear.yaml", `
+name: linear
+oauth_providers:
+  linear:
+    client_id: cid
+    client_secret: csecret
+    auth_url: https://example/auth
+    token_url: https://example/token
+tools:
+  linear.list:
+    type: cli
+    command: echo
+    description: list
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("loading loose file with oauth provider: %v", err)
+	}
+	if _, ok := cfg.OAuthProviders["linear"]; !ok {
+		t.Fatalf("expected oauth_providers.linear to load; got %v", cfg.OAuthProviders)
+	}
+}
+
+func TestLooseFileDuplicateOAuthProviderErrors(t *testing.T) {
+	dir := t.TempDir()
+	factorlyDir := filepath.Join(dir, ".factorly")
+	if err := os.MkdirAll(factorlyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := `
+oauth_providers:
+  dup:
+    client_id: x
+    auth_url: https://x
+    token_url: https://x
+tools: {}
+`
+	for _, n := range []string{"a.yaml", "b.yaml"} {
+		if err := os.WriteFile(filepath.Join(factorlyDir, n), []byte(file), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rootCfg := filepath.Join(dir, "factorly.yaml")
+	if err := os.WriteFile(rootCfg, []byte("tools: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(rootCfg); err == nil {
+		t.Fatalf("expected duplicate oauth provider error")
+	}
+}
+
+func TestValidateReferencesWorkflowToolMissing(t *testing.T) {
+	cfg := &Config{
+		Tools: map[string]ToolConfig{
+			"my.workflow": {
+				Type: "workflow",
+				Steps: []StepConfig{
+					{Tool: "does.not.exist"},
+				},
+			},
+		},
+	}
+	if err := ValidateReferences(cfg, nil); err == nil {
+		t.Fatalf("expected error for missing workflow ref")
+	}
+}
+
+func TestValidateReferencesWorkflowToolResolvesViaBuiltins(t *testing.T) {
+	cfg := &Config{
+		Tools: map[string]ToolConfig{
+			"my.workflow": {
+				Type: "workflow",
+				Steps: []StepConfig{
+					{Tool: "factorly.fetch"},
+				},
+			},
+		},
+	}
+	builtins := map[string]bool{"factorly.fetch": true}
+	if err := ValidateReferences(cfg, builtins); err != nil {
+		t.Fatalf("expected workflow ref to resolve via builtins; got %v", err)
+	}
+}
+
+func TestValidateReferencesWorkflowSwitchMissing(t *testing.T) {
+	cfg := &Config{
+		Tools: map[string]ToolConfig{
+			"my.workflow": {
+				Type: "workflow",
+				Steps: []StepConfig{
+					{Switch: []SwitchCase{{Condition: "x", Tool: "ghost"}}},
+				},
+			},
+		},
+	}
+	if err := ValidateReferences(cfg, nil); err == nil {
+		t.Fatalf("expected error for missing switch tool")
+	}
+}
+
+func TestValidateReferencesRequiresToolMissing(t *testing.T) {
+	cfg := &Config{
+		Tools: map[string]ToolConfig{},
+		Requires: &Requires{
+			Tools: []string{"ghost"},
+		},
+	}
+	if err := ValidateReferences(cfg, nil); err == nil {
+		t.Fatalf("expected error for missing required tool")
+	}
+}
+
+func TestValidateReferencesRequiresOAuthMissing(t *testing.T) {
+	cfg := &Config{
+		Tools: map[string]ToolConfig{},
+		Requires: &Requires{
+			OAuthProviders: []string{"ghost"},
+		},
+	}
+	if err := ValidateReferences(cfg, nil); err == nil {
+		t.Fatalf("expected error for missing required oauth provider")
+	}
+}
+
+func TestValidateReferencesPasses(t *testing.T) {
+	cfg := &Config{
+		Tools: map[string]ToolConfig{
+			"a": {Type: "cli", Command: "echo"},
+			"b": {Type: "workflow", Steps: []StepConfig{{Tool: "a"}}},
+		},
+	}
+	if err := ValidateReferences(cfg, nil); err != nil {
+		t.Fatalf("expected no error; got %v", err)
+	}
+}

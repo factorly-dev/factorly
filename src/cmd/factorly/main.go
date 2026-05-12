@@ -521,6 +521,12 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 	}
 	builtins.Register(cfg, builtins.Options{Mode: mode})
 
+	// Now that builtins are merged into cfg.Tools, run cross-reference validation
+	// (workflow step targets, pack requires) against the full tool set.
+	if err := config.ValidateReferences(cfg, nil); err != nil {
+		return nil, nil, err
+	}
+
 	vlog("loaded %d tools", len(cfg.Tools))
 
 	reg := registry.New()

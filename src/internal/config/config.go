@@ -33,6 +33,24 @@ type Config struct {
 	DisabledCommands []string                               `yaml:"disabled_commands,omitempty"`
 	DisableBuiltins  bool                                   `yaml:"disable_builtins,omitempty"`
 	DisabledBuiltins []string                               `yaml:"disabled_builtins,omitempty"`
+
+	// Pack header fields — present on shareable pack files
+	Name        string    `yaml:"name,omitempty"`
+	Version     string    `yaml:"version,omitempty"`
+	Description string    `yaml:"description,omitempty"`
+	Author      string    `yaml:"author,omitempty"`
+	Homepage    string    `yaml:"homepage,omitempty"`
+	License     string    `yaml:"license,omitempty"`
+	Requires    *Requires `yaml:"requires,omitempty"`
+}
+
+// Requires declares the dependencies a pack expects to find in the recipient's
+// configuration. Validated at load time so the user fails fast instead of
+// hitting runtime errors.
+type Requires struct {
+	Tools          []string `yaml:"tools,omitempty"`
+	OAuthProviders []string `yaml:"oauth_providers,omitempty"`
+	VaultKeys      []string `yaml:"vault_keys,omitempty"`
 }
 
 type OAuthProviderConfig struct {
@@ -199,12 +217,12 @@ func Load(path string) (*Config, error) {
 			dir = filepath.Join(filepath.Dir(path), dir)
 		}
 		vlog("loading tools_dir: %s", dir)
-		dirTools, err := loadDir(dir)
+		dirCfg, err := loadDir(dir)
 		if err != nil {
 			return nil, err
 		}
-		vlog("  found %d tools in tools_dir", len(dirTools))
-		if err := mergeTools(cfg.Tools, dirTools); err != nil {
+		vlog("  found %d tools in tools_dir", len(dirCfg.Tools))
+		if err := mergeConfigs(&cfg, dirCfg, dir); err != nil {
 			return nil, err
 		}
 	}
@@ -213,14 +231,14 @@ func Load(path string) (*Config, error) {
 	configDir := filepath.Dir(path)
 	if filepath.Base(configDir) == ".factorly" {
 		vlog("loading loose tool files from %s", configDir)
-		dirTools, err := loadDir(configDir)
+		dirCfg, err := loadDir(configDir)
 		if err != nil {
 			return nil, err
 		}
-		if len(dirTools) > 0 {
-			vlog("  found %d tools in %s", len(dirTools), configDir)
+		if len(dirCfg.Tools) > 0 {
+			vlog("  found %d tools in %s", len(dirCfg.Tools), configDir)
 		}
-		if err := mergeTools(cfg.Tools, dirTools); err != nil {
+		if err := mergeConfigs(&cfg, dirCfg, configDir); err != nil {
 			return nil, err
 		}
 
@@ -234,16 +252,31 @@ func Load(path string) (*Config, error) {
 		if !alreadyLoaded {
 			if info, err := os.Stat(toolsSubDir); err == nil && info.IsDir() {
 				vlog("loading tool files from %s", toolsSubDir)
-				subDirTools, err := loadDir(toolsSubDir)
+				subDirCfg, err := loadDir(toolsSubDir)
 				if err != nil {
 					return nil, err
 				}
-				if len(subDirTools) > 0 {
-					vlog("  found %d tools in %s", len(subDirTools), toolsSubDir)
+				if len(subDirCfg.Tools) > 0 {
+					vlog("  found %d tools in %s", len(subDirCfg.Tools), toolsSubDir)
 				}
-				if err := mergeTools(cfg.Tools, subDirTools); err != nil {
+				if err := mergeConfigs(&cfg, subDirCfg, toolsSubDir); err != nil {
 					return nil, err
 				}
+			}
+		}
+		// Also scan .factorly/packs/ for installed packs.
+		packsSubDir := filepath.Join(configDir, "packs")
+		if info, err := os.Stat(packsSubDir); err == nil && info.IsDir() {
+			vlog("loading pack files from %s", packsSubDir)
+			packsCfg, err := loadDir(packsSubDir)
+			if err != nil {
+				return nil, err
+			}
+			if len(packsCfg.Tools) > 0 {
+				vlog("  found %d tools in %s", len(packsCfg.Tools), packsSubDir)
+			}
+			if err := mergeConfigs(&cfg, packsCfg, packsSubDir); err != nil {
+				return nil, err
 			}
 		}
 	} else {
@@ -265,12 +298,11 @@ func Load(path string) (*Config, error) {
 
 // LoadDir loads tool definitions from a directory of YAML files (no primary config file).
 func LoadDir(dirPath string) (*Config, error) {
-	tools, err := loadDir(dirPath)
+	cfg, err := loadDir(dirPath)
 	if err != nil {
 		return nil, err
 	}
 
-	cfg := &Config{Tools: tools}
 	resolveBackendRefs(cfg)
 	inferParameters(cfg)
 
@@ -281,7 +313,7 @@ func LoadDir(dirPath string) (*Config, error) {
 	return cfg, nil
 }
 
-func loadDir(dir string) (map[string]ToolConfig, error) {
+func loadDir(dir string) (*Config, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("reading tools_dir %q: %w", dir, err)
@@ -292,7 +324,7 @@ func loadDir(dir string) (map[string]ToolConfig, error) {
 		return entries[i].Name() < entries[j].Name()
 	})
 
-	all := make(map[string]ToolConfig)
+	merged := &Config{Tools: make(map[string]ToolConfig)}
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -313,28 +345,112 @@ func loadDir(dir string) (map[string]ToolConfig, error) {
 			return nil, fmt.Errorf("reading %s: %w", path, err)
 		}
 
-		var tools map[string]ToolConfig
-		if err := yaml.Unmarshal(data, &tools); err != nil {
-			return nil, fmt.Errorf("parsing %s: %w", path, err)
+		fileCfg, err := parseLooseFile(data, name)
+		if err != nil {
+			return nil, err
 		}
-
-		for toolName, toolCfg := range tools {
-			if _, exists := all[toolName]; exists {
-				return nil, fmt.Errorf("config: duplicate tool %q (found again in %s)", toolName, name)
-			}
-			all[toolName] = toolCfg
+		if err := mergeConfigs(merged, fileCfg, name); err != nil {
+			return nil, err
 		}
 	}
 
-	return all, nil
+	return merged, nil
 }
 
-func mergeTools(base, extras map[string]ToolConfig) error {
-	for name, tool := range extras {
-		if _, exists := base[name]; exists {
-			return fmt.Errorf("config: duplicate tool %q (defined in both factorly.yaml and tools_dir)", name)
+// parseLooseFile parses one YAML file from a loose-tools directory. Supports
+// two shapes for backward compatibility:
+//
+//  1. New (pack) shape: a structured Config document with top-level keys like
+//     name/version/tools/oauth_providers/requires.
+//  2. Old (flat) shape: a bare map of tool name → ToolConfig at the root, with
+//     no recognized top-level Config keys.
+//
+// We detect which by trying Config first and falling back to map-of-tools if
+// no structured top-level keys are present. This lets existing .factorly/*.yaml
+// files keep working without migration.
+func parseLooseFile(data []byte, filename string) (*Config, error) {
+	// Try structured Config first.
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		// If it doesn't parse as Config at all, surface the original error —
+		// it's almost certainly malformed YAML, not the rare "tool name
+		// collides with a Config key" case.
+		return nil, fmt.Errorf("parsing %s: %w", filename, err)
+	}
+
+	if hasStructuredKeys(&cfg) {
+		if cfg.Tools == nil {
+			cfg.Tools = make(map[string]ToolConfig)
 		}
-		base[name] = tool
+		return &cfg, nil
+	}
+
+	// No structured keys — fall back to flat map of tools.
+	var tools map[string]ToolConfig
+	if err := yaml.Unmarshal(data, &tools); err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", filename, err)
+	}
+	if tools == nil {
+		tools = make(map[string]ToolConfig)
+	}
+	return &Config{Tools: tools}, nil
+}
+
+// hasStructuredKeys reports whether a Config document set any pack-aware
+// top-level fields. If so, we treat the file as a structured pack rather than
+// a flat tools map.
+func hasStructuredKeys(cfg *Config) bool {
+	return cfg.Name != "" ||
+		cfg.Version != "" ||
+		cfg.Description != "" ||
+		cfg.Author != "" ||
+		cfg.Homepage != "" ||
+		cfg.License != "" ||
+		cfg.Requires != nil ||
+		len(cfg.Tools) > 0 ||
+		len(cfg.OAuthProviders) > 0 ||
+		len(cfg.VaultBackends) > 0 ||
+		cfg.ToolsDir != "" ||
+		len(cfg.DisabledCommands) > 0 ||
+		cfg.DisableBuiltins ||
+		len(cfg.DisabledBuiltins) > 0
+}
+
+// mergeConfigs merges src into dst. Duplicate keys in tools, oauth_providers,
+// or vault_backends are a hard error — the caller is expected to want
+// disambiguation rather than last-writer-wins. The src param's source
+// (filename) is included in error messages.
+func mergeConfigs(dst, src *Config, sourceName string) error {
+	if dst.Tools == nil {
+		dst.Tools = make(map[string]ToolConfig)
+	}
+	for name, t := range src.Tools {
+		if _, exists := dst.Tools[name]; exists {
+			return fmt.Errorf("config: duplicate tool %q (found again in %s)", name, sourceName)
+		}
+		dst.Tools[name] = t
+	}
+	if len(src.OAuthProviders) > 0 {
+		if dst.OAuthProviders == nil {
+			dst.OAuthProviders = make(map[string]OAuthProviderConfig)
+		}
+		for name, p := range src.OAuthProviders {
+			if _, exists := dst.OAuthProviders[name]; exists {
+				return fmt.Errorf("config: duplicate oauth provider %q (found again in %s)", name, sourceName)
+			}
+			dst.OAuthProviders[name] = p
+		}
+	}
+	if len(src.VaultBackends) > 0 {
+		if dst.VaultBackends == nil {
+			dst.VaultBackends = make(map[string]vault.ExternalBackendConfig)
+		}
+		for name, b := range src.VaultBackends {
+			if _, exists := dst.VaultBackends[name]; exists {
+				return fmt.Errorf("config: duplicate vault backend %q (found again in %s)", name, sourceName)
+			}
+			dst.VaultBackends[name] = b
+		}
 	}
 	return nil
 }
@@ -371,31 +487,47 @@ func mergeProjectDir(cfg *Config, baseDir string) error {
 			if !filepath.IsAbs(dir) {
 				dir = filepath.Join(projectDir, dir)
 			}
-			dirTools, err := loadDir(dir)
+			dirCfg, err := loadDir(dir)
 			if err != nil {
 				return err
 			}
 			if projectCfg.Tools == nil {
 				projectCfg.Tools = make(map[string]ToolConfig)
 			}
-			if err := mergeTools(projectCfg.Tools, dirTools); err != nil {
+			if err := mergeConfigs(&projectCfg, dirCfg, dir); err != nil {
 				return err
 			}
 		}
 
-		// Merge project tools into main config
-		if err := mergeTools(cfg.Tools, projectCfg.Tools); err != nil {
+		// Merge project config into main config
+		if err := mergeConfigs(cfg, &projectCfg, projectConfig); err != nil {
 			return err
 		}
 	}
 
 	// Also load loose YAML files in .factorly/ (loadDir skips factorly.yaml)
-	dirTools, err := loadDir(projectDir)
+	dirCfg, err := loadDir(projectDir)
 	if err != nil {
 		return err
 	}
-	if len(dirTools) > 0 {
-		if err := mergeTools(cfg.Tools, dirTools); err != nil {
+	if len(dirCfg.Tools) > 0 || len(dirCfg.OAuthProviders) > 0 || len(dirCfg.VaultBackends) > 0 {
+		if err := mergeConfigs(cfg, dirCfg, projectDir); err != nil {
+			return err
+		}
+	}
+
+	// Also scan .factorly/packs/ for installed packs.
+	packsSubDir := filepath.Join(projectDir, "packs")
+	if info, err := os.Stat(packsSubDir); err == nil && info.IsDir() {
+		vlog("loading pack files from %s", packsSubDir)
+		packsCfg, err := loadDir(packsSubDir)
+		if err != nil {
+			return err
+		}
+		if len(packsCfg.Tools) > 0 {
+			vlog("  found %d tools in %s", len(packsCfg.Tools), packsSubDir)
+		}
+		if err := mergeConfigs(cfg, packsCfg, packsSubDir); err != nil {
 			return err
 		}
 	}
@@ -554,6 +686,62 @@ func validate(cfg *Config) error {
 			}
 		}
 	}
+	return nil
+}
+
+// ValidateReferences performs cross-reference validation that requires knowing
+// which builtin tools are registered. Call after builtins.Register has run.
+//
+// Checks:
+//   - Every workflow step's tool reference resolves to either a configured
+//     tool or a builtin.
+//   - Aggregate Requires (from packs) are satisfied by the merged config.
+//
+// builtinTools is a set of tool names registered by the builtins package.
+// Pass nil if no builtins are registered — references to anything not in
+// cfg.Tools will fail.
+func ValidateReferences(cfg *Config, builtinTools map[string]bool) error {
+	resolves := func(toolName string) bool {
+		if _, ok := cfg.Tools[toolName]; ok {
+			return true
+		}
+		if builtinTools != nil && builtinTools[toolName] {
+			return true
+		}
+		return false
+	}
+
+	for name, tool := range cfg.Tools {
+		if tool.Type != "workflow" {
+			continue
+		}
+		for i, step := range tool.Steps {
+			if step.Tool != "" && !resolves(step.Tool) {
+				return fmt.Errorf("config: workflow %q step %d references unknown tool %q", name, i+1, step.Tool)
+			}
+			for j, sc := range step.Switch {
+				if sc.Tool != "" && !resolves(sc.Tool) {
+					return fmt.Errorf("config: workflow %q step %d switch case %d references unknown tool %q", name, i+1, j+1, sc.Tool)
+				}
+			}
+		}
+	}
+
+	if cfg.Requires != nil {
+		for _, t := range cfg.Requires.Tools {
+			if !resolves(t) {
+				return fmt.Errorf("config: requires tool %q which is not installed", t)
+			}
+		}
+		for _, p := range cfg.Requires.OAuthProviders {
+			if _, ok := cfg.OAuthProviders[p]; !ok {
+				return fmt.Errorf("config: requires oauth provider %q which is not defined", p)
+			}
+		}
+		// VaultKeys are validated only at install time (a vault can't be
+		// introspected without unlock); they're skipped here.
+	}
+
 	return nil
 }
 

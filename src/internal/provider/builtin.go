@@ -120,7 +120,6 @@ func (bp *BuiltinProvider) builtinWriteFile(params map[string]string) (*Result, 
 	return &Result{Output: fmt.Sprintf("wrote %d bytes to %s", len(content), abs)}, nil
 }
 
-
 // shellCmd returns the platform-appropriate shell and flag for command execution.
 func shellCmd() (string, string) {
 	if runtime.GOOS == "windows" {
