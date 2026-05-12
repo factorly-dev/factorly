@@ -34,13 +34,17 @@ type Config struct {
 	DisableBuiltins  bool                                   `yaml:"disable_builtins,omitempty"`
 	DisabledBuiltins []string                               `yaml:"disabled_builtins,omitempty"`
 
-	// Pack header fields — present on shareable pack files
+	// Blueprint header fields — present on shareable blueprint files
 	Name        string    `yaml:"name,omitempty"`
+	DisplayName string    `yaml:"display_name,omitempty"`
 	Version     string    `yaml:"version,omitempty"`
 	Description string    `yaml:"description,omitempty"`
+	Category    string    `yaml:"category,omitempty"`
 	Author      string    `yaml:"author,omitempty"`
 	Homepage    string    `yaml:"homepage,omitempty"`
 	License     string    `yaml:"license,omitempty"`
+	AuthType    string    `yaml:"auth_type,omitempty"` // "api_key" | "bearer" | "oauth" — used by the catalog UI
+	AuthGuide   string    `yaml:"auth_guide,omitempty"`
 	Requires    *Requires `yaml:"requires,omitempty"`
 }
 
@@ -396,16 +400,20 @@ func parseLooseFile(data []byte, filename string) (*Config, error) {
 	return &Config{Tools: tools}, nil
 }
 
-// hasStructuredKeys reports whether a Config document set any pack-aware
-// top-level fields. If so, we treat the file as a structured pack rather than
-// a flat tools map.
+// hasStructuredKeys reports whether a Config document set any blueprint-aware
+// top-level fields. If so, we treat the file as a structured blueprint rather
+// than a flat tools map.
 func hasStructuredKeys(cfg *Config) bool {
 	return cfg.Name != "" ||
+		cfg.DisplayName != "" ||
 		cfg.Version != "" ||
 		cfg.Description != "" ||
+		cfg.Category != "" ||
 		cfg.Author != "" ||
 		cfg.Homepage != "" ||
 		cfg.License != "" ||
+		cfg.AuthType != "" ||
+		cfg.AuthGuide != "" ||
 		cfg.Requires != nil ||
 		len(cfg.Tools) > 0 ||
 		len(cfg.OAuthProviders) > 0 ||

@@ -19,14 +19,18 @@ import (
 )
 
 // BlueprintHeader is the identity portion of a blueprint: its own metadata.
-// Used by listings and previews.
+// Used by listings, previews, and the bundled-blueprint catalog.
 type BlueprintHeader struct {
 	Name        string `json:"name,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
 	Version     string `json:"version,omitempty"`
 	Description string `json:"description,omitempty"`
+	Category    string `json:"category,omitempty"`
 	Author      string `json:"author,omitempty"`
 	Homepage    string `json:"homepage,omitempty"`
 	License     string `json:"license,omitempty"`
+	AuthType    string `json:"auth_type,omitempty"`
+	AuthGuide   string `json:"auth_guide,omitempty"`
 	Filename    string `json:"filename,omitempty"` // basename on disk
 }
 
@@ -156,11 +160,15 @@ func Install(opts InstallOptions) (*InstallResult, error) {
 	result := &InstallResult{
 		Header: BlueprintHeader{
 			Name:        bp.Name,
+			DisplayName: bp.DisplayName,
 			Version:     bp.Version,
 			Description: bp.Description,
+			Category:    bp.Category,
 			Author:      bp.Author,
 			Homepage:    bp.Homepage,
 			License:     bp.License,
+			AuthType:    bp.AuthType,
+			AuthGuide:   bp.AuthGuide,
 			Filename:    installName + ".yaml",
 		},
 		DryRun: opts.DryRun,
@@ -317,11 +325,15 @@ func List(cfgPath string) ([]BlueprintHeader, error) {
 		}
 		h := BlueprintHeader{
 			Name:        bp.Name,
+			DisplayName: bp.DisplayName,
 			Version:     bp.Version,
 			Description: bp.Description,
+			Category:    bp.Category,
 			Author:      bp.Author,
 			Homepage:    bp.Homepage,
 			License:     bp.License,
+			AuthType:    bp.AuthType,
+			AuthGuide:   bp.AuthGuide,
 			Filename:    name,
 		}
 		if h.Name == "" {
