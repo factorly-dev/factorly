@@ -1,0 +1,97 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+{{define "content"}}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-xl font-medium text-gray-900">Installed Packs</h1>
+  <button data-pack-action="open-import"
+          class="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">
+    {{icon "plus"}} Import Pack
+  </button>
+</div>
+
+{{if not .Packs}}
+<div class="bg-white rounded-lg border border-gray-200 p-12 text-center">
+  <p class="text-gray-500 mb-2">No packs installed yet.</p>
+  <p class="text-sm text-gray-400 mb-4">
+    A pack is a sharable bundle of tools, workflows, and OAuth provider definitions.
+    Install one from a GitHub repo or a local YAML file.
+  </p>
+  <button data-pack-action="open-import"
+          class="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">
+    {{icon "plus"}} Import Your First Pack
+  </button>
+</div>
+{{else}}
+<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 border-b border-gray-200">
+      <tr class="text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+        <th class="px-4 py-2.5">Name</th>
+        <th class="px-4 py-2.5">Version</th>
+        <th class="px-4 py-2.5">Description</th>
+        <th class="px-4 py-2.5 text-right">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Packs}}
+      <tr class="border-b border-gray-100 last:border-b-0">
+        <td class="px-4 py-3">
+          <span class="font-mono text-sm text-gray-900">{{.Name}}</span>
+          {{if .Homepage}}
+          <a href="{{.Homepage}}" target="_blank" rel="noopener" class="ml-1 text-[10px] text-indigo-500 hover:text-indigo-700">↗</a>
+          {{end}}
+        </td>
+        <td class="px-4 py-3 text-xs text-gray-600">{{if .Version}}{{.Version}}{{else}}<span class="text-gray-300">—</span>{{end}}</td>
+        <td class="px-4 py-3 text-xs text-gray-600">{{if .Description}}{{.Description}}{{else}}<span class="text-gray-300">—</span>{{end}}</td>
+        <td class="px-4 py-3 text-right">
+          <button data-pack-action="uninstall" data-pack-name="{{.Name}}"
+                  class="text-red-400 hover:text-red-600 text-xs">Uninstall</button>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+<!-- Import modal -->
+<div id="pack-import-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+      <h2 class="text-sm font-medium text-gray-900">Import Pack</h2>
+      <button data-pack-action="close-import" class="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
+    </div>
+    <div class="p-5">
+      <!-- Stage 1: source input -->
+      <div id="pack-import-source-stage">
+        <label class="block text-xs font-medium text-gray-600 mb-1.5">Source</label>
+        <input id="pack-import-source-input" type="text" autocomplete="off"
+               placeholder="github.com/owner/repo, https://..., or ./pack.yaml"
+               class="w-full px-3 py-2 text-sm font-mono border border-gray-200 rounded focus:outline-none focus:ring-2 focus:ring-indigo-200">
+        <p class="mt-1 text-[10px] text-gray-400">
+          Examples: <code class="bg-gray-100 px-1 rounded">github.com/widefido/factorly-gmail</code>,
+          <code class="bg-gray-100 px-1 rounded">https://example.com/pack.yaml</code>,
+          <code class="bg-gray-100 px-1 rounded">./examples/packs/gmail.yaml</code>
+        </p>
+        <div class="mt-4 flex justify-end gap-2">
+          <button data-pack-action="close-import"
+                  class="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Cancel</button>
+          <button data-pack-action="preview"
+                  class="px-4 py-1.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700">Preview</button>
+        </div>
+      </div>
+
+      <!-- Stage 2: preview + confirm. Rendered into #pack-import-preview-stage by JS. -->
+      <div id="pack-import-preview-stage" class="hidden"></div>
+
+      <!-- Error display -->
+      <div id="pack-import-error" class="hidden mt-3 bg-red-50 border border-red-200 rounded p-2 text-xs text-red-700"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/packs.js"></script>
+{{end}}

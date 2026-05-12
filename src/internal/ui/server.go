@@ -74,6 +74,7 @@ func New(opts Options) (*Server, error) {
 		"templates/history.html",
 		"templates/auth.html",
 		"templates/vault.html",
+		"templates/packs.html",
 	}
 	tmpls := make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
@@ -182,6 +183,12 @@ func (s *Server) routes() {
 
 	// Reload
 	s.mux.HandleFunc("POST /reload", s.handleReload)
+
+	// Packs
+	s.mux.HandleFunc("GET /packs", s.handlePacksList)
+	s.mux.HandleFunc("POST /packs/preview", s.handlePackPreview)
+	s.mux.HandleFunc("POST /packs/install", s.handlePackInstall)
+	s.mux.HandleFunc("DELETE /packs/{name}", s.handlePackUninstall)
 }
 
 // MountMCP sets the MCP handler. The StreamableHTTPServer is its own
@@ -480,23 +487,29 @@ func (s *Server) updateShadowRule(name string, tc config.ToolConfig) {
 	policy.SetRule(name, rule)
 }
 
-// handleReload re-reads config from disk and applies deltas to the live
-// registry, providers, and shadow policy without restarting.
-func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
+// ReloadStats describes what changed during a config reload.
+type ReloadStats struct {
+	Added   int
+	Updated int
+	Removed int
+}
+
+// reloadConfig re-reads config from disk and applies deltas to the live
+// registry without restarting. Both handleReload and the pack install/uninstall
+// handlers call this so changes go live immediately.
+func (s *Server) reloadConfig() (ReloadStats, error) {
 	newCfg, err := config.Load(s.cfgPath)
 	if err != nil {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, `<span class="text-red-600 text-xs">✗ %s</span>`, template.HTMLEscapeString(err.Error()))
-		return
+		return ReloadStats{}, err
 	}
 
-	var added, removed, updated int
+	var stats ReloadStats
 
 	// Find removed tools (in old but not new)
 	for name := range s.cfg.Tools {
 		if _, exists := newCfg.Tools[name]; !exists {
 			s.unregisterTool(name)
-			removed++
+			stats.Removed++
 		}
 	}
 
@@ -504,10 +517,10 @@ func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
 	for name, newTC := range newCfg.Tools {
 		oldTC, exists := s.cfg.Tools[name]
 		if !exists {
-			added++
+			stats.Added++
 		} else if !reflect.DeepEqual(oldTC, newTC) {
 			s.unregisterTool(name)
-			updated++
+			stats.Updated++
 		} else {
 			continue // unchanged
 		}
@@ -518,11 +531,24 @@ func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
 	s.cfg.Tools = newCfg.Tools
 	s.cfg.OAuthProviders = newCfg.OAuthProviders
 
+	return stats, nil
+}
+
+// handleReload re-reads config from disk and applies deltas to the live
+// registry, providers, and shadow policy without restarting.
+func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.reloadConfig()
+	if err != nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<span class="text-red-600 text-xs">✗ %s</span>`, template.HTMLEscapeString(err.Error()))
+		return
+	}
+
 	// Tell browser to refresh the page so sidebar/content updates
 	w.Header().Set("HX-Refresh", "true")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<span class="text-green-600 text-xs">✓ Reloaded (%d added, %d updated, %d removed)</span>`,
-		added, updated, removed)
+		stats.Added, stats.Updated, stats.Removed)
 }
 
 func templateFuncs() template.FuncMap {
