@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/factorly-dev/factorly/internal/vault"
 )
 
 func writeTestConfig(t *testing.T, content string) string {
@@ -1172,5 +1174,154 @@ func TestValidateReferencesPasses(t *testing.T) {
 	}
 	if err := ValidateReferences(cfg, nil); err != nil {
 		t.Fatalf("expected no error; got %v", err)
+	}
+}
+
+// --- Pack format unit gaps ---
+
+func TestPacksSubdirAutoLoaded(t *testing.T) {
+	// .factorly/packs/*.yaml should be picked up automatically by Load,
+	// alongside (and equivalent to) loose files in .factorly/.
+	dir := t.TempDir()
+	factorlyDir := filepath.Join(dir, ".factorly")
+	packsDir := filepath.Join(factorlyDir, "packs")
+	if err := os.MkdirAll(packsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rootCfg := filepath.Join(dir, "factorly.yaml")
+	if err := os.WriteFile(rootCfg, []byte("tools: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	packYAML := `
+name: auto
+tools:
+  auto.tool:
+    type: cli
+    command: echo
+    description: from packs subdir
+`
+	if err := os.WriteFile(filepath.Join(packsDir, "auto.yaml"), []byte(packYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(rootCfg)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if _, ok := cfg.Tools["auto.tool"]; !ok {
+		t.Fatalf("expected auto.tool from .factorly/packs/, got %v", cfg.Tools)
+	}
+}
+
+func TestPacksSubdirMergedWhenConfigInsideFactorly(t *testing.T) {
+	// When the config file lives in .factorly/factorly.yaml, the sibling
+	// packs/ subdirectory must also be scanned. This is a separate code path
+	// from the root-config case above.
+	dir := t.TempDir()
+	factorlyDir := filepath.Join(dir, ".factorly")
+	if err := os.MkdirAll(filepath.Join(factorlyDir, "packs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(factorlyDir, "factorly.yaml")
+	if err := os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	packYAML := `
+name: inside
+tools:
+  inside.tool:
+    type: cli
+    command: echo
+    description: from inside-factorly packs
+`
+	if err := os.WriteFile(filepath.Join(factorlyDir, "packs", "inside.yaml"), []byte(packYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if _, ok := cfg.Tools["inside.tool"]; !ok {
+		t.Fatalf("expected inside.tool from .factorly/packs/, got %v", cfg.Tools)
+	}
+}
+
+func TestMergeConfigsVaultBackends(t *testing.T) {
+	dst := &Config{}
+	src := &Config{
+		VaultBackends: map[string]vault.ExternalBackendConfig{
+			"op": {Type: "cli"},
+		},
+	}
+	if err := mergeConfigs(dst, src, "src.yaml"); err != nil {
+		t.Fatalf("mergeConfigs: %v", err)
+	}
+	if _, ok := dst.VaultBackends["op"]; !ok {
+		t.Fatalf("expected vault backend 'op' merged, got %v", dst.VaultBackends)
+	}
+}
+
+func TestMergeConfigsDuplicateVaultBackendErrors(t *testing.T) {
+	dst := &Config{
+		VaultBackends: map[string]vault.ExternalBackendConfig{
+			"op": {Type: "cli"},
+		},
+	}
+	src := &Config{
+		VaultBackends: map[string]vault.ExternalBackendConfig{
+			"op": {Type: "cli"},
+		},
+	}
+	if err := mergeConfigs(dst, src, "src.yaml"); err == nil {
+		t.Fatal("expected duplicate vault backend error")
+	}
+}
+
+func TestMergeConfigsDoesNotMutateSource(t *testing.T) {
+	src := &Config{
+		Tools: map[string]ToolConfig{
+			"a": {Type: "cli", Command: "echo"},
+		},
+		OAuthProviders: map[string]OAuthProviderConfig{
+			"p": {ClientID: "x"},
+		},
+	}
+	dst := &Config{}
+	if err := mergeConfigs(dst, src, "src.yaml"); err != nil {
+		t.Fatalf("mergeConfigs: %v", err)
+	}
+	// Mutating dst should not affect src.
+	dst.Tools["a"] = ToolConfig{Type: "cli", Command: "MUTATED"}
+	if src.Tools["a"].Command != "echo" {
+		t.Fatalf("merge leaked mutation back to source: %v", src.Tools["a"])
+	}
+}
+
+func TestHasStructuredKeysDetectsEachField(t *testing.T) {
+	// Each top-level Config field should flip hasStructuredKeys to true,
+	// so a loose file using only that field doesn't fall back to flat-map.
+	cases := map[string]*Config{
+		"name":             {Name: "x"},
+		"version":          {Version: "1"},
+		"description":      {Description: "d"},
+		"author":           {Author: "a"},
+		"homepage":         {Homepage: "h"},
+		"license":          {License: "MIT"},
+		"requires":         {Requires: &Requires{}},
+		"tools":            {Tools: map[string]ToolConfig{"t": {}}},
+		"oauth_providers":  {OAuthProviders: map[string]OAuthProviderConfig{"p": {}}},
+		"vault_backends":   {VaultBackends: map[string]vault.ExternalBackendConfig{"v": {}}},
+		"tools_dir":        {ToolsDir: "x"},
+		"disable_builtins": {DisableBuiltins: true},
+	}
+	for name, cfg := range cases {
+		if !hasStructuredKeys(cfg) {
+			t.Errorf("hasStructuredKeys returned false for %s; got %+v", name, cfg)
+		}
+	}
+	// Empty Config should be false.
+	if hasStructuredKeys(&Config{}) {
+		t.Error("hasStructuredKeys returned true for empty Config")
 	}
 }

@@ -304,9 +304,33 @@ func TestInstallTwiceFails(t *testing.T) {
 	if _, err := Install(InstallOptions{Source: pack, CfgPath: cfgPath}); err != nil {
 		t.Fatalf("first install: %v", err)
 	}
-	_, err := Install(InstallOptions{Source: pack, CfgPath: cfgPath})
+	res, err := Install(InstallOptions{Source: pack, CfgPath: cfgPath})
 	if err == nil {
 		t.Fatal("expected error on second install of same pack")
+	}
+	if res == nil || !res.AlreadyInstalled {
+		t.Fatalf("expected AlreadyInstalled flag on second install result, got %+v", res)
+	}
+}
+
+func TestInstallDryRunReportsAlreadyInstalledWithoutError(t *testing.T) {
+	// UI Preview hits dry-run. When the pack is already installed, we want
+	// structured info (AlreadyInstalled=true) instead of an error so the UI
+	// can render a preview with an Uninstall hint.
+	cfgPath := tempProject(t, "")
+	pack := writePackFile(t, "name: preview-installed\ntools: {}\n")
+	if _, err := Install(InstallOptions{Source: pack, CfgPath: cfgPath}); err != nil {
+		t.Fatalf("first install: %v", err)
+	}
+	res, err := Install(InstallOptions{Source: pack, CfgPath: cfgPath, DryRun: true})
+	if err != nil {
+		t.Fatalf("dry-run on already-installed should not error, got %v", err)
+	}
+	if !res.AlreadyInstalled {
+		t.Fatalf("expected AlreadyInstalled flag, got %+v", res)
+	}
+	if res.Header.Name != "preview-installed" {
+		t.Errorf("expected header still populated for preview rendering, got %+v", res.Header)
 	}
 }
 
@@ -401,5 +425,182 @@ func TestSanitizeName(t *testing.T) {
 		if got := sanitizeName(in); got != want {
 			t.Errorf("sanitizeName(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// --- Additional unit coverage ---
+
+func TestResolveMalformedGitHub(t *testing.T) {
+	// "github.com/onlyowner" has no repo segment.
+	if _, err := Resolve("github.com/onlyowner"); err == nil {
+		t.Fatal("expected error for github.com/<owner> with no repo")
+	}
+}
+
+func TestResolveEmptySource(t *testing.T) {
+	if _, err := Resolve(""); err == nil {
+		t.Fatal("expected error for empty source")
+	}
+}
+
+func TestResolveOversizedFile(t *testing.T) {
+	// Build a file larger than MaxPackSize and verify Resolve rejects it
+	// before any parsing happens.
+	dir := t.TempDir()
+	big := filepath.Join(dir, "big.yaml")
+	data := make([]byte, MaxPackSize+1024)
+	for i := range data {
+		data[i] = 'a'
+	}
+	if err := os.WriteFile(big, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Resolve(big); err == nil {
+		t.Fatal("expected size-limit error")
+	}
+}
+
+func TestFetchHTTPNon2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	src, err := Resolve(srv.URL + "/pack.yaml")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if _, err := Fetch(src, srv.Client()); err == nil {
+		t.Fatal("expected error for HTTP 500")
+	}
+}
+
+func TestInstallOAuthProviderConflict(t *testing.T) {
+	cfgPath := tempProject(t, `
+oauth_providers:
+  shared:
+    client_id: cid
+    auth_url: https://example/auth
+    token_url: https://example/token
+tools: {}
+`)
+	pack := writePackFile(t, `
+name: provider-conflict
+oauth_providers:
+  shared:
+    client_id: cid2
+    auth_url: https://other/auth
+    token_url: https://other/token
+tools: {}
+`)
+	res, err := Install(InstallOptions{Source: pack, CfgPath: cfgPath})
+	if err == nil {
+		t.Fatal("expected conflict error for duplicate oauth provider")
+	}
+	foundProvider := false
+	for _, c := range res.Conflicts {
+		if c.Kind == "oauth_provider" && c.Name == "shared" {
+			foundProvider = true
+		}
+	}
+	if !foundProvider {
+		t.Fatalf("expected oauth_provider conflict reported, got %v", res.Conflicts)
+	}
+}
+
+func TestInstallRequiresOAuthProviderSatisfied(t *testing.T) {
+	// requires.oauth_providers should resolve against the merged config
+	// (existing + incoming). Here the existing config has the provider.
+	cfgPath := tempProject(t, `
+oauth_providers:
+  google:
+    client_id: x
+    auth_url: https://x
+    token_url: https://x
+tools: {}
+`)
+	pack := writePackFile(t, `
+name: needs-google
+requires:
+  oauth_providers: [google]
+tools:
+  my.tool:
+    type: cli
+    command: echo
+    description: x
+`)
+	if _, err := Install(InstallOptions{Source: pack, CfgPath: cfgPath}); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+}
+
+func TestInstallRequiresOAuthProviderShippedInSamePack(t *testing.T) {
+	// A pack can declare requires.oauth_providers AND ship the provider
+	// itself; the merged-view check should pass.
+	cfgPath := tempProject(t, "")
+	pack := writePackFile(t, `
+name: self-contained
+requires:
+  oauth_providers: [own]
+oauth_providers:
+  own:
+    client_id: x
+    auth_url: https://x
+    token_url: https://x
+tools:
+  my.tool:
+    type: cli
+    command: echo
+    description: x
+`)
+	if _, err := Install(InstallOptions{Source: pack, CfgPath: cfgPath}); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+}
+
+func TestParsePackInvalidYAML(t *testing.T) {
+	if _, err := ParsePack([]byte("this: is: not: valid")); err == nil {
+		t.Fatal("expected error for malformed YAML")
+	}
+}
+
+func TestListSkipsNonYAMLFiles(t *testing.T) {
+	cfgPath := tempProject(t, "")
+	// Install one real pack, then drop a stray non-yaml file.
+	if _, err := Install(InstallOptions{Source: writePackFile(t, "name: real\ntools: {}\n"), CfgPath: cfgPath}); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	dir := filepath.Join(filepath.Dir(cfgPath), ".factorly", "packs")
+	if err := os.WriteFile(filepath.Join(dir, "stray.txt"), []byte("ignored"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	list, err := List(cfgPath)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(list) != 1 || list[0].Name != "real" {
+		t.Fatalf("List() = %v, want exactly one 'real' pack", list)
+	}
+}
+
+func TestListUnnamedPack(t *testing.T) {
+	cfgPath := tempProject(t, "")
+	// Hand-write a pack file with no name field.
+	dir := filepath.Join(filepath.Dir(cfgPath), ".factorly", "packs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "nameless.yaml"), []byte("tools:\n  x:\n    type: cli\n    command: echo\n    description: x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	list, err := List(cfgPath)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("want 1 pack, got %d", len(list))
+	}
+	if !strings.HasPrefix(list[0].Name, "unnamed-") {
+		t.Errorf("expected synthesized name, got %q", list[0].Name)
 	}
 }

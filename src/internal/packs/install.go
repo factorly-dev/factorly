@@ -47,6 +47,11 @@ type InstallResult struct {
 	FilePath string `json:"file_path,omitempty"`
 	// DryRun is true if no changes were written.
 	DryRun bool `json:"dry_run,omitempty"`
+	// AlreadyInstalled is true when a pack with this name is already on disk.
+	// In dry-run, this is reported without an error so the UI can render a
+	// "you already have this — uninstall first" preview. In commit mode the
+	// caller also receives a non-nil error.
+	AlreadyInstalled bool `json:"already_installed,omitempty"`
 }
 
 // Conflict is a name that the incoming pack would shadow.
@@ -138,6 +143,28 @@ func Install(opts InstallOptions) (*InstallResult, error) {
 		DryRun: opts.DryRun,
 	}
 
+	// Check for a same-named pack already on disk before walking conflicts.
+	// Without this, re-installing the exact same pack produces a generic
+	// "conflict with N definitions" error (because the first install's tools
+	// are now in the merged config). Surface the more actionable signal.
+	//
+	// In dry-run mode we report this structurally on the result without an
+	// error, so a UI preview can render "already installed" alongside the
+	// other preview fields. In commit mode we also return an error so the
+	// CLI fails fast.
+	dir, err := packsDir(opts.CfgPath)
+	if err != nil {
+		return result, err
+	}
+	dst := filepath.Join(dir, installName+".yaml")
+	if _, err := os.Stat(dst); err == nil {
+		result.AlreadyInstalled = true
+		if opts.DryRun {
+			return result, nil
+		}
+		return result, fmt.Errorf("packs: pack %q is already installed (uninstall first or pick a different source)", installName)
+	}
+
 	// Detect conflicts. Don't fail yet — let the caller decide based on the
 	// returned result whether to proceed. We do fail before writing if any
 	// conflicts exist (no --force in v1).
@@ -200,17 +227,10 @@ func Install(opts InstallOptions) (*InstallResult, error) {
 		return result, formatMissingRequiresError(result.RequiresMissing)
 	}
 
-	// Write the pack file.
-	dir, err := packsDir(opts.CfgPath)
-	if err != nil {
-		return result, err
-	}
+	// Write the pack file. dir/dst computed earlier for the already-installed
+	// check.
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return result, fmt.Errorf("packs: mkdir %s: %w", dir, err)
-	}
-	dst := filepath.Join(dir, installName+".yaml")
-	if _, err := os.Stat(dst); err == nil {
-		return result, fmt.Errorf("packs: pack %q is already installed (uninstall first or pick a different source)", installName)
 	}
 	if err := os.WriteFile(dst, data, 0o644); err != nil {
 		return result, fmt.Errorf("packs: write %s: %w", dst, err)

@@ -212,6 +212,9 @@ func printInstallSummary(res *packs.InstallResult) {
 			fmt.Printf("    • %s\n", k)
 		}
 	}
+	if res.AlreadyInstalled {
+		fmt.Printf("\n  Already installed — uninstall first with 'factorly uninstall %s'.\n", res.Header.Name)
+	}
 }
 
 // promptAndStoreVaultKeys interactively asks for each missing vault key's
