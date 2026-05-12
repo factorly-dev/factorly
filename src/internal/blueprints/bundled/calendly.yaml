@@ -1,0 +1,97 @@
+name: calendly
+display_name: Calendly
+version: 1.0.0
+description: Scheduling, events, and calendar management
+category: business
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: bearer
+auth_guide: "Get your token at https://calendly.com/integrations/api_webhooks"
+
+requires:
+  vault_keys:
+    - CALENDLY_API_KEY
+
+tools:
+  calendly.list_events:
+    type: rest
+    description: List scheduled events
+    base_url: "https://api.calendly.com"
+    method: GET
+    path: /scheduled_events
+    auth:
+      type: bearer
+      token: "{{vault:CALENDLY_API_KEY}}"
+    parameters:
+      - name: user
+        description: User URI
+        required: true
+        in: query
+      - name: count
+        description: "Number of results (1-100)"
+        in: query
+      - name: status
+        description: "Filter by status (active, canceled)"
+        in: query
+
+  calendly.get_event:
+    type: rest
+    description: Get a scheduled event by UUID
+    base_url: "https://api.calendly.com"
+    method: GET
+    path: "/scheduled_events/{event_uuid}"
+    auth:
+      type: bearer
+      token: "{{vault:CALENDLY_API_KEY}}"
+    parameters:
+      - name: event_uuid
+        description: Event UUID
+        required: true
+        in: path
+
+  calendly.list_event_types:
+    type: rest
+    description: List available event types
+    base_url: "https://api.calendly.com"
+    method: GET
+    path: /event_types
+    auth:
+      type: bearer
+      token: "{{vault:CALENDLY_API_KEY}}"
+    parameters:
+      - name: user
+        description: User URI
+        required: true
+        in: query
+      - name: count
+        description: Number of results
+        in: query
+
+  calendly.list_invitees:
+    type: rest
+    description: List invitees for a scheduled event
+    base_url: "https://api.calendly.com"
+    method: GET
+    path: "/scheduled_events/{event_uuid}/invitees"
+    auth:
+      type: bearer
+      token: "{{vault:CALENDLY_API_KEY}}"
+    parameters:
+      - name: event_uuid
+        description: Event UUID
+        required: true
+        in: path
+      - name: count
+        description: Number of results
+        in: query
+
+  calendly.get_user:
+    type: rest
+    description: Get current user info
+    base_url: "https://api.calendly.com"
+    method: GET
+    path: /users/me
+    auth:
+      type: bearer
+      token: "{{vault:CALENDLY_API_KEY}}"

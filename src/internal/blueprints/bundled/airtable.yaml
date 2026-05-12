@@ -1,0 +1,177 @@
+name: airtable
+display_name: Airtable
+version: 1.0.0
+description: Manage bases, tables, and records in Airtable
+category: business
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: bearer
+auth_guide: "Get your token at https://airtable.com/create/tokens"
+
+requires:
+  vault_keys:
+    - AIRTABLE_API_KEY
+
+tools:
+  airtable.list_records:
+    type: rest
+    description: List records in a table
+    base_url: "https://api.airtable.com/v0"
+    method: GET
+    path: "/{{baseId}}/{{tableIdOrName}}"
+    headers:
+      Content-Type: application/json
+    auth:
+      type: bearer
+      token: "{{vault:AIRTABLE_API_KEY}}"
+    parameters:
+      - name: baseId
+        description: The Airtable base ID
+        required: true
+        in: path
+      - name: tableIdOrName
+        description: The table ID or name
+        required: true
+        in: path
+      - name: maxRecords
+        description: Maximum number of records to return
+        in: query
+      - name: view
+        description: Name or ID of a view to filter by
+        in: query
+      - name: filterByFormula
+        description: Airtable formula to filter records
+        in: query
+      - name: sort
+        description: Sort configuration
+        in: query
+      - name: offset
+        description: Pagination offset from a previous request
+        in: query
+
+  airtable.get_record:
+    type: rest
+    description: Get a single record by ID
+    base_url: "https://api.airtable.com/v0"
+    method: GET
+    path: "/{{baseId}}/{{tableIdOrName}}/{{recordId}}"
+    headers:
+      Content-Type: application/json
+    auth:
+      type: bearer
+      token: "{{vault:AIRTABLE_API_KEY}}"
+    parameters:
+      - name: baseId
+        description: The Airtable base ID
+        required: true
+        in: path
+      - name: tableIdOrName
+        description: The table ID or name
+        required: true
+        in: path
+      - name: recordId
+        description: The record ID
+        required: true
+        in: path
+
+  airtable.create_record:
+    type: rest
+    description: Create a new record in a table
+    base_url: "https://api.airtable.com/v0"
+    method: POST
+    path: "/{{baseId}}/{{tableIdOrName}}"
+    headers:
+      Content-Type: application/json
+    auth:
+      type: bearer
+      token: "{{vault:AIRTABLE_API_KEY}}"
+    parameters:
+      - name: baseId
+        description: The Airtable base ID
+        required: true
+        in: path
+      - name: tableIdOrName
+        description: The table ID or name
+        required: true
+        in: path
+      - name: fields
+        description: Object of field names to values
+        required: true
+        in: body
+    shadow:
+      confirm: true
+
+  airtable.update_record:
+    type: rest
+    description: Update an existing record
+    base_url: "https://api.airtable.com/v0"
+    method: PATCH
+    path: "/{{baseId}}/{{tableIdOrName}}/{{recordId}}"
+    headers:
+      Content-Type: application/json
+    auth:
+      type: bearer
+      token: "{{vault:AIRTABLE_API_KEY}}"
+    parameters:
+      - name: baseId
+        description: The Airtable base ID
+        required: true
+        in: path
+      - name: tableIdOrName
+        description: The table ID or name
+        required: true
+        in: path
+      - name: recordId
+        description: The record ID
+        required: true
+        in: path
+      - name: fields
+        description: Object of field names to updated values
+        required: true
+        in: body
+    shadow:
+      confirm: true
+
+  airtable.delete_record:
+    type: rest
+    description: Delete a record from a table
+    base_url: "https://api.airtable.com/v0"
+    method: DELETE
+    path: "/{{baseId}}/{{tableIdOrName}}/{{recordId}}"
+    headers:
+      Content-Type: application/json
+    auth:
+      type: bearer
+      token: "{{vault:AIRTABLE_API_KEY}}"
+    parameters:
+      - name: baseId
+        description: The Airtable base ID
+        required: true
+        in: path
+      - name: tableIdOrName
+        description: The table ID or name
+        required: true
+        in: path
+      - name: recordId
+        description: The record ID to delete
+        required: true
+        in: path
+    shadow:
+      confirm: true
+
+  airtable.list_bases:
+    type: rest
+    description: List all accessible bases
+    base_url: "https://api.airtable.com/v0"
+    method: GET
+    path: /meta/bases
+    headers:
+      Content-Type: application/json
+    auth:
+      type: bearer
+      token: "{{vault:AIRTABLE_API_KEY}}"
+    parameters:
+      - name: offset
+        description: Pagination offset
+        in: query

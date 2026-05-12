@@ -1,0 +1,140 @@
+name: docusign
+display_name: DocuSign
+version: 1.0.0
+description: Electronic signatures, envelopes, and document management
+category: business
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: oauth
+auth_guide: "Create an app at https://developers.docusign.com"
+
+requires:
+  vault_keys:
+    - DOCUSIGN_CLIENT_ID
+    - DOCUSIGN_CLIENT_SECRET
+
+oauth_providers:
+  docusign:
+    client_id: "{{vault:DOCUSIGN_CLIENT_ID}}"
+    client_secret: "{{vault:DOCUSIGN_CLIENT_SECRET}}"
+    auth_url: https://account-d.docusign.com/oauth/auth
+    token_url: https://account-d.docusign.com/oauth/token
+    scopes:
+      - signature
+
+tools:
+  docusign.list_envelopes:
+    type: rest
+    description: List envelopes for an account
+    base_url: "https://demo.docusign.net/restapi/v2.1"
+    method: GET
+    path: "/accounts/{accountId}/envelopes"
+    auth:
+      type: oauth
+      provider: docusign
+    parameters:
+      - name: accountId
+        description: Account ID
+        required: true
+        in: path
+      - name: from_date
+        description: Start date (ISO 8601)
+        required: true
+        in: query
+      - name: status
+        description: "Filter by status (created, sent, completed, declined, voided)"
+        in: query
+      - name: count
+        description: Number of results
+        in: query
+
+  docusign.get_envelope:
+    type: rest
+    description: Get an envelope by ID
+    base_url: "https://demo.docusign.net/restapi/v2.1"
+    method: GET
+    path: "/accounts/{accountId}/envelopes/{envelopeId}"
+    auth:
+      type: oauth
+      provider: docusign
+    parameters:
+      - name: accountId
+        description: Account ID
+        required: true
+        in: path
+      - name: envelopeId
+        description: Envelope ID
+        required: true
+        in: path
+
+  docusign.send_envelope:
+    type: rest
+    description: Create and send an envelope
+    base_url: "https://demo.docusign.net/restapi/v2.1"
+    method: POST
+    path: "/accounts/{accountId}/envelopes"
+    auth:
+      type: oauth
+      provider: docusign
+    parameters:
+      - name: accountId
+        description: Account ID
+        required: true
+        in: path
+      - name: status
+        description: "Envelope status (created, sent)"
+        required: true
+        in: body
+      - name: emailSubject
+        description: Email subject line
+        required: true
+        in: body
+      - name: recipients
+        description: "Recipients object (signers, carbonCopies, etc.)"
+        required: true
+        in: body
+    shadow:
+      confirm: true
+
+  docusign.get_document:
+    type: rest
+    description: Get a document from an envelope
+    base_url: "https://demo.docusign.net/restapi/v2.1"
+    method: GET
+    path: "/accounts/{accountId}/envelopes/{envelopeId}/documents/{documentId}"
+    auth:
+      type: oauth
+      provider: docusign
+    parameters:
+      - name: accountId
+        description: Account ID
+        required: true
+        in: path
+      - name: envelopeId
+        description: Envelope ID
+        required: true
+        in: path
+      - name: documentId
+        description: Document ID
+        required: true
+        in: path
+
+  docusign.list_recipients:
+    type: rest
+    description: List recipients of an envelope
+    base_url: "https://demo.docusign.net/restapi/v2.1"
+    method: GET
+    path: "/accounts/{accountId}/envelopes/{envelopeId}/recipients"
+    auth:
+      type: oauth
+      provider: docusign
+    parameters:
+      - name: accountId
+        description: Account ID
+        required: true
+        in: path
+      - name: envelopeId
+        description: Envelope ID
+        required: true
+        in: path

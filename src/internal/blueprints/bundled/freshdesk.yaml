@@ -1,0 +1,136 @@
+name: freshdesk
+display_name: Freshdesk
+version: 1.0.0
+description: Help desk, ticket management, and customer support
+category: business
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: api_key
+auth_guide: "Find your API key at https://YOUR_DOMAIN.freshdesk.com/a/admin/api"
+
+requires:
+  vault_keys:
+    - FRESHDESK_API_KEY
+
+tools:
+  freshdesk.list_tickets:
+    type: rest
+    description: List tickets
+    base_url: "https://YOUR_DOMAIN.freshdesk.com/api/v2"
+    method: GET
+    path: /tickets
+    auth:
+      type: bearer
+      token: "{{vault:FRESHDESK_API_KEY}}"
+    parameters:
+      - name: page
+        description: Page number
+        in: query
+      - name: per_page
+        description: "Results per page (1-100)"
+        in: query
+      - name: filter
+        description: "Filter name (new_and_my_open, watched, spam, deleted)"
+        in: query
+
+  freshdesk.create_ticket:
+    type: rest
+    description: Create a new ticket
+    base_url: "https://YOUR_DOMAIN.freshdesk.com/api/v2"
+    method: POST
+    path: /tickets
+    auth:
+      type: bearer
+      token: "{{vault:FRESHDESK_API_KEY}}"
+    parameters:
+      - name: subject
+        description: Ticket subject
+        required: true
+        in: body
+      - name: description
+        description: Ticket description (HTML)
+        required: true
+        in: body
+      - name: email
+        description: Requester email
+        required: true
+        in: body
+      - name: priority
+        description: "Priority (1=Low, 2=Medium, 3=High, 4=Urgent)"
+        in: body
+      - name: status
+        description: "Status (2=Open, 3=Pending, 4=Resolved, 5=Closed)"
+        in: body
+    shadow:
+      confirm: true
+
+  freshdesk.get_ticket:
+    type: rest
+    description: Get a ticket by ID
+    base_url: "https://YOUR_DOMAIN.freshdesk.com/api/v2"
+    method: GET
+    path: "/tickets/{ticket_id}"
+    auth:
+      type: bearer
+      token: "{{vault:FRESHDESK_API_KEY}}"
+    parameters:
+      - name: ticket_id
+        description: Ticket ID
+        required: true
+        in: path
+
+  freshdesk.update_ticket:
+    type: rest
+    description: Update an existing ticket
+    base_url: "https://YOUR_DOMAIN.freshdesk.com/api/v2"
+    method: PUT
+    path: "/tickets/{ticket_id}"
+    auth:
+      type: bearer
+      token: "{{vault:FRESHDESK_API_KEY}}"
+    parameters:
+      - name: ticket_id
+        description: Ticket ID
+        required: true
+        in: path
+      - name: status
+        description: Status
+        in: body
+      - name: priority
+        description: Priority
+        in: body
+    shadow:
+      confirm: true
+
+  freshdesk.list_contacts:
+    type: rest
+    description: List contacts
+    base_url: "https://YOUR_DOMAIN.freshdesk.com/api/v2"
+    method: GET
+    path: /contacts
+    auth:
+      type: bearer
+      token: "{{vault:FRESHDESK_API_KEY}}"
+    parameters:
+      - name: page
+        description: Page number
+        in: query
+      - name: per_page
+        description: Results per page
+        in: query
+
+  freshdesk.search_tickets:
+    type: rest
+    description: Search tickets
+    base_url: "https://YOUR_DOMAIN.freshdesk.com/api/v2"
+    method: GET
+    path: /search/tickets
+    auth:
+      type: bearer
+      token: "{{vault:FRESHDESK_API_KEY}}"
+    parameters:
+      - name: query
+        description: Search query string (Freshdesk query format)
+        required: true
+        in: query

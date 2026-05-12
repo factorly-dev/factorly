@@ -1,0 +1,141 @@
+name: dropbox
+display_name: Dropbox
+version: 1.0.0
+description: Cloud file storage, sharing, and collaboration
+category: business
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: oauth
+auth_guide: "Create an app at https://www.dropbox.com/developers/apps"
+
+requires:
+  vault_keys:
+    - DROPBOX_CLIENT_ID
+    - DROPBOX_CLIENT_SECRET
+
+oauth_providers:
+  dropbox:
+    client_id: "{{vault:DROPBOX_CLIENT_ID}}"
+    client_secret: "{{vault:DROPBOX_CLIENT_SECRET}}"
+    auth_url: https://www.dropbox.com/oauth2/authorize
+    token_url: https://api.dropboxapi.com/oauth2/token
+    scopes:
+      - files.content.read
+      - files.content.write
+
+tools:
+  dropbox.list_folder:
+    type: rest
+    description: List files and folders in a path
+    base_url: "https://api.dropboxapi.com/2"
+    method: POST
+    path: /files/list_folder
+    auth:
+      type: oauth
+      provider: dropbox
+    parameters:
+      - name: path
+        description: Folder path (empty string for root)
+        required: true
+        in: body
+      - name: recursive
+        description: Recursively list contents (true/false)
+        in: body
+      - name: limit
+        description: Maximum number of results
+        in: body
+
+  dropbox.search:
+    type: rest
+    description: Search for files and folders
+    base_url: "https://api.dropboxapi.com/2"
+    method: POST
+    path: /files/search_v2
+    auth:
+      type: oauth
+      provider: dropbox
+    parameters:
+      - name: query
+        description: Search query string
+        required: true
+        in: body
+      - name: options
+        description: "Search options (path, max_results, file_extensions, etc.)"
+        in: body
+
+  dropbox.get_metadata:
+    type: rest
+    description: Get metadata for a file or folder
+    base_url: "https://api.dropboxapi.com/2"
+    method: POST
+    path: /files/get_metadata
+    auth:
+      type: oauth
+      provider: dropbox
+    parameters:
+      - name: path
+        description: File or folder path
+        required: true
+        in: body
+
+  dropbox.create_folder:
+    type: rest
+    description: Create a new folder
+    base_url: "https://api.dropboxapi.com/2"
+    method: POST
+    path: /files/create_folder_v2
+    auth:
+      type: oauth
+      provider: dropbox
+    parameters:
+      - name: path
+        description: Folder path to create
+        required: true
+        in: body
+      - name: autorename
+        description: "Auto-rename if conflict (true/false)"
+        in: body
+    shadow:
+      confirm: true
+
+  dropbox.delete:
+    type: rest
+    description: Delete a file or folder
+    base_url: "https://api.dropboxapi.com/2"
+    method: POST
+    path: /files/delete_v2
+    auth:
+      type: oauth
+      provider: dropbox
+    parameters:
+      - name: path
+        description: Path to delete
+        required: true
+        in: body
+    shadow:
+      confirm: true
+
+  dropbox.move:
+    type: rest
+    description: Move a file or folder
+    base_url: "https://api.dropboxapi.com/2"
+    method: POST
+    path: /files/move_v2
+    auth:
+      type: oauth
+      provider: dropbox
+    parameters:
+      - name: from_path
+        description: Source path
+        required: true
+        in: body
+      - name: to_path
+        description: Destination path
+        required: true
+        in: body
+      - name: autorename
+        description: "Auto-rename if conflict (true/false)"
+        in: body
+    shadow:
+      confirm: true

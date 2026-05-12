@@ -1,0 +1,59 @@
+name: chatgpt
+display_name: OpenAI ChatGPT API
+version: 1.0.0
+description: Chat completions via the OpenAI API
+category: engineering
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: bearer
+auth_guide: "Get your API key at https://platform.openai.com/api-keys"
+
+requires:
+  vault_keys:
+    - OPENAI_API_KEY
+
+tools:
+  chatgpt.completions:
+    type: rest
+    description: Create a chat completion using the OpenAI API (full control)
+    base_url: "https://api.openai.com"
+    method: POST
+    path: /v1/chat/completions
+    auth:
+      type: bearer
+      token: "{{vault:OPENAI_API_KEY}}"
+    parameters:
+      - name: model
+        description: Model to use (e.g., gpt-4o, o4-mini)
+        type: string
+        required: true
+        in: body
+      - name: messages
+        description: Array of message objects with role and content
+        type: json
+        required: true
+        in: body
+      - name: max_tokens
+        description: Maximum tokens to generate
+        type: integer
+        in: body
+
+  chatgpt.ask:
+    type: rest
+    description: Ask ChatGPT a question (simple interface)
+    base_url: "https://api.openai.com"
+    method: POST
+    path: /v1/chat/completions
+    auth:
+      type: bearer
+      token: "{{vault:OPENAI_API_KEY}}"
+    body: |
+      {"model":"{{model}}","messages":[{"role":"user","content":"{{prompt}}"}]}
+    parameters:
+      - name: prompt
+        description: The question or instruction for ChatGPT
+        required: true
+      - name: model
+        description: Model to use
+        default: gpt-4o

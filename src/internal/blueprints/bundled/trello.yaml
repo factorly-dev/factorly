@@ -1,0 +1,142 @@
+name: trello
+display_name: Trello
+version: 1.0.0
+description: Kanban boards, cards, and task management
+category: business
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: api_key
+auth_guide: "Get your API key at https://trello.com/power-ups/admin"
+
+requires:
+  vault_keys:
+    - TRELLO_API_KEY
+
+tools:
+  trello.list_cards:
+    type: rest
+    description: List cards on a board
+    base_url: "https://api.trello.com/1"
+    method: GET
+    path: "/boards/{board_id}/cards"
+    auth:
+      type: bearer
+      token: "{{vault:TRELLO_API_KEY}}"
+    parameters:
+      - name: board_id
+        description: Board ID
+        required: true
+        in: path
+      - name: filter
+        description: "Filter (all, closed, none, open, visible)"
+        in: query
+
+  trello.create_card:
+    type: rest
+    description: Create a new card
+    base_url: "https://api.trello.com/1"
+    method: POST
+    path: /cards
+    auth:
+      type: bearer
+      token: "{{vault:TRELLO_API_KEY}}"
+    parameters:
+      - name: idList
+        description: List ID to add the card to
+        required: true
+        in: query
+      - name: name
+        description: Card name
+        required: true
+        in: query
+      - name: desc
+        description: Card description
+        in: query
+      - name: pos
+        description: "Position (top, bottom, or a number)"
+        in: query
+    shadow:
+      confirm: true
+
+  trello.list_boards:
+    type: rest
+    description: List boards for the authenticated member
+    base_url: "https://api.trello.com/1"
+    method: GET
+    path: /members/me/boards
+    auth:
+      type: bearer
+      token: "{{vault:TRELLO_API_KEY}}"
+    parameters:
+      - name: filter
+        description: "Filter (all, closed, members, open, starred)"
+        in: query
+
+  trello.update_card:
+    type: rest
+    description: Update a card
+    base_url: "https://api.trello.com/1"
+    method: PUT
+    path: "/cards/{card_id}"
+    auth:
+      type: bearer
+      token: "{{vault:TRELLO_API_KEY}}"
+    parameters:
+      - name: card_id
+        description: Card ID
+        required: true
+        in: path
+      - name: name
+        description: Card name
+        in: query
+      - name: desc
+        description: Card description
+        in: query
+      - name: closed
+        description: Archive card (true/false)
+        in: query
+    shadow:
+      confirm: true
+
+  trello.move_card:
+    type: rest
+    description: Move a card to a different list
+    base_url: "https://api.trello.com/1"
+    method: PUT
+    path: "/cards/{card_id}"
+    auth:
+      type: bearer
+      token: "{{vault:TRELLO_API_KEY}}"
+    parameters:
+      - name: card_id
+        description: Card ID
+        required: true
+        in: path
+      - name: idList
+        description: Target list ID
+        required: true
+        in: query
+      - name: pos
+        description: "Position in list (top, bottom)"
+        in: query
+    shadow:
+      confirm: true
+
+  trello.list_lists:
+    type: rest
+    description: List lists on a board
+    base_url: "https://api.trello.com/1"
+    method: GET
+    path: "/boards/{board_id}/lists"
+    auth:
+      type: bearer
+      token: "{{vault:TRELLO_API_KEY}}"
+    parameters:
+      - name: board_id
+        description: Board ID
+        required: true
+        in: path
+      - name: filter
+        description: "Filter (all, closed, none, open)"
+        in: query

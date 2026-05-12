@@ -1,0 +1,133 @@
+name: attio
+display_name: Attio
+version: 1.0.0
+description: Modern CRM, records, and relationship management
+category: business
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: bearer
+auth_guide: "Get your API key at https://app.attio.com/settings/developers"
+
+requires:
+  vault_keys:
+    - ATTIO_API_KEY
+
+tools:
+  attio.list_records:
+    type: rest
+    description: List records for an object
+    base_url: "https://api.attio.com/v2"
+    method: POST
+    path: "/objects/{object}/records/query"
+    auth:
+      type: bearer
+      token: "{{vault:ATTIO_API_KEY}}"
+    parameters:
+      - name: object
+        description: "Object slug (e.g. people, companies)"
+        required: true
+        in: path
+      - name: limit
+        description: Number of results
+        in: body
+      - name: offset
+        description: Offset for pagination
+        in: body
+
+  attio.create_record:
+    type: rest
+    description: Create a new record
+    base_url: "https://api.attio.com/v2"
+    method: POST
+    path: "/objects/{object}/records"
+    auth:
+      type: bearer
+      token: "{{vault:ATTIO_API_KEY}}"
+    parameters:
+      - name: object
+        description: "Object slug (e.g. people, companies)"
+        required: true
+        in: path
+      - name: data
+        description: Record data with attribute values
+        required: true
+        in: body
+    shadow:
+      confirm: true
+
+  attio.search:
+    type: rest
+    description: Search records with filters
+    base_url: "https://api.attio.com/v2"
+    method: POST
+    path: "/objects/{object}/records/query"
+    auth:
+      type: bearer
+      token: "{{vault:ATTIO_API_KEY}}"
+    parameters:
+      - name: object
+        description: Object slug
+        required: true
+        in: path
+      - name: filter
+        description: Filter conditions
+        required: true
+        in: body
+      - name: limit
+        description: Number of results
+        in: body
+
+  attio.update_record:
+    type: rest
+    description: Update an existing record
+    base_url: "https://api.attio.com/v2"
+    method: PUT
+    path: "/objects/{object}/records/{record_id}"
+    auth:
+      type: bearer
+      token: "{{vault:ATTIO_API_KEY}}"
+    parameters:
+      - name: object
+        description: Object slug
+        required: true
+        in: path
+      - name: record_id
+        description: Record ID
+        required: true
+        in: path
+      - name: data
+        description: Record fields to update
+        required: true
+        in: body
+    shadow:
+      confirm: true
+
+  attio.list_objects:
+    type: rest
+    description: List available objects in the workspace
+    base_url: "https://api.attio.com/v2"
+    method: GET
+    path: /objects
+    auth:
+      type: bearer
+      token: "{{vault:ATTIO_API_KEY}}"
+
+  attio.get_record:
+    type: rest
+    description: Get a record by ID
+    base_url: "https://api.attio.com/v2"
+    method: GET
+    path: "/objects/{object}/records/{record_id}"
+    auth:
+      type: bearer
+      token: "{{vault:ATTIO_API_KEY}}"
+    parameters:
+      - name: object
+        description: Object slug
+        required: true
+        in: path
+      - name: record_id
+        description: Record ID
+        required: true
+        in: path

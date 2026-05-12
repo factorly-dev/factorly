@@ -1,0 +1,171 @@
+name: google-drive
+display_name: Google Drive
+version: 1.0.0
+description: Manage files and folders in Google Drive
+category: business
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: oauth
+auth_guide: "Create OAuth credentials at https://console.cloud.google.com/apis/credentials"
+
+requires:
+  vault_keys:
+    - GOOGLE_DRIVE_CLIENT_ID
+    - GOOGLE_DRIVE_CLIENT_SECRET
+
+oauth_providers:
+  google-drive:
+    client_id: "{{vault:GOOGLE_DRIVE_CLIENT_ID}}"
+    client_secret: "{{vault:GOOGLE_DRIVE_CLIENT_SECRET}}"
+    auth_url: https://accounts.google.com/o/oauth2/v2/auth
+    token_url: https://oauth2.googleapis.com/token
+    scopes:
+      - https://www.googleapis.com/auth/drive
+
+tools:
+  google-drive.list_files:
+    type: rest
+    description: List files in Google Drive
+    base_url: "https://www.googleapis.com/drive/v3"
+    method: GET
+    path: /files
+    headers:
+      Content-Type: application/json
+    auth:
+      type: oauth
+      provider: google-drive
+    parameters:
+      - name: q
+        description: Search query (Drive query syntax)
+        in: query
+      - name: pageSize
+        description: Maximum number of files to return (max 1000)
+        in: query
+      - name: pageToken
+        description: Page token from a previous list request
+        in: query
+      - name: orderBy
+        description: "Sort order (e.g. 'modifiedTime desc')"
+        in: query
+      - name: fields
+        description: Fields to include in the response
+        in: query
+
+  google-drive.get_file:
+    type: rest
+    description: Get file metadata by ID
+    base_url: "https://www.googleapis.com/drive/v3"
+    method: GET
+    path: "/files/{{fileId}}"
+    headers:
+      Content-Type: application/json
+    auth:
+      type: oauth
+      provider: google-drive
+    parameters:
+      - name: fileId
+        description: The file ID
+        required: true
+        in: path
+      - name: fields
+        description: Fields to include in the response
+        in: query
+
+  google-drive.search:
+    type: rest
+    description: Search for files in Google Drive
+    base_url: "https://www.googleapis.com/drive/v3"
+    method: GET
+    path: /files
+    headers:
+      Content-Type: application/json
+    auth:
+      type: oauth
+      provider: google-drive
+    parameters:
+      - name: q
+        description: Search query (e.g. \
+        required: true
+        in: query
+      - name: pageSize
+        description: Maximum number of files to return
+        in: query
+      - name: fields
+        description: Fields to include in the response
+        in: query
+
+  google-drive.create_folder:
+    type: rest
+    description: Create a new folder in Google Drive
+    base_url: "https://www.googleapis.com/drive/v3"
+    method: POST
+    path: /files
+    headers:
+      Content-Type: application/json
+    auth:
+      type: oauth
+      provider: google-drive
+    parameters:
+      - name: name
+        description: Folder name
+        required: true
+        in: body
+      - name: mimeType
+        description: "Must be 'application/vnd.google-apps.folder'"
+        required: true
+        in: body
+      - name: parents
+        description: Array of parent folder IDs
+        in: body
+    shadow:
+      confirm: true
+
+  google-drive.delete_file:
+    type: rest
+    description: Delete a file from Google Drive
+    base_url: "https://www.googleapis.com/drive/v3"
+    method: DELETE
+    path: "/files/{{fileId}}"
+    headers:
+      Content-Type: application/json
+    auth:
+      type: oauth
+      provider: google-drive
+    parameters:
+      - name: fileId
+        description: The file ID to delete
+        required: true
+        in: path
+    shadow:
+      confirm: true
+
+  google-drive.share_file:
+    type: rest
+    description: Share a file by creating a permission
+    base_url: "https://www.googleapis.com/drive/v3"
+    method: POST
+    path: "/files/{{fileId}}/permissions"
+    headers:
+      Content-Type: application/json
+    auth:
+      type: oauth
+      provider: google-drive
+    parameters:
+      - name: fileId
+        description: The file ID to share
+        required: true
+        in: path
+      - name: role
+        description: "Permission role (owner, organizer, writer, commenter, reader)"
+        required: true
+        in: body
+      - name: type
+        description: "Permission type (user, group, domain, anyone)"
+        required: true
+        in: body
+      - name: emailAddress
+        description: Email address for user or group type
+        in: body
+    shadow:
+      confirm: true

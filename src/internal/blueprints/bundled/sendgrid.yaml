@@ -1,0 +1,102 @@
+name: sendgrid
+display_name: SendGrid
+version: 1.0.0
+description: Email delivery, contacts, and marketing campaigns
+category: business
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: bearer
+auth_guide: "Create an API key at https://app.sendgrid.com/settings/api_keys"
+
+requires:
+  vault_keys:
+    - SENDGRID_API_KEY
+
+tools:
+  sendgrid.send_email:
+    type: rest
+    description: Send an email
+    base_url: "https://api.sendgrid.com/v3"
+    method: POST
+    path: /mail/send
+    auth:
+      type: bearer
+      token: "{{vault:SENDGRID_API_KEY}}"
+    parameters:
+      - name: personalizations
+        description: "Array of recipients with to, subject, etc."
+        required: true
+        in: body
+      - name: from
+        description: "Sender email object (email, name)"
+        required: true
+        in: body
+      - name: content
+        description: "Array of content objects (type, value)"
+        required: true
+        in: body
+    shadow:
+      confirm: true
+
+  sendgrid.list_contacts:
+    type: rest
+    description: List marketing contacts
+    base_url: "https://api.sendgrid.com/v3"
+    method: GET
+    path: /marketing/contacts
+    auth:
+      type: bearer
+      token: "{{vault:SENDGRID_API_KEY}}"
+
+  sendgrid.list_templates:
+    type: rest
+    description: List email templates
+    base_url: "https://api.sendgrid.com/v3"
+    method: GET
+    path: /templates
+    auth:
+      type: bearer
+      token: "{{vault:SENDGRID_API_KEY}}"
+    parameters:
+      - name: generations
+        description: "Template generation (legacy, dynamic)"
+        in: query
+      - name: page_size
+        description: Number of results per page
+        in: query
+
+  sendgrid.get_stats:
+    type: rest
+    description: Get email sending statistics
+    base_url: "https://api.sendgrid.com/v3"
+    method: GET
+    path: /stats
+    auth:
+      type: bearer
+      token: "{{vault:SENDGRID_API_KEY}}"
+    parameters:
+      - name: start_date
+        description: "Start date (YYYY-MM-DD)"
+        required: true
+        in: query
+      - name: end_date
+        description: "End date (YYYY-MM-DD)"
+        in: query
+
+  sendgrid.add_contact:
+    type: rest
+    description: Add or update a marketing contact
+    base_url: "https://api.sendgrid.com/v3"
+    method: PUT
+    path: /marketing/contacts
+    auth:
+      type: bearer
+      token: "{{vault:SENDGRID_API_KEY}}"
+    parameters:
+      - name: contacts
+        description: "Array of contact objects (email, first_name, last_name, etc.)"
+        required: true
+        in: body
+    shadow:
+      confirm: true

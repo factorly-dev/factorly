@@ -1,0 +1,73 @@
+name: make
+display_name: Make
+version: 1.0.0
+description: Common make targets with output filtering
+category: engineering
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: none
+
+tools:
+  make.run:
+    type: cli
+    description: Run a make target
+    command: make
+    args: ["{{target}}"]
+    parameters:
+      - name: target
+        description: Make target to run
+        required: true
+    filter:
+      match_output:
+        - pattern: "^make\\[\\d+\\]: Nothing to be done"
+          message: "ok (nothing to do)"
+      strip_lines:
+        - "^make\\[\\d+\\]: (Entering|Leaving) directory"
+      max_lines: 100
+
+  make.build:
+    type: cli
+    description: Run the default build
+    command: make
+    args: ["build"]
+    filter:
+      match_output:
+        - pattern: "^$"
+          message: "ok (build succeeded)"
+          unless: "error|Error|undefined reference"
+      strip_lines:
+        - "^make\\[\\d+\\]: (Entering|Leaving) directory"
+      max_lines: 50
+
+  make.test:
+    type: cli
+    description: Run tests via make
+    command: make
+    args: ["test"]
+    filter:
+      match_output:
+        - pattern: "^ok|PASS"
+          message: "ok (all tests passed)"
+          unless: "FAIL|panic|error"
+      max_lines: 80
+
+  make.clean:
+    type: cli
+    description: Clean build artifacts
+    command: make
+    args: ["clean"]
+    shadow:
+      confirm: true
+
+  make.lint:
+    type: cli
+    description: Run linter via make
+    command: make
+    args: ["lint"]
+    filter:
+      match_output:
+        - pattern: "^$"
+          message: "ok (no lint issues)"
+          unless: "error|warning|Error"
+      max_lines: 60

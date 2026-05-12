@@ -1,0 +1,203 @@
+name: github
+display_name: GitHub
+version: 1.0.0
+description: Code hosting, issues, pull requests, and repositories
+category: engineering
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: bearer
+auth_guide: "Create a token at https://github.com/settings/tokens"
+
+requires:
+  vault_keys:
+    - GITHUB_TOKEN
+
+tools:
+  github.list_repos:
+    type: rest
+    description: List repositories for a user
+    base_url: "https://api.github.com"
+    method: GET
+    path: "/users/{{username}}/repos"
+    headers:
+      Accept: application/vnd.github.v3+json
+      User-Agent: factorly
+    auth:
+      type: bearer
+      token: "{{vault:GITHUB_TOKEN}}"
+    parameters:
+      - name: username
+        description: GitHub username
+        required: true
+        in: path
+      - name: sort
+        description: "Sort field (created, updated, pushed, full_name)"
+        in: query
+      - name: per_page
+        description: Results per page (max 100)
+        in: query
+
+  github.get_repo:
+    type: rest
+    description: Get repository details
+    base_url: "https://api.github.com"
+    method: GET
+    path: "/repos/{{owner}}/{{repo}}"
+    headers:
+      Accept: application/vnd.github.v3+json
+      User-Agent: factorly
+    auth:
+      type: bearer
+      token: "{{vault:GITHUB_TOKEN}}"
+    parameters:
+      - name: owner
+        description: Repository owner
+        required: true
+        in: path
+      - name: repo
+        description: Repository name
+        required: true
+        in: path
+
+  github.list_issues:
+    type: rest
+    description: List issues for a repository
+    base_url: "https://api.github.com"
+    method: GET
+    path: "/repos/{{owner}}/{{repo}}/issues"
+    headers:
+      Accept: application/vnd.github.v3+json
+      User-Agent: factorly
+    auth:
+      type: bearer
+      token: "{{vault:GITHUB_TOKEN}}"
+    parameters:
+      - name: owner
+        description: Repository owner
+        required: true
+        in: path
+      - name: repo
+        description: Repository name
+        required: true
+        in: path
+      - name: state
+        description: "State filter (open, closed, all)"
+        in: query
+      - name: labels
+        description: "Comma-separated label names"
+        in: query
+
+  github.create_issue:
+    type: rest
+    description: Create an issue
+    base_url: "https://api.github.com"
+    method: POST
+    path: "/repos/{{owner}}/{{repo}}/issues"
+    headers:
+      Accept: application/vnd.github.v3+json
+      User-Agent: factorly
+    auth:
+      type: bearer
+      token: "{{vault:GITHUB_TOKEN}}"
+    parameters:
+      - name: owner
+        description: Repository owner
+        required: true
+        in: path
+      - name: repo
+        description: Repository name
+        required: true
+        in: path
+      - name: title
+        description: Issue title
+        required: true
+        in: body
+      - name: body
+        description: Issue body (markdown)
+        in: body
+    shadow:
+      confirm: true
+
+  github.list_prs:
+    type: rest
+    description: List pull requests
+    base_url: "https://api.github.com"
+    method: GET
+    path: "/repos/{{owner}}/{{repo}}/pulls"
+    headers:
+      Accept: application/vnd.github.v3+json
+      User-Agent: factorly
+    auth:
+      type: bearer
+      token: "{{vault:GITHUB_TOKEN}}"
+    parameters:
+      - name: owner
+        description: Repository owner
+        required: true
+        in: path
+      - name: repo
+        description: Repository name
+        required: true
+        in: path
+      - name: state
+        description: "State filter (open, closed, all)"
+        in: query
+
+  github.search_code:
+    type: rest
+    description: Search code across repositories
+    base_url: "https://api.github.com"
+    method: GET
+    path: /search/code
+    headers:
+      Accept: application/vnd.github.v3+json
+      User-Agent: factorly
+    auth:
+      type: bearer
+      token: "{{vault:GITHUB_TOKEN}}"
+    parameters:
+      - name: q
+        description: Search query
+        required: true
+        in: query
+      - name: per_page
+        description: Results per page (max 100)
+        in: query
+
+  github.search_issues:
+    type: rest
+    description: Search issues and pull requests
+    base_url: "https://api.github.com"
+    method: GET
+    path: /search/issues
+    headers:
+      Accept: application/vnd.github.v3+json
+      User-Agent: factorly
+    auth:
+      type: bearer
+      token: "{{vault:GITHUB_TOKEN}}"
+    parameters:
+      - name: q
+        description: Search query
+        required: true
+        in: query
+      - name: sort
+        description: "Sort field (comments, reactions, created, updated)"
+        in: query
+      - name: per_page
+        description: Results per page (max 100)
+        in: query
+
+  github.get_user:
+    type: rest
+    description: "Get the authenticated user's profile"
+    base_url: "https://api.github.com"
+    method: GET
+    path: /user
+    headers:
+      Accept: application/vnd.github.v3+json
+      User-Agent: factorly
+    auth:
+      type: bearer
+      token: "{{vault:GITHUB_TOKEN}}"

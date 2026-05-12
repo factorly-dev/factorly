@@ -1,0 +1,72 @@
+name: anthropic
+display_name: Anthropic Claude API
+version: 1.0.0
+description: Chat completions and text generation via the Claude API
+category: engineering
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: api_key
+auth_guide: "Get your API key at https://console.anthropic.com/settings/keys"
+
+requires:
+  vault_keys:
+    - ANTHROPIC_API_KEY
+
+tools:
+  anthropic.messages:
+    type: rest
+    description: Create a message using the Claude API (full control)
+    base_url: "https://api.anthropic.com"
+    method: POST
+    path: /v1/messages
+    headers:
+      anthropic-version: "2023-06-01"
+    auth:
+      type: header
+      header: x-api-key
+      value: "{{vault:ANTHROPIC_API_KEY}}"
+    parameters:
+      - name: model
+        description: Model to use (e.g., claude-sonnet-4-6)
+        type: string
+        required: true
+        in: body
+      - name: max_tokens
+        description: Maximum tokens to generate
+        type: integer
+        required: true
+        in: body
+      - name: messages
+        description: Array of message objects with role and content
+        type: json
+        required: true
+        in: body
+
+  anthropic.ask:
+    type: rest
+    description: Ask Claude a question (simple interface)
+    base_url: "https://api.anthropic.com"
+    method: POST
+    path: /v1/messages
+    headers:
+      anthropic-version: "2023-06-01"
+    auth:
+      type: header
+      header: x-api-key
+      value: "{{vault:ANTHROPIC_API_KEY}}"
+    body: |
+      {"model":"{{model}}","max_tokens":{{max_tokens}},"system":"{{system}}","messages":[{"role":"user","content":"{{prompt}}"}]}
+    parameters:
+      - name: prompt
+        description: The question or instruction for Claude
+        required: true
+      - name: system
+        description: System prompt to guide Claude's behavior
+        default: "You are a helpful assistant."
+      - name: model
+        description: Model to use
+        default: claude-sonnet-4-6
+      - name: max_tokens
+        description: Maximum tokens to generate
+        default: "1024"

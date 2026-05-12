@@ -1,0 +1,128 @@
+name: asana
+display_name: Asana
+version: 1.0.0
+description: Project management, tasks, and team collaboration
+category: business
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: bearer
+auth_guide: "Create a token at https://app.asana.com/0/developer-console"
+
+requires:
+  vault_keys:
+    - ASANA_ACCESS_TOKEN
+
+tools:
+  asana.list_tasks:
+    type: rest
+    description: List tasks in a project
+    base_url: "https://app.asana.com/api/1.0"
+    method: GET
+    path: /tasks
+    auth:
+      type: bearer
+      token: "{{vault:ASANA_ACCESS_TOKEN}}"
+    parameters:
+      - name: project
+        description: Project GID
+        required: true
+        in: query
+      - name: limit
+        description: "Number of results (1-100)"
+        in: query
+      - name: completed_since
+        description: Filter tasks completed after this time
+        in: query
+
+  asana.create_task:
+    type: rest
+    description: Create a new task
+    base_url: "https://app.asana.com/api/1.0"
+    method: POST
+    path: /tasks
+    auth:
+      type: bearer
+      token: "{{vault:ASANA_ACCESS_TOKEN}}"
+    parameters:
+      - name: data
+        description: "Task data (name, projects, assignee, notes, due_on, etc.)"
+        required: true
+        in: body
+    shadow:
+      confirm: true
+
+  asana.search:
+    type: rest
+    description: Search tasks in a workspace
+    base_url: "https://app.asana.com/api/1.0"
+    method: GET
+    path: "/workspaces/{workspace_gid}/tasks/search"
+    auth:
+      type: bearer
+      token: "{{vault:ASANA_ACCESS_TOKEN}}"
+    parameters:
+      - name: workspace_gid
+        description: Workspace GID
+        required: true
+        in: path
+      - name: text
+        description: Search text
+        in: query
+      - name: completed
+        description: Filter by completion (true/false)
+        in: query
+
+  asana.list_projects:
+    type: rest
+    description: List projects in a workspace
+    base_url: "https://app.asana.com/api/1.0"
+    method: GET
+    path: /projects
+    auth:
+      type: bearer
+      token: "{{vault:ASANA_ACCESS_TOKEN}}"
+    parameters:
+      - name: workspace
+        description: Workspace GID
+        required: true
+        in: query
+      - name: limit
+        description: "Number of results (1-100)"
+        in: query
+
+  asana.update_task:
+    type: rest
+    description: Update an existing task
+    base_url: "https://app.asana.com/api/1.0"
+    method: PUT
+    path: "/tasks/{task_gid}"
+    auth:
+      type: bearer
+      token: "{{vault:ASANA_ACCESS_TOKEN}}"
+    parameters:
+      - name: task_gid
+        description: Task GID
+        required: true
+        in: path
+      - name: data
+        description: Task fields to update
+        required: true
+        in: body
+    shadow:
+      confirm: true
+
+  asana.get_task:
+    type: rest
+    description: Get a task by GID
+    base_url: "https://app.asana.com/api/1.0"
+    method: GET
+    path: "/tasks/{task_gid}"
+    auth:
+      type: bearer
+      token: "{{vault:ASANA_ACCESS_TOKEN}}"
+    parameters:
+      - name: task_gid
+        description: Task GID
+        required: true
+        in: path
