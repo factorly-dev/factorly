@@ -3915,3 +3915,107 @@ tools:
 		t.Errorf("expected the specific missing dep, got %q", stdout)
 	}
 }
+
+// repoFile resolves a path relative to the repository root by walking up
+// from the test's working directory, looking for a sibling that exists.
+// Mirrors how TestMain locates the factorly binary.
+func repoFile(t *testing.T, relPath string) string {
+	t.Helper()
+	dir, _ := os.Getwd()
+	for i := 0; i < 5; i++ {
+		candidate := filepath.Join(dir, relPath)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		dir = filepath.Dir(dir)
+	}
+	t.Fatalf("could not locate %s from %s upward", relPath, dir)
+	return ""
+}
+
+func TestExamplePackGmailInstalls(t *testing.T) {
+	// Dogfood test: the checked-in examples/packs/gmail.yaml is the canonical
+	// example of the pack format. If this test ever fails, it means a format
+	// change has broken the example — fix one or the other to keep them in
+	// sync. The pack is real: 6 REST tools and a self-shipped OAuth provider
+	// using vault refs for client credentials.
+	gmailPack := repoFile(t, "examples/packs/gmail.yaml")
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": "tools: {}\n",
+	})
+
+	// Dry-run: confirms the structured preview the UI would render.
+	stdout, _, code := run(t, dir, "install", gmailPack, "--dry-run", "--no-prompt")
+	if code != 0 {
+		t.Fatalf("dry-run install: exit %d, %s", code, stdout)
+	}
+	if !strings.Contains(stdout, "gmail 1.0.0") {
+		t.Errorf("expected pack header in dry-run output, got %q", stdout)
+	}
+	// Expect each of the 6 tools by name.
+	expectTools := []string{
+		"gmail.list_messages",
+		"gmail.get_message",
+		"gmail.send_message",
+		"gmail.search",
+		"gmail.create_draft",
+		"gmail.list_labels",
+	}
+	for _, tool := range expectTools {
+		if !strings.Contains(stdout, tool) {
+			t.Errorf("dry-run missing tool %q in output: %q", tool, stdout)
+		}
+	}
+	// OAuth provider should appear in the preview.
+	if !strings.Contains(stdout, "+ gmail") {
+		t.Errorf("expected '+ gmail' oauth provider line, got %q", stdout)
+	}
+	// Vault keys section should list both required keys.
+	if !strings.Contains(stdout, "GMAIL_CLIENT_ID") || !strings.Contains(stdout, "GMAIL_CLIENT_SECRET") {
+		t.Errorf("expected vault keys in dry-run output, got %q", stdout)
+	}
+
+	// Commit. --no-prompt skips the interactive vault prompts.
+	stdout, _, code = run(t, dir, "install", gmailPack, "--no-prompt")
+	if code != 0 {
+		t.Fatalf("install: exit %d, %s", code, stdout)
+	}
+	if !strings.Contains(stdout, "Installed gmail") {
+		t.Errorf("expected 'Installed gmail' confirmation, got %q", stdout)
+	}
+
+	// All six tools should be visible via 'factorly tools'. If the pack's
+	// OAuth provider definition didn't merge correctly, validate would
+	// reject the tools' provider:gmail references and tools list would
+	// either be empty or error.
+	stdout, _, code = run(t, dir, "tools")
+	if code != 0 {
+		t.Fatalf("tools list after install: exit %d, %s", code, stdout)
+	}
+	for _, tool := range expectTools {
+		if !strings.Contains(stdout, tool) {
+			t.Errorf("tool %q missing from tools list, got %q", tool, stdout)
+		}
+	}
+
+	// 'factorly packs' should report the installed pack.
+	stdout, _, code = run(t, dir, "packs")
+	if code != 0 {
+		t.Fatalf("packs list: exit %d, %s", code, stdout)
+	}
+	if !strings.Contains(stdout, "gmail") || !strings.Contains(stdout, "1.0.0") {
+		t.Errorf("expected installed gmail 1.0.0 in packs list, got %q", stdout)
+	}
+
+	// Uninstall and confirm everything is gone.
+	if _, _, code := run(t, dir, "uninstall", "gmail"); code != 0 {
+		t.Fatal("uninstall failed")
+	}
+	stdout, _, _ = run(t, dir, "tools")
+	for _, tool := range expectTools {
+		if strings.Contains(stdout, tool) {
+			t.Errorf("tool %q still present after uninstall: %q", tool, stdout)
+		}
+	}
+}

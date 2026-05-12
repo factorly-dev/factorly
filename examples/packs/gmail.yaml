@@ -1,0 +1,152 @@
+name: gmail
+version: 1.0.0
+description: Read, send, and manage email messages via the Gmail API
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+
+# This pack is the canonical example of the Factorly pack format. It ships
+# the OAuth provider definition alongside the tools that use it, so the
+# pack is self-contained: a recipient runs `factorly install` and gets
+# everything they need except their own client credentials.
+#
+# The OAuth client_id and client_secret are vault references — they're
+# stored on the recipient's machine, never in this file. `factorly install`
+# prompts for the listed vault keys interactively. Get OAuth credentials
+# at https://console.cloud.google.com/apis/credentials.
+
+requires:
+  vault_keys:
+    - GMAIL_CLIENT_ID
+    - GMAIL_CLIENT_SECRET
+
+oauth_providers:
+  gmail:
+    client_id: "{{vault:GMAIL_CLIENT_ID}}"
+    client_secret: "{{vault:GMAIL_CLIENT_SECRET}}"
+    auth_url: https://accounts.google.com/o/oauth2/v2/auth
+    token_url: https://oauth2.googleapis.com/token
+    scopes:
+      - https://www.googleapis.com/auth/gmail.modify
+
+tools:
+  gmail.list_messages:
+    type: rest
+    description: List messages in the user's mailbox
+    base_url: https://gmail.googleapis.com/gmail/v1
+    method: GET
+    path: /users/me/messages
+    headers:
+      Content-Type: application/json
+    auth:
+      type: oauth
+      provider: gmail
+    parameters:
+      - name: q
+        description: Gmail search query (same as Gmail search box)
+        in: query
+      - name: maxResults
+        description: Maximum number of messages to return
+        in: query
+      - name: labelIds
+        description: Only return messages with these label IDs
+        in: query
+      - name: pageToken
+        description: Page token from a previous list request
+        in: query
+
+  gmail.get_message:
+    type: rest
+    description: Get a specific email message
+    base_url: https://gmail.googleapis.com/gmail/v1
+    method: GET
+    path: "/users/me/messages/{{messageId}}"
+    headers:
+      Content-Type: application/json
+    auth:
+      type: oauth
+      provider: gmail
+    parameters:
+      - name: messageId
+        description: The message ID
+        required: true
+        in: path
+      - name: format
+        description: Format to return (minimal, full, raw, metadata)
+        in: query
+      - name: metadataHeaders
+        description: Headers to include when format is metadata
+        in: query
+
+  gmail.send_message:
+    type: rest
+    description: Send an email message
+    base_url: https://gmail.googleapis.com/gmail/v1
+    method: POST
+    path: /users/me/messages/send
+    headers:
+      Content-Type: application/json
+    auth:
+      type: oauth
+      provider: gmail
+    parameters:
+      - name: raw
+        description: Base64url encoded RFC 2822 email message
+        required: true
+        in: body
+    shadow:
+      confirm: true
+
+  gmail.search:
+    type: rest
+    description: Search for email messages
+    base_url: https://gmail.googleapis.com/gmail/v1
+    method: GET
+    path: /users/me/messages
+    headers:
+      Content-Type: application/json
+    auth:
+      type: oauth
+      provider: gmail
+    parameters:
+      - name: q
+        description: Gmail search query (e.g. 'from:user@example.com subject:hello')
+        required: true
+        in: query
+      - name: maxResults
+        description: Maximum number of messages to return
+        in: query
+      - name: pageToken
+        description: Page token from a previous list request
+        in: query
+
+  gmail.create_draft:
+    type: rest
+    description: Create an email draft
+    base_url: https://gmail.googleapis.com/gmail/v1
+    method: POST
+    path: /users/me/drafts
+    headers:
+      Content-Type: application/json
+    auth:
+      type: oauth
+      provider: gmail
+    parameters:
+      - name: raw
+        description: Base64url encoded RFC 2822 email message for the draft
+        required: true
+        in: body
+    shadow:
+      confirm: true
+
+  gmail.list_labels:
+    type: rest
+    description: List all labels in the mailbox
+    base_url: https://gmail.googleapis.com/gmail/v1
+    method: GET
+    path: /users/me/labels
+    headers:
+      Content-Type: application/json
+    auth:
+      type: oauth
+      provider: gmail
