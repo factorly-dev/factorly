@@ -10,7 +10,8 @@
 - [x] **`factorly exec`** — run any command through Factorly's safety layer (vault/env resolution, compression, logging)
 - [x] **`factorly wrap`** — zero-config proxy for any MCP server
 - [x] **`factorly serve`** — MCP server mode (stdio + HTTP with token auth)
-- [x] **`factorly tools`** — list, add, remove, import (OpenAPI, templates, curl)
+- [x] **`factorly tools`** — list, add, remove, import (OpenAPI, curl)
+- [x] **`factorly blueprint`** — install/uninstall/list sharable tool bundles (bundled catalog + URL/file/GitHub install)
 - [x] **`factorly tools status`** — health check all tools and connections
 - [x] **`factorly logs`** — view, filter, follow, and summarize the audit log
 - [x] **`factorly sync`** — push MCP config into AI clients (Claude Code, Cursor, Codex)
@@ -22,7 +23,7 @@
 - [x] **Output truncation** — 60/40 head/tail with savings tracking
 - [x] **Agent identity** — per-session tracking, per-agent rate limits, audit trail
 - [x] **Environment isolation** — opt-in strict mode for child processes
-- [x] **36 tool templates** — pre-built YAML configs for popular services
+- [x] **40+ bundled blueprints** — pre-built tool/workflow bundles for popular services (Gmail, GitHub, Slack, Linear, Stripe, ...)
 - [x] **Call logging** — JSONL audit trail with savings, oversight, and agent fields
 - [x] **Disabled commands** — `disabled_commands` config to restrict CLI access per project
 - [x] **Built-in tools** — governed shell, read, write, fetch, clipboard with default safety guards
@@ -81,7 +82,7 @@ Working toward [AARM](https://aarm.dev) (Autonomous Action Runtime Management) C
 - [ ] **Cost attribution** — track estimated API call costs per agent per tool with budget enforcement
 
 ### Ecosystem
-- [ ] **Community template registry** — `factorly tools import templates --update` to fetch community-contributed templates
+- [ ] **Community blueprint registry** — `factorly blueprint browse --remote` to discover community-contributed blueprints alongside the bundled catalog
 - [ ] **Plugin system** — custom providers beyond CLI/REST/MCP
 - [ ] **CI/CD integration** — GitHub Actions, GitLab CI recipes for governed tool access in pipelines
 - [ ] **Terraform/Pulumi provider** — manage Factorly configs as infrastructure

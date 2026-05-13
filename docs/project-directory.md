@@ -19,9 +19,10 @@ my-project/
 1. Top-level `factorly.yaml` in cwd (if present, merges `.factorly/`)
 2. `.factorly/factorly.yaml` (if no top-level config)
 3. Loose YAML files in `.factorly/` directory
-4. `.factorly/tools/` directory — always scanned if it exists (this is where templates write to)
-5. `tools_dir` if specified in config
-6. `~/.config/factorly/factorly.yaml` (user-level fallback)
+4. `.factorly/tools/` directory — always scanned if it exists
+5. `.factorly/blueprints/` directory — always scanned if it exists (this is where `factorly blueprint install` writes to)
+6. `tools_dir` if specified in config
+7. `~/.config/factorly/factorly.yaml` (user-level fallback)
 
 ## Tool files
 

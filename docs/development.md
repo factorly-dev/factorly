@@ -40,7 +40,7 @@ src/
 │   ├── serve_cmd.go       # factorly serve (MCP server)
 │   ├── wrap_cmd.go        # factorly wrap (zero-config proxy)
 │   ├── logs_cmd.go        # factorly logs (audit log viewer)
-│   ├── templates_cmd.go   # factorly tools import templates
+│   ├── blueprint_cmd.go   # factorly blueprint install/uninstall/list
 │   ├── health_cmd.go      # factorly tools status
 │   ├── vault_cmd.go       # factorly vault set/get/list/delete
 │   └── auth_cmd.go        # factorly auth login/status/logout
@@ -57,8 +57,8 @@ src/
 │   ├── output/            # Output compression + truncation
 │   ├── agent/             # Agent identity registry
 │   ├── naming/            # Name derivation utilities
-│   ├── templates/         # Pre-built tool templates (36 services)
-│   │   └── yaml/          # Embedded YAML tool definitions
+│   ├── blueprints/        # Blueprint install pipeline + bundled catalog
+│   │   └── bundled/       # 40+ embedded blueprint YAMLs (//go:embed)
 │   ├── openapi/           # OpenAPI spec → tool config generator
 │   └── parsing/curl/      # Curl command → tool config parser
 ├── test/                  # Integration tests

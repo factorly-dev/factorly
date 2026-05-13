@@ -6,7 +6,8 @@ Factorly includes a built-in web interface for browsing, testing, and managing y
 factorly ui
 ```
 
-![Screenshot of Factorly UI](images/screenshot-templates.png)
+![Screenshot of Factorly UI](images/screenshot-blueprints.png)
+
 
 ## What you can do
 
@@ -18,7 +19,7 @@ factorly ui
 - **Vault** — manage encrypted credentials without touching the CLI
 - **Auth** — configure and refresh OAuth providers
 - **Activity feed** — live SSE stream of all tool calls as they happen
-- **Import** — import tools from OpenAPI specs or templates
+- **Import** — import tools from OpenAPI specs, or install blueprints from the bundled catalog / GitHub URL / pasted YAML
 
 ## Options
 

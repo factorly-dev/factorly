@@ -41,13 +41,13 @@ var blueprintInstallCmd = &cobra.Command{
 
 Sources:
   Local file:        ./blueprints/gmail.yaml
-  Raw URL:           https://raw.githubusercontent.com/widefido/gmail/main/blueprint.yaml
-  GitHub shorthand:  github.com/widefido/factorly-gmail
-                     github.com/widefido/factorly-gmail@v1.0.0
-                     github.com/widefido/factorly-gmail/blueprints/search.yaml
+  Raw URL:           https://raw.githubusercontent.com/factorly-dev/factorly-blueprints/main/gmail.yaml
+  GitHub shorthand:  github.com/factorly-dev/factorly-blueprints/gmail.yaml
+                     github.com/factorly-dev/factorly-blueprints@v1.0.0/gmail.yaml
+                     github.com/your-org/your-blueprints
 
 Examples:
-  factorly blueprint install github.com/widefido/factorly-gmail
+  factorly blueprint install github.com/factorly-dev/factorly-blueprints/gmail.yaml
   factorly blueprint install ./blueprints/gmail.yaml
   factorly blueprint install ./blueprints/gmail.yaml --dry-run`,
 	Args: cobra.ExactArgs(1),

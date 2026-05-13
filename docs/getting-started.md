@@ -30,10 +30,10 @@ No config needed — wrap any existing MCP server:
 factorly wrap -- npx @modelcontextprotocol/server-everything
 ```
 
-Or install a pre-built template:
+Or install a pre-built blueprint:
 
 ```bash
-factorly tools import templates github
+factorly blueprint install github
 factorly call github.list_repos --username octocat
 ```
 
@@ -52,13 +52,18 @@ factorly tools status
 
 ## Add Tools
 
-**From a template** (easiest):
+**From a blueprint** (easiest):
 
 ```bash
-factorly tools import templates
-# Shows 36 available templates — pick one
-factorly tools import templates slack
+# Install one of the 40+ bundled blueprints by name
+factorly blueprint install slack
+
+# Or paste a blueprint URL / GitHub repo / local file
+factorly blueprint install github.com/factorly-dev/factorly-blueprints/gmail.yaml
+factorly blueprint install ./my-blueprint.yaml
 ```
+
+Browse the catalog in the UI at **Blueprints → Browse Catalog**.
 
 **Interactively:**
 
@@ -122,7 +127,7 @@ Endpoint at `http://localhost:3000/mcp`. Secure with `--http-token` or `FACTORLY
 ## Next Steps
 
 - [Config Reference](config-reference.md) — full YAML schema
-- [Templates](templates.md) — 36 pre-built service configs
+- [Blueprints](blueprints.md) — 40+ pre-built service blueprints + bring-your-own from GitHub/URL/file
 - [Vault](vault.md) — encrypted secret storage
 - [OAuth](oauth.md) — authenticate with Google, GitHub, Microsoft
 

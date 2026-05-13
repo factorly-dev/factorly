@@ -1021,7 +1021,7 @@ func TestLooseFileBlueprintShapeParses(t *testing.T) {
 name: gmail-toolkit
 version: 1.0.0
 description: Gmail integration
-author: widefido
+author: factorly
 license: MIT
 tools:
   gmail.search:

@@ -46,7 +46,7 @@
 | [OpenAPI Import](openapi-import.md) | Generate tools from OpenAPI/Swagger specs |
 | [Project Directory](project-directory.md) | Modular configs with `.factorly/` and `tools_dir` |
 | [Logging](logging.md) | Call log format, fields, output savings, and security |
-| [Templates](templates.md) | Pre-built tool configs for 36 popular services |
+| [Blueprints](blueprints.md) | Sharable tool/workflow bundles — 40+ bundled for popular services, plus install-from-GitHub/URL/file |
 | [Workflows](workflows.md) | Sequential tool pipelines with variable passing, state persistence, and per-step oversight |
 | [Expressions](expressions.md) | Condition language for workflow `if:` and `switch:` — comparisons, boolean logic, jsonpath |
 

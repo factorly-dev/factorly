@@ -8,8 +8,8 @@ Full onboarding: initialize Factorly, add tools, store credentials, and sync to 
 # 1. Initialize the project
 factorly init
 
-# 2. Install the GitHub template
-factorly tools import templates github
+# 2. Install the GitHub blueprint
+factorly blueprint install github
 
 # 3. Store your credentials in the vault
 factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxxxxxxxxxx
@@ -59,7 +59,7 @@ Found 30 repositories:
 ## What happens
 
 1. `factorly init` creates `.factorly/factorly.yaml` in your project.
-2. `factorly tools import templates github` adds GitHub tool definitions (list repos, issues, PRs, etc.).
+2. `factorly blueprint install github` adds the bundled GitHub blueprint (list repos, issues, PRs, etc.).
 3. `factorly vault set` encrypts your token with AES-256-GCM and stores it locally.
 4. `factorly sync` writes `.mcp.json` so Claude Code knows to start Factorly as its MCP server.
 5. When Claude Code launches, it starts `factorly serve`, discovers all your tools, and uses them — never seeing the underlying credentials.

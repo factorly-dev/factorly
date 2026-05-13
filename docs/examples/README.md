@@ -8,7 +8,7 @@ Practical, copy-paste examples for every Factorly feature. Each is self-containe
 |---|---------|-------------|
 | 1 | [Hello World](01-hello-world.md) | Simplest possible tool — wrap `echo` as a callable CLI tool |
 | 2 | [REST API with Bearer Token](02-rest-api-with-bearer-token.md) | Call the GitHub API with a vault-stored token |
-| 3 | [Install a Template](03-install-a-template.md) | Get a fully configured Slack integration in 30 seconds |
+| 3 | [Install a Blueprint](03-install-a-blueprint.md) | Get a fully configured Slack integration in 30 seconds |
 | 4 | [Wrap an MCP Server](04-wrap-an-mcp-server.md) | Proxy any MCP server through Factorly with zero config |
 | 5 | [Connect to Claude Code](05-connect-to-claude-code.md) | Full onboarding: init, add tools, store credentials, sync |
 

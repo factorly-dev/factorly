@@ -26,7 +26,7 @@ MCP servers, REST APIs, and CLI commands in one config, one UI, one audit log.
 
 Factorly is a local runtime for agent tool chains. It manages tool calls, injects credentials from an encrypted vault, enforces governance rules, and logs everything. Your agent sees workflows, tools, and data. Secrets stay secret.
 
-![Screenshot of Factorly UI](docs/images/screenshot.png)
+![Screenshot of Factorly UI](docs/images/screenshot-rm.png)
 
 ---
 
@@ -46,8 +46,9 @@ npm install -g factorly
 Then, define your tools, secure your credentials, and sync with your agent:
 
 ```bash
-# 1. Configure your tools or install a template (36 services: GitHub, Slack, Stripe, Linear, Gmail, ...)
+# 1. Configure your tools or install a blueprint (41 services: GitHub, Slack, Stripe, Linear, Gmail, ...)
 factorly init
+factorly blueprint install github
 
 # 2. Store your credentials in the encrypted vault
 factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
@@ -65,7 +66,7 @@ Your agent connects to Factorly as a single MCP server or CLI and sees every too
 
 ## What It Does
 
-**Define** — one config, every protocol, [36 templates](docs/templates.md) included
+**Define** — one config, every protocol, [40+ blueprints](docs/blueprints.md) included
 
 **Test** — Try tools in the [UI](docs/ui.md), see the response, iterate before giving your agent access
 
@@ -101,7 +102,7 @@ Your agent connects to Factorly as a single MCP server or CLI and sees every too
 - [Workflows](docs/workflows.md)
 - [Expressions](docs/expressions.md)
 - [Output Filters](docs/filters.md)
-- [Templates](docs/templates.md)
+- [Blueprints](docs/blueprints.md)
 - [Vault](docs/vault.md)
 - [OAuth](docs/oauth.md)
 - [Logging](docs/logging.md)

@@ -77,7 +77,7 @@ func TestResolveRawURL(t *testing.T) {
 }
 
 func TestResolveGitHubShorthand(t *testing.T) {
-	src, err := Resolve("github.com/widefido/factorly-gmail")
+	src, err := Resolve("github.com/factorly-dev/factorly-blueprints")
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -88,14 +88,14 @@ func TestResolveGitHubShorthand(t *testing.T) {
 	if len(src.URLs) != 4 {
 		t.Fatalf("URLs = %d, want 4: %v", len(src.URLs), src.URLs)
 	}
-	want := "https://raw.githubusercontent.com/widefido/factorly-gmail/main/factorly.yaml"
+	want := "https://raw.githubusercontent.com/factorly-dev/factorly-blueprints/main/factorly.yaml"
 	if src.URLs[0] != want {
 		t.Fatalf("URLs[0] = %q, want %q", src.URLs[0], want)
 	}
 }
 
 func TestResolveGitHubWithRef(t *testing.T) {
-	src, err := Resolve("github.com/widefido/factorly-gmail@v1.0.0")
+	src, err := Resolve("github.com/factorly-dev/factorly-blueprints@v1.0.0")
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestResolveGitHubWithRef(t *testing.T) {
 }
 
 func TestResolveGitHubWithPath(t *testing.T) {
-	src, err := Resolve("github.com/widefido/factorly-gmail/blueprints/search.yaml")
+	src, err := Resolve("github.com/factorly-dev/factorly-blueprints/blueprints/search.yaml")
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
