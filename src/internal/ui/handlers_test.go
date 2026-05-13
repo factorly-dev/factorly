@@ -4,6 +4,7 @@
 package ui
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1452,5 +1453,41 @@ tools:
 	// The newly installed tool from disk should have been picked up.
 	if _, ok := srv.cfg.Tools["newly_installed"]; !ok {
 		t.Error("newly_installed tool from disk was not registered after reload")
+	}
+}
+
+// TestRegisterTool_LazyCreatesWorkflowProvider guards against the bug where
+// creating the first workflow in a fresh session left the workflow provider
+// unregistered, causing "no provider for tool X (key: workflow)" when the
+// workflow was invoked. The workflow provider should be lazy-created on
+// first registration, matching the CLI/REST provider behavior.
+func TestRegisterTool_LazyCreatesWorkflowProvider(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+
+	// Precondition: no workflow provider exists at startup.
+	if srv.proxy.Provider("workflow") != nil {
+		t.Fatal("precondition: workflow provider should not exist before any workflow is registered")
+	}
+
+	tc := config.ToolConfig{
+		Type:        "workflow",
+		Description: "daily prep workflow",
+		Steps: []config.StepConfig{
+			{Tool: "factorly.fetch", Params: map[string]string{"url": "https://example.com"}, Store: "data"},
+		},
+	}
+	srv.registerTool("daily.prep", tc)
+
+	prov := srv.proxy.Provider("workflow")
+	if prov == nil {
+		t.Fatal("workflow provider was not lazy-created when first workflow was registered")
+	}
+
+	// Executing should now resolve the provider — we don't actually run the
+	// step (that would need fetched URL), but the error must not be the
+	// "no provider for tool" failure mode.
+	_, err := srv.proxy.ExecuteWithContext(context.Background(), "daily.prep", nil, "test")
+	if err != nil && strings.Contains(err.Error(), "no provider for tool") {
+		t.Errorf("provider lookup still failed after lazy-create: %v", err)
 	}
 }

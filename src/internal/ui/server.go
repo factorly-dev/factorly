@@ -399,7 +399,11 @@ func (s *Server) registerRESTProvider(name string, tc config.ToolConfig, vaultKe
 func (s *Server) registerWorkflowProvider(name string, tc config.ToolConfig) {
 	prov := s.proxy.Provider("workflow")
 	if prov == nil {
-		return
+		// First workflow added in this UI session — bring up the provider.
+		// The proxy itself is the WorkflowExecutor (steps call back through it).
+		wp := provider.NewWorkflowProvider(s.proxy, false)
+		s.proxy.RegisterProvider("workflow", wp)
+		prov = wp
 	}
 	wp, ok := prov.(*provider.WorkflowProvider)
 	if !ok {

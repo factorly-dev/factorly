@@ -46,8 +46,11 @@ func (p *Proxy) SetOnCall(fn func(CallEvent)) {
 }
 
 // SetOnWorkflowStep sets a callback for real-time workflow step events.
-// Finds the workflow provider and sets its OnStep callback.
+// The callback is also remembered on the proxy so that a workflow provider
+// registered later (e.g., lazy-created when the first workflow is added via
+// the UI) can be wired up too.
 func (p *Proxy) SetOnWorkflowStep(fn func(workflow string, event provider.StepEvent)) {
+	p.onWorkflowStep = fn
 	if wp, ok := p.providers["workflow"].(*provider.WorkflowProvider); ok {
 		wp.OnStep = fn
 	}
@@ -67,12 +70,13 @@ type CallEvent struct {
 }
 
 type Proxy struct {
-	registry  *registry.Registry
-	providers map[string]provider.Provider
-	logger    logger.Logger
-	shadow    *shadow.Policy
-	onCall    func(CallEvent)
-	resolver  *vault.Resolver
+	registry       *registry.Registry
+	providers      map[string]provider.Provider
+	logger         logger.Logger
+	shadow         *shadow.Policy
+	onCall         func(CallEvent)
+	onWorkflowStep func(workflow string, event provider.StepEvent)
+	resolver       *vault.Resolver
 }
 
 func New(reg *registry.Registry, providers map[string]provider.Provider, log logger.Logger, opts ...Option) *Proxy {
@@ -87,9 +91,17 @@ func New(reg *registry.Registry, providers map[string]provider.Provider, log log
 	return p
 }
 
-// RegisterProvider adds a provider after proxy creation.
+// RegisterProvider adds a provider after proxy creation. If a workflow
+// provider is registered and an OnWorkflowStep callback was previously
+// set, it is applied to the new provider so step events are still
+// broadcast.
 func (p *Proxy) RegisterProvider(key string, prov provider.Provider) {
 	p.providers[key] = prov
+	if key == "workflow" && p.onWorkflowStep != nil {
+		if wp, ok := prov.(*provider.WorkflowProvider); ok {
+			wp.OnStep = p.onWorkflowStep
+		}
+	}
 }
 
 // Provider returns a registered provider by key, or nil if not found.
