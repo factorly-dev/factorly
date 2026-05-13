@@ -1,3 +1,44 @@
+## [v0.10.0] - 2026-05-13
+
+This release includes sharable templates, called blueprints:
+
+### Added
+- Bundled blueprint catalog UI with browse, detail, and one-click install routes (`/blueprints/browse`, `/blueprints/browse/{name}`, `/blueprints/browse/{name}/install`)
+- `factorly blueprint install <name>` resolves bare names against the bundled catalog
+- Blueprint header fields: `display_name`, `category`, `auth_type`, `auth_guide`
+- Paste-YAML install path in the import modal and API (`content` field on preview/install endpoints)
+- `InstallResult.AlreadyInstalled` flag for structured already-installed UX in dry-run/preview mode
+- `internal/blueprints` package with full install pipeline: source resolution, fetch, parse, validate, write, dry-run, conflict detection, requires validation, uninstall, list
+- `factorly blueprint install/uninstall/list` CLI commands
+- In-place edit and delete of tools and OAuth providers that live inside blueprint files
+- `ValidateReferences` for cross-reference checks on workflow steps and requires entries
+- Blueprint header fields: `name`, `version`, `description`, `author`, `homepage`, `license`, `requires`
+- Loose YAML loader accepts full structured `Config` documents alongside legacy flat tool-map files; installed packs scanned from `.factorly/blueprints/`
+- `reloadConfig()` helper extracted and shared across reload, install, and uninstall handlers
+- Duplicate button for workflows
+- Bundled blueprints test suite
+- Example Gmail blueprint (`examples/blueprints/gmail.yaml`)
+- `storeInVault` helper moved to `vault_cmd.go` for shared use
+- External-link Lucide icon helper in `server.go`
+
+### Changed
+- Renamed package and all references: `packs` → `blueprints` (Go package, CLI verbs, HTTP routes, on-disk layout `.factorly/blueprints/`, UI labels, templates, JS)
+- `SaveTool` and `DeleteTool` now edit blueprint files in place instead of writing shadow copies or leaving stale entries
+- `SaveOAuthProvider` and `DeleteOAuthProvider` now edit blueprint files in place
+- Already-installed check moved ahead of conflict walk to produce a clear "already installed" message instead of a generic conflict error
+- `factorly init` prompt updated to reference `factorly blueprint install` instead of templates
+- Empty-state copy on tools and blueprints pages updated to reference the blueprint catalog
+- Blueprint list page header styled to match the Auth page
+- Icons made more consistent between views
+
+### Removed
+- `internal/templates/` package and all per-template Go wrappers and YAML files
+- `cmd/factorly/templates_cmd.go` and the `factorly tools import templates` subcommand
+- `internal/ui/handlers_templates.go` and associated `/templates*` routes
+- Templates catalog HTML pages (`templates.html`, `template_detail.html`)
+- Dead `formatJSONHTML` function in `handlers_tools.go`
+- Bundled example blueprints from the main repo in favor of a separate community repo
+
 ## [v0.9.1] - 2026-05-11
 
 ### Added
