@@ -13,10 +13,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// SaveTool writes a tool config to disk. If toolsDir is set, writes as
-// individual file and removes any inline definition to avoid duplicates.
-// Otherwise appends/updates in the main config file.
+// SaveTool writes a tool config to disk. If the tool currently lives in a
+// blueprint file under .factorly/blueprints/, the edit is written back into
+// that blueprint to keep the blueprint self-contained. Otherwise it falls back
+// to toolsDir (individual file) or cfgPath (inline).
 func SaveTool(cfgPath, toolsDir, name string, tc config.ToolConfig) error {
+	// If the tool came from a blueprint, edit it in place there.
+	if bpPath := findToolInBlueprints(cfgPath, name); bpPath != "" {
+		return updateToolInNestedFile(bpPath, name, tc)
+	}
+
 	// Always clean from other locations to prevent duplicates
 	_ = deleteToolFromConfig(cfgPath, name)
 	removeToolFromLooseFiles(cfgPath, name)
@@ -26,14 +32,162 @@ func SaveTool(cfgPath, toolsDir, name string, tc config.ToolConfig) error {
 	return saveToolToConfig(cfgPath, name, tc)
 }
 
-// DeleteTool removes a tool from disk (inline, loose files, and dir file).
+// blueprintsDir returns the .factorly/blueprints/ directory for the given
+// config path, regardless of whether cfgPath is inside .factorly/ already.
+func blueprintsDir(cfgPath string) string {
+	cfgDir := filepath.Dir(cfgPath)
+	if filepath.Base(cfgDir) == ".factorly" {
+		return filepath.Join(cfgDir, "blueprints")
+	}
+	return filepath.Join(cfgDir, ".factorly", "blueprints")
+}
+
+// findToolInBlueprints scans .factorly/blueprints/*.yaml for a file whose
+// nested tools map contains name. Returns the file path, or "" if not found.
+func findToolInBlueprints(cfgPath, name string) string {
+	dir := blueprintsDir(cfgPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := filepath.Ext(entry.Name())
+		if ext != ".yaml" && ext != ".yml" {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		if findToolInNestedFile(path, name) {
+			return path
+		}
+	}
+	return ""
+}
+
+// findToolInNestedFile reports whether a YAML file with a top-level tools:
+// mapping contains a tool named name.
+func findToolInNestedFile(path, name string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var doc struct {
+		Tools map[string]any `yaml:"tools"`
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return false
+	}
+	_, exists := doc.Tools[name]
+	return exists
+}
+
+// updateToolInNestedFile replaces a tool inside a top-level tools: mapping,
+// preserving header fields and other tools/order.
+func updateToolInNestedFile(path, name string, tc config.ToolConfig) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	toolBytes, err := yaml.Marshal(tc)
+	if err != nil {
+		return err
+	}
+	var toolNode yaml.Node
+	if err := yaml.Unmarshal(toolBytes, &toolNode); err != nil {
+		return err
+	}
+
+	var docNode yaml.Node
+	if err := yaml.Unmarshal(data, &docNode); err != nil {
+		return fmt.Errorf("parsing %s: %w", path, err)
+	}
+
+	root := docNode.Content[0]
+	var toolsNode *yaml.Node
+	for i := 0; i < len(root.Content)-1; i += 2 {
+		if root.Content[i].Value == "tools" {
+			toolsNode = root.Content[i+1]
+			break
+		}
+	}
+	if toolsNode == nil {
+		return fmt.Errorf("blueprint %s has no tools: mapping", path)
+	}
+
+	for i := 0; i < len(toolsNode.Content)-1; i += 2 {
+		if toolsNode.Content[i].Value == name {
+			toolsNode.Content[i+1] = toolNode.Content[0]
+			break
+		}
+	}
+
+	out, err := yaml.Marshal(&docNode)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o644)
+}
+
+// DeleteTool removes a tool from disk (inline, loose files, dir file, and
+// any installed blueprint that contains it).
 func DeleteTool(cfgPath, toolsDir, name string) error {
 	_ = deleteToolFromConfig(cfgPath, name)
 	removeToolFromLooseFiles(cfgPath, name)
+	if bpPath := findToolInBlueprints(cfgPath, name); bpPath != "" {
+		if err := removeToolFromNestedFile(bpPath, name); err != nil {
+			return err
+		}
+	}
 	if toolsDir != "" {
 		return deleteToolFromDir(toolsDir, name)
 	}
 	return nil
+}
+
+// removeToolFromNestedFile removes a tool from inside a top-level tools:
+// mapping, preserving header fields and other tools. If the file's tools:
+// mapping ends up empty, the file is left in place — the blueprint header
+// and any oauth_providers / vault_backends it carries stay installed.
+func removeToolFromNestedFile(path, name string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	var docNode yaml.Node
+	if err := yaml.Unmarshal(data, &docNode); err != nil {
+		return err
+	}
+
+	root := docNode.Content[0]
+	var toolsNode *yaml.Node
+	for i := 0; i < len(root.Content)-1; i += 2 {
+		if root.Content[i].Value == "tools" {
+			toolsNode = root.Content[i+1]
+			break
+		}
+	}
+	if toolsNode == nil {
+		return nil
+	}
+
+	var newContent []*yaml.Node
+	for i := 0; i < len(toolsNode.Content)-1; i += 2 {
+		if toolsNode.Content[i].Value == name {
+			continue
+		}
+		newContent = append(newContent, toolsNode.Content[i], toolsNode.Content[i+1])
+	}
+	toolsNode.Content = newContent
+
+	out, err := yaml.Marshal(&docNode)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o644)
 }
 
 // removeToolFromLooseFiles removes a tool from any loose YAML files in the

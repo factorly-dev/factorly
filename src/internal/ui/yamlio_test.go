@@ -661,3 +661,192 @@ func TestDeleteTool_LooseFileOnly(t *testing.T) {
 		}
 	}
 }
+
+// TestSaveTool_EditsBlueprintInPlace guards against a regression where editing
+// a tool that came from an installed blueprint wrote a second copy to
+// toolsDir (or inline) instead of updating the blueprint file. That second
+// copy caused a "duplicate tool" load error on the next reload.
+func TestSaveTool_EditsBlueprintInPlace(t *testing.T) {
+	dir := t.TempDir()
+	factorlyDir := filepath.Join(dir, ".factorly")
+	blueprintsSubDir := filepath.Join(factorlyDir, "blueprints")
+	toolsDir := filepath.Join(factorlyDir, "tools")
+	if err := os.MkdirAll(blueprintsSubDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(factorlyDir, "factorly.yaml")
+	if err := os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	bpPath := filepath.Join(blueprintsSubDir, "anthropic.yaml")
+	bpYAML := `name: anthropic
+version: 1.0.0
+tools:
+  anthropic.ask:
+    type: rest
+    description: original description
+    base_url: https://api.anthropic.com
+    method: POST
+    path: /v1/messages
+  anthropic.messages:
+    type: rest
+    description: keep me untouched
+    base_url: https://api.anthropic.com
+    method: POST
+    path: /v1/messages
+`
+	if err := os.WriteFile(bpPath, []byte(bpYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	edited := config.ToolConfig{
+		Type:        "rest",
+		Description: "edited via UI",
+		BaseURL:     "https://api.anthropic.com",
+		Method:      "POST",
+		Path:        "/v1/messages",
+	}
+	if err := SaveTool(cfgPath, toolsDir, "anthropic.ask", edited); err != nil {
+		t.Fatalf("SaveTool: %v", err)
+	}
+
+	// Blueprint should hold the edit.
+	data, err := os.ReadFile(bpPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "edited via UI") {
+		t.Errorf("blueprint not updated; got:\n%s", got)
+	}
+	if strings.Contains(got, "original description") {
+		t.Errorf("original description should have been replaced; got:\n%s", got)
+	}
+	// Sibling tool must survive.
+	if !strings.Contains(got, "keep me untouched") {
+		t.Errorf("sibling tool was lost; got:\n%s", got)
+	}
+	// Blueprint header must survive.
+	if !strings.Contains(got, "name: anthropic") {
+		t.Errorf("blueprint header was lost; got:\n%s", got)
+	}
+
+	// No shadow copy should have been written to toolsDir.
+	if entries, _ := os.ReadDir(toolsDir); len(entries) > 0 {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("toolsDir got a shadow copy of the edited tool: %v", names)
+	}
+
+	// Main config must still be empty of tools.
+	cfgData, _ := os.ReadFile(cfgPath)
+	if strings.Contains(string(cfgData), "anthropic.ask") {
+		t.Errorf("main config got a shadow copy of the edited tool:\n%s", cfgData)
+	}
+}
+
+// TestDeleteTool_RemovesFromBlueprint guards against blueprint tools sticking
+// around after deletion. The tool must be removed from the blueprint file,
+// while sibling tools and the blueprint header survive.
+func TestDeleteTool_RemovesFromBlueprint(t *testing.T) {
+	dir := t.TempDir()
+	factorlyDir := filepath.Join(dir, ".factorly")
+	blueprintsSubDir := filepath.Join(factorlyDir, "blueprints")
+	toolsDir := filepath.Join(factorlyDir, "tools")
+	if err := os.MkdirAll(blueprintsSubDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(factorlyDir, "factorly.yaml")
+	if err := os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	bpPath := filepath.Join(blueprintsSubDir, "anthropic.yaml")
+	bpYAML := `name: anthropic
+version: 1.0.0
+tools:
+  anthropic.ask:
+    type: rest
+    description: delete me
+    base_url: https://api.anthropic.com
+    method: POST
+    path: /v1/messages
+  anthropic.messages:
+    type: rest
+    description: keep me
+    base_url: https://api.anthropic.com
+    method: POST
+    path: /v1/messages
+`
+	if err := os.WriteFile(bpPath, []byte(bpYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DeleteTool(cfgPath, toolsDir, "anthropic.ask"); err != nil {
+		t.Fatalf("DeleteTool: %v", err)
+	}
+
+	data, err := os.ReadFile(bpPath)
+	if err != nil {
+		t.Fatalf("blueprint file should still exist: %v", err)
+	}
+	got := string(data)
+	if strings.Contains(got, "anthropic.ask") {
+		t.Errorf("anthropic.ask was not removed; got:\n%s", got)
+	}
+	if !strings.Contains(got, "anthropic.messages") {
+		t.Errorf("sibling tool was wrongly removed; got:\n%s", got)
+	}
+	if !strings.Contains(got, "name: anthropic") {
+		t.Errorf("blueprint header was lost; got:\n%s", got)
+	}
+}
+
+// TestDeleteTool_KeepsBlueprintFileWhenEmpty deletes the only tool inside a
+// blueprint. The blueprint file stays on disk so the header and any other
+// installed pieces (oauth_providers, vault_backends) survive — uninstalling
+// the whole blueprint is a separate operation.
+func TestDeleteTool_KeepsBlueprintFileWhenEmpty(t *testing.T) {
+	dir := t.TempDir()
+	factorlyDir := filepath.Join(dir, ".factorly")
+	blueprintsSubDir := filepath.Join(factorlyDir, "blueprints")
+	if err := os.MkdirAll(blueprintsSubDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(factorlyDir, "factorly.yaml")
+	if err := os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	bpPath := filepath.Join(blueprintsSubDir, "solo.yaml")
+	bpYAML := `name: solo
+version: 1.0.0
+tools:
+  solo.only:
+    type: cli
+    command: echo
+    description: lone tool
+`
+	if err := os.WriteFile(bpPath, []byte(bpYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DeleteTool(cfgPath, "", "solo.only"); err != nil {
+		t.Fatalf("DeleteTool: %v", err)
+	}
+
+	data, err := os.ReadFile(bpPath)
+	if err != nil {
+		t.Fatalf("blueprint file should still exist: %v", err)
+	}
+	got := string(data)
+	if strings.Contains(got, "solo.only") {
+		t.Errorf("solo.only was not removed; got:\n%s", got)
+	}
+	if !strings.Contains(got, "name: solo") {
+		t.Errorf("blueprint header was lost; got:\n%s", got)
+	}
+}
