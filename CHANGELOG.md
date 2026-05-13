@@ -1,3 +1,9 @@
+## [v0.10.1] - 2026-05-13
+
+### Fixed
+- Workflow provider is now lazy-created on first workflow registration, matching CLI and REST provider behavior
+- Proxy persists the `OnWorkflowStep` callback and re-applies it when a workflow provider is registered, ensuring step events reach the activity feed regardless of provider creation order
+
 ## [v0.10.0] - 2026-05-13
 
 This release includes sharable templates, called blueprints:
