@@ -78,10 +78,24 @@ func runBlueprintInstall(cmd *cobra.Command, args []string) error {
 	cfgPath := resolveCfgPath()
 
 	opts := blueprints.InstallOptions{
-		Source:  source,
 		CfgPath: cfgPath,
 		DryRun:  blueprintInstallDryRun,
 	}
+
+	// If the source matches a bundled blueprint name (e.g. "linear",
+	// "github"), install the embedded copy directly. This lets users do
+	// `factorly blueprint install linear` without typing a path or URL.
+	// Anything containing "/", "." or "://" is treated as a path/URL and
+	// flows through the normal resolver.
+	if isBundledName(source) {
+		if bp := blueprints.BundledByName(source); bp != nil {
+			opts.Content = []byte(bp.YAML)
+		}
+	}
+	if opts.Content == nil {
+		opts.Source = source
+	}
+
 	res, err := blueprints.Install(opts)
 	if err != nil {
 		// Print whatever the result tells us (conflicts, missing requires)
@@ -257,6 +271,23 @@ func resolveCfgPath() string {
 	// No config file found — default to ./.factorly/factorly.yaml so the
 	// blueprint writes into a sensible location relative to CWD.
 	return ".factorly/factorly.yaml"
+}
+
+// isBundledName reports whether source looks like a bare bundled-blueprint
+// name (e.g., "linear") rather than a path or URL. We treat anything with a
+// "/", ".", or "://" as a non-name to keep the resolver in charge of those.
+func isBundledName(source string) bool {
+	if source == "" {
+		return false
+	}
+	if strings.Contains(source, "/") || strings.Contains(source, "://") {
+		return false
+	}
+	// A trailing ".yaml" or other dot makes this look like a local file.
+	if strings.Contains(source, ".") {
+		return false
+	}
+	return true
 }
 
 func init() {

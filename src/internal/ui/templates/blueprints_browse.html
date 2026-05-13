@@ -1,0 +1,47 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+{{define "content"}}
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold">Browse Blueprints</h1>
+    <p class="text-sm text-gray-500 mt-1">Pre-built integrations bundled with factorly. Click one to install.</p>
+  </div>
+  <a href="/blueprints"
+     class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50 transition-colors">
+    ← Installed
+  </a>
+</div>
+
+{{if not .Cards}}
+<div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-400">
+  <p class="text-lg mb-2">No bundled blueprints</p>
+  <p class="text-sm">Check your build — bundled blueprints should be embedded.</p>
+</div>
+{{else}}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  {{range .Cards}}
+  <a href="/blueprints/browse/{{.Header.Name}}"
+     class="block bg-white rounded-lg border border-gray-200 p-4 hover:border-indigo-300 hover:shadow-sm transition-all">
+    <div class="flex items-center justify-between mb-1">
+      <div class="font-medium text-sm">{{if .Header.DisplayName}}{{.Header.DisplayName}}{{else}}{{.Header.Name}}{{end}}</div>
+      {{if .Installed}}
+      <span class="px-2 py-0.5 text-[10px] rounded-full bg-green-50 text-green-700 border border-green-200">Installed</span>
+      {{end}}
+    </div>
+    <div class="text-gray-500 text-xs">{{.Header.Description}}</div>
+    <div class="flex items-center gap-2 mt-3">
+      {{if .Header.Category}}
+      <span class="px-2 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600">{{.Header.Category}}</span>
+      {{end}}
+      {{if .Header.AuthType}}
+      <span class="text-[10px] text-gray-400">{{.Header.AuthType}}</span>
+      {{end}}
+    </div>
+  </a>
+  {{end}}
+</div>
+{{end}}
+{{end}}

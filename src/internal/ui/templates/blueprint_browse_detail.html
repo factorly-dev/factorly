@@ -1,0 +1,96 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+{{define "content"}}
+<div class="mb-6">
+  <a href="/blueprints/browse" class="text-sm text-gray-500 hover:text-gray-700">← Browse Blueprints</a>
+</div>
+
+<div class="flex items-center gap-3 mb-2">
+  <h1 class="text-2xl font-bold">{{if .BP.Header.DisplayName}}{{.BP.Header.DisplayName}}{{else}}{{.BP.Header.Name}}{{end}}</h1>
+  {{if .BP.Header.Category}}
+  <span class="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">{{.BP.Header.Category}}</span>
+  {{end}}
+  {{if .Installed}}
+  <span class="px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700 border border-green-200">Installed</span>
+  {{end}}
+</div>
+{{if .BP.Header.Description}}
+<p class="text-gray-600 mb-6">{{.BP.Header.Description}}</p>
+{{end}}
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <!-- Tools included -->
+  <div class="bg-white rounded-lg border border-gray-200 p-5">
+    <h2 class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Tools included ({{len .Tools}})</h2>
+    <div class="space-y-2">
+      {{range .Tools}}
+      <div>
+        <div class="font-mono text-sm text-gray-900">{{.Name}}</div>
+        {{if .Description}}<div class="text-xs text-gray-500">{{.Description}}</div>{{end}}
+      </div>
+      {{end}}
+    </div>
+  </div>
+
+  <!-- Auth & setup -->
+  <div class="bg-white rounded-lg border border-gray-200 p-5">
+    <h2 class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Authentication</h2>
+    {{if .BP.Header.AuthType}}
+    <div class="mb-3">
+      <span class="px-2 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700">{{.BP.Header.AuthType}}</span>
+    </div>
+    {{end}}
+    {{if .BP.Header.AuthGuide}}
+    <div class="text-sm text-gray-600 whitespace-pre-wrap mb-4">{{.BP.Header.AuthGuide}}</div>
+    {{end}}
+
+    {{if .VaultKeys}}
+    <div class="text-[10px] font-medium text-gray-500 uppercase tracking-wide mt-4 mb-2">Vault keys required</div>
+    <ul class="space-y-0.5">
+      {{range .VaultKeys}}
+      <li class="text-xs font-mono text-gray-600">{{.}}</li>
+      {{end}}
+    </ul>
+    {{end}}
+  </div>
+</div>
+
+{{if not .Installed}}
+<!-- Install form -->
+<form method="POST" action="/blueprints/browse/{{.BP.Header.Name}}/install" class="mt-6 bg-white rounded-lg border border-gray-200 p-5">
+  <h2 class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Install</h2>
+
+  {{if .VaultKeys}}
+  <p class="text-xs text-gray-500 mb-3">Provide your credentials now or leave blank to set them later with <code>factorly vault set</code>.</p>
+  <div class="space-y-2 mb-4">
+    {{range .VaultKeys}}
+    <div class="flex items-center gap-2">
+      <label class="font-mono text-[10px] text-gray-600 w-48 shrink-0">{{.}}</label>
+      <input type="password" name="vault_{{.}}" autocomplete="off"
+             class="flex-1 px-2 py-1 text-xs font-mono border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-200">
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+
+  <button type="submit"
+          class="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors">
+    {{icon "plus"}} Install Blueprint
+  </button>
+  <span class="text-sm text-gray-500 ml-3">Adds tools to your project config</span>
+</form>
+{{else}}
+<div class="mt-6 bg-amber-50 border border-amber-200 rounded p-3 text-sm text-amber-800">
+  This blueprint is already installed. <a href="/blueprints" class="underline">View installed</a> or uninstall it first to reinstall.
+</div>
+{{end}}
+
+<!-- YAML preview -->
+<details class="mt-6 bg-white rounded-lg border border-gray-200 p-5">
+  <summary class="cursor-pointer text-xs font-medium text-gray-500 uppercase tracking-wide">View YAML</summary>
+  <pre class="bg-gray-900 text-gray-100 text-xs p-4 rounded mt-3 overflow-x-auto">{{.BP.YAML}}</pre>
+</details>
+{{end}}

@@ -6,14 +6,18 @@
 {{define "content"}}
 <div class="flex items-center justify-between mb-6">
   <h1 class="text-2xl font-bold">Blueprints</h1>
-  <button type="button" data-blueprint-action="open-import"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">{{icon "plus"}} Install Blueprint</button>
+  <div class="flex items-center gap-2">
+    <a href="/blueprints/browse"
+       class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50 transition-colors">{{icon "package"}} Browse Catalog</a>
+    <button type="button" data-blueprint-action="open-import"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">{{icon "plus"}} Install Blueprint</button>
+  </div>
 </div>
 
 {{if not .Blueprints}}
 <div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-400">
   <p class="text-lg mb-2">No blueprints installed</p>
-  <p class="text-sm">Click "+ Install Blueprint" above to install one from a GitHub repo or YAML file.</p>
+  <p class="text-sm">Click "Browse Catalog" above to pick from bundled integrations, or "+ Install Blueprint" to install from a GitHub repo or YAML file.</p>
 </div>
 {{else}}
 <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -32,7 +36,7 @@
         <td class="px-4 py-3">
           <span class="font-mono text-sm text-gray-900">{{.Name}}</span>
           {{if .Homepage}}
-          <a href="{{.Homepage}}" target="_blank" rel="noopener" class="ml-1 text-[10px] text-indigo-500 hover:text-indigo-700">↗</a>
+          <a href="{{.Homepage}}" target="_blank" rel="noopener" class="ml-1 inline-flex items-center text-indigo-500 hover:text-indigo-700" aria-label="Open homepage">{{icon "external-link"}}</a>
           {{end}}
         </td>
         <td class="px-4 py-3 text-xs text-gray-600">{{if .Version}}{{.Version}}{{else}}<span class="text-gray-300">—</span>{{end}}</td>

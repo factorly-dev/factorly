@@ -387,17 +387,9 @@ var initCmd = &cobra.Command{
 		}
 
 		fmt.Printf("\nCreated %s\n", outPath)
-
-		// Offer to install a template
-		addTemplate := prompt(scanner, "Install a tool template? (github, slack, linear, stripe, telegram, or skip)", "skip")
-		addTemplate = strings.ToLower(strings.TrimSpace(addTemplate))
-		if addTemplate != "" && addTemplate != "skip" && addTemplate != "n" && addTemplate != "no" {
-			fmt.Println()
-			if err := installTemplate(addTemplate); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
-				fmt.Println("You can install templates later with: factorly tools import templates")
-			}
-		}
+		fmt.Println("\nTip: install a bundled blueprint (gmail, linear, github, ...) with:")
+		fmt.Println("  factorly blueprint install <name>")
+		fmt.Println("Or browse the catalog at /blueprints/browse when running 'factorly ui'.")
 
 		// Offer to sync with AI clients
 		doSync := prompt(scanner, "Connect to your AI agent now? (y/n)", "y")
@@ -476,7 +468,7 @@ func init() {
 
 	importOpenAPICmd.Flags().StringVarP(&importOpenAPIOut, "out", "o", "", "output file path (default: stdout)")
 	importOpenAPICmd.Flags().StringVarP(&importOpenAPIPrefix, "prefix", "p", "", "tool name prefix (default: from spec title)")
-	importCmd.AddCommand(importOpenAPICmd, templatesCmd)
+	importCmd.AddCommand(importOpenAPICmd)
 
 	toolsCmd.AddCommand(toolsListCmd, addCmd, removeCmd, importCmd, recordCmd, statusCmd)
 	utilsCmd.AddCommand(autocompleteCmd)

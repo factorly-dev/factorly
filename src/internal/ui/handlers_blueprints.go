@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
+	"strings"
 
 	"github.com/factorly-dev/factorly/internal/blueprints"
 	"github.com/factorly-dev/factorly/internal/builtins"
@@ -163,6 +165,172 @@ func (s *Server) handleBlueprintsList(w http.ResponseWriter, r *http.Request) {
 		"Nav":        "blueprints",
 		"Blueprints": list,
 	})
+}
+
+// handleBlueprintsBrowse renders the /blueprints/browse catalog page. Lists
+// every bundled blueprint as a card with category + auth-type chips. Cards
+// that are already installed get an "Installed" badge so users don't try to
+// install them twice.
+func (s *Server) handleBlueprintsBrowse(w http.ResponseWriter, r *http.Request) {
+	installedNames := map[string]bool{}
+	if list, err := blueprints.List(s.cfgPath); err == nil {
+		for _, bp := range list {
+			installedNames[bp.Name] = true
+		}
+	}
+
+	type cardData struct {
+		*blueprints.BundledBlueprint
+		Installed bool
+	}
+	bundled := blueprints.Bundled()
+	cards := make([]cardData, 0, len(bundled))
+	for _, bp := range bundled {
+		cards = append(cards, cardData{
+			BundledBlueprint: bp,
+			Installed:        installedNames[bp.Header.Name],
+		})
+	}
+	s.render(w, "blueprints_browse.html", map[string]any{
+		"Title": "Browse Blueprints",
+		"Nav":   "blueprints",
+		"Cards": cards,
+	})
+}
+
+// handleBlueprintBrowseDetail renders the per-blueprint detail page from the
+// bundled catalog. Shows the auth guide, the list of tools the blueprint
+// would add, and a one-click Install button.
+func (s *Server) handleBlueprintBrowseDetail(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	bp := blueprints.BundledByName(name)
+	if bp == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Parse the YAML so the page can list tool names + descriptions without
+	// duplicating that data in the header.
+	parsed, err := blueprints.ParseBlueprint([]byte(bp.YAML))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("parsing bundled blueprint: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Is it already installed?
+	installed := false
+	if list, err := blueprints.List(s.cfgPath); err == nil {
+		for _, b := range list {
+			if b.Name == bp.Header.Name {
+				installed = true
+				break
+			}
+		}
+	}
+
+	// Sort tool names for stable display.
+	toolNames := make([]string, 0, len(parsed.Tools))
+	for n := range parsed.Tools {
+		toolNames = append(toolNames, n)
+	}
+	sort.Strings(toolNames)
+
+	type toolRow struct {
+		Name        string
+		Description string
+	}
+	tools := make([]toolRow, 0, len(toolNames))
+	for _, n := range toolNames {
+		tools = append(tools, toolRow{Name: n, Description: parsed.Tools[n].Description})
+	}
+
+	// Vault keys the user needs to set, if any.
+	var vaultKeys []string
+	if parsed.Requires != nil {
+		vaultKeys = parsed.Requires.VaultKeys
+	}
+
+	s.render(w, "blueprint_browse_detail.html", map[string]any{
+		"Title":     bp.Header.DisplayName,
+		"Nav":       "blueprints",
+		"BP":        bp,
+		"Tools":     tools,
+		"VaultKeys": vaultKeys,
+		"Installed": installed,
+	})
+}
+
+// handleBlueprintBrowseInstall installs a bundled blueprint by name. The
+// catalog detail page POSTs here; this is just sugar over the main
+// /blueprints/install endpoint that doesn't require the client to ship the
+// full YAML body back to us.
+func (s *Server) handleBlueprintBrowseInstall(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	bp := blueprints.BundledByName(name)
+	if bp == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Optional vault values supplied as form fields (one per missing key).
+	// The form posts URL-encoded values; ParseForm handles both GET and POST.
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	for key, vals := range r.Form {
+		if !strings.HasPrefix(key, "vault_") {
+			continue
+		}
+		realKey := strings.TrimPrefix(key, "vault_")
+		val := strings.TrimSpace(vals[0])
+		if val == "" || s.vault == nil {
+			continue
+		}
+		if err := s.vault.Set(realKey, val); err != nil {
+			http.Error(w, fmt.Sprintf("storing vault key %q: %v", realKey, err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	res, err := blueprints.Install(blueprints.InstallOptions{
+		Content:      []byte(bp.YAML),
+		CfgPath:      s.cfgPath,
+		BuiltinTools: s.builtinNamesFromConfig(),
+	})
+	if err != nil {
+		// Re-render the detail page with the error inline.
+		http.Error(w, fmt.Sprintf("%s\n\n%s", err.Error(), summarizeResult(res)), http.StatusBadRequest)
+		return
+	}
+	if _, rerr := s.reloadConfig(); rerr != nil {
+		http.Error(w, fmt.Sprintf("installed but reload failed: %v (click Reload to refresh)", rerr), http.StatusInternalServerError)
+		return
+	}
+	// On success, redirect back to /blueprints so the user sees the
+	// freshly-installed entry in their list.
+	w.Header().Set("HX-Redirect", "/blueprints")
+	http.Redirect(w, r, "/blueprints", http.StatusSeeOther)
+}
+
+// summarizeResult turns an InstallResult into a short error-message tail so
+// the user sees conflicts / missing requires inline with the failure on the
+// detail page.
+func summarizeResult(res *blueprints.InstallResult) string {
+	if res == nil {
+		return ""
+	}
+	var parts []string
+	for _, c := range res.Conflicts {
+		parts = append(parts, fmt.Sprintf("%s %q already defined", c.Kind, c.Name))
+	}
+	for _, m := range res.RequiresMissing {
+		parts = append(parts, fmt.Sprintf("missing %s %q", m.Kind, m.Name))
+	}
+	if res.AlreadyInstalled {
+		parts = append(parts, "already installed")
+	}
+	return strings.Join(parts, "; ")
 }
 
 // handleBlueprintUninstall removes a blueprint and reloads.

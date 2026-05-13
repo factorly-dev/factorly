@@ -405,3 +405,182 @@ func TestBlueprintInstallRequiresSourceOrContent(t *testing.T) {
 		t.Fatal("expected error in response")
 	}
 }
+
+// --- Browse / catalog handler tests ---
+
+func TestBlueprintsBrowseRenders(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+	req := httptest.NewRequest(http.MethodGet, "/blueprints/browse", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	// Header + at least one bundled card.
+	if !strings.Contains(body, "Browse Blueprints") {
+		t.Errorf("expected 'Browse Blueprints' header, got %s", body[:300])
+	}
+	// Linear is one of the bundled blueprints — its display name must
+	// appear on the catalog page.
+	if !strings.Contains(body, "Linear") {
+		t.Error("expected Linear card on catalog page")
+	}
+}
+
+func TestBlueprintBrowseDetailRenders(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+	req := httptest.NewRequest(http.MethodGet, "/blueprints/browse/linear", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Linear") {
+		t.Error("expected 'Linear' on detail page")
+	}
+	if !strings.Contains(body, "linear.list_issues") {
+		t.Error("expected tool name from bundled YAML on detail page")
+	}
+	if !strings.Contains(body, "LINEAR_API_KEY") {
+		t.Error("expected vault key from bundled YAML on detail page")
+	}
+}
+
+func TestBlueprintBrowseDetailUnknown404s(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+	req := httptest.NewRequest(http.MethodGet, "/blueprints/browse/nonexistent", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestBlueprintBrowseInstallWritesAndReloads(t *testing.T) {
+	srv, cfgPath := testServerWithProxy(t, nil)
+
+	// Use a bundled blueprint that doesn't require vault keys to keep the
+	// test focused. Git/make/npm are AuthType=none.
+	req := httptest.NewRequest(http.MethodPost, "/blueprints/browse/git/install", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther && rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", rec.Code, rec.Body.String())
+	}
+	// File should land on disk.
+	if _, err := os.Stat(filepath.Join(filepath.Dir(cfgPath), ".factorly", "blueprints", "git.yaml")); err != nil {
+		t.Fatalf("expected git.yaml in .factorly/blueprints/: %v", err)
+	}
+}
+
+func TestBlueprintBrowseInstallStoresVaultValues(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+
+	form := strings.NewReader("vault_LINEAR_API_KEY=test-key-value")
+	req := httptest.NewRequest(http.MethodPost, "/blueprints/browse/linear/install", form)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+
+	// Whether the install succeeded or not, the vault key should have been
+	// written first (the handler writes secrets before attempting install).
+	v, err := srv.vault.Get("LINEAR_API_KEY")
+	if err != nil {
+		t.Fatalf("vault.Get: %v", err)
+	}
+	if v != "test-key-value" {
+		t.Errorf("vault value = %q, want test-key-value", v)
+	}
+}
+
+func TestBlueprintBrowseInstallUnknown404s(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+	req := httptest.NewRequest(http.MethodPost, "/blueprints/browse/nonexistent/install", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestBlueprintsBrowseMarksInstalled(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+	// Install one bundled blueprint first.
+	if _, err := blueprints.Install(blueprints.InstallOptions{
+		Content: []byte(blueprints.BundledByName("git").YAML),
+		CfgPath: srv.cfgPath,
+	}); err != nil {
+		t.Fatalf("priming install: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/blueprints/browse", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	body := rec.Body.String()
+
+	// The Installed badge should appear at least once in the rendered page.
+	if !strings.Contains(body, "Installed") {
+		t.Error("expected 'Installed' badge on at least one card")
+	}
+}
+
+// --- Homepage icon rendering ---
+
+func TestBlueprintsListShowsExternalLinkIconWhenHomepageSet(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+	pack := writeBlueprintOnDisk(t, `
+name: with-homepage
+version: 0.1
+description: has a homepage
+homepage: https://example.com/has-homepage
+tools: {}
+`)
+	if _, err := blueprints.Install(blueprints.InstallOptions{Source: pack, CfgPath: srv.cfgPath}); err != nil {
+		t.Fatalf("priming: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/blueprints", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	body := rec.Body.String()
+
+	// The homepage URL should appear in an anchor.
+	if !strings.Contains(body, "https://example.com/has-homepage") {
+		t.Errorf("expected homepage URL in body")
+	}
+	// The Lucide external-link icon's distinctive path data ("M15 3h6v6")
+	// should render via {{icon "external-link"}}. If the link still uses the
+	// raw ↗ glyph or the icon is missing, this assertion catches it.
+	if !strings.Contains(body, "M15 3h6v6") {
+		t.Errorf("expected Lucide external-link icon path in body next to homepage")
+	}
+	if !strings.Contains(body, `aria-label="Open homepage"`) {
+		t.Errorf("expected aria-label on the homepage anchor for accessibility")
+	}
+	// Make sure the bare ↗ character isn't lurking — we want the icon, not
+	// the unicode arrow.
+	if strings.Contains(body, "↗") {
+		t.Errorf("found legacy ↗ glyph; should be replaced by the external-link icon")
+	}
+}
+
+func TestBlueprintsListNoHomepageNoIcon(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+	pack := writeBlueprintOnDisk(t, "name: no-homepage\nversion: 0.1\ntools: {}\n")
+	if _, err := blueprints.Install(blueprints.InstallOptions{Source: pack, CfgPath: srv.cfgPath}); err != nil {
+		t.Fatalf("priming: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/blueprints", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	body := rec.Body.String()
+
+	// With no Homepage set the template skips the link entirely — no icon,
+	// no aria-label, no stray anchor pointing at an empty href.
+	if strings.Contains(body, `aria-label="Open homepage"`) {
+		t.Errorf("homepage anchor rendered for a blueprint with no Homepage field")
+	}
+}

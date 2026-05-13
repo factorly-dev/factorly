@@ -506,3 +506,29 @@ func init() {
 	vaultCmd.PersistentFlags().StringVar(&vaultBackend, "backend", "", "use an external vault backend (e.g., op, aws, gcp)")
 	vaultCmd.AddCommand(vaultSetCmd, vaultGetCmd, vaultListCmd, vaultDeleteCmd)
 }
+
+// storeInVault writes a key/value into the local vault, prompting for
+// overwrite if the key already exists. Shared by interactive command
+// flows that collect credentials (e.g. blueprint install).
+func storeInVault(scanner *bufio.Scanner, key, value string) error {
+	backend, err := openVault()
+	if err != nil {
+		return fmt.Errorf("opening vault: %w", err)
+	}
+	defer backend.Close()
+
+	if backend.Has(key) {
+		fmt.Printf("\n  Vault key %s already exists. Overwrite? (y/n): ", key)
+		scanner.Scan()
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(scanner.Text())), "y") {
+			fmt.Printf("  Keeping existing %s\n", key)
+			return nil
+		}
+	}
+
+	if err := backend.Set(key, value); err != nil {
+		return fmt.Errorf("storing in vault: %w", err)
+	}
+	fmt.Printf("  Stored in vault as %s\n", key)
+	return nil
+}
