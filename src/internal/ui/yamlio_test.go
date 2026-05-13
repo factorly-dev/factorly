@@ -850,3 +850,257 @@ tools:
 		t.Errorf("blueprint header was lost; got:\n%s", got)
 	}
 }
+
+// TestSaveTool_EditsBlueprintWorkflowInPlace guards against editing a
+// workflow tool (type: workflow) that came from a blueprint writing a
+// duplicate to tools_dir or inline. Workflows are tools and live under the
+// blueprint's tools: mapping, so the same in-place edit path applies.
+func TestSaveTool_EditsBlueprintWorkflowInPlace(t *testing.T) {
+	dir := t.TempDir()
+	factorlyDir := filepath.Join(dir, ".factorly")
+	blueprintsSubDir := filepath.Join(factorlyDir, "blueprints")
+	toolsDir := filepath.Join(factorlyDir, "tools")
+	if err := os.MkdirAll(blueprintsSubDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(factorlyDir, "factorly.yaml")
+	if err := os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	bpPath := filepath.Join(blueprintsSubDir, "ops.yaml")
+	bpYAML := `name: ops
+version: 1.0.0
+tools:
+  ops.daily:
+    type: workflow
+    description: original description
+    steps:
+      - tool: factorly.fetch
+        params:
+          url: https://example.com/old
+        store: data
+  ops.helper:
+    type: cli
+    command: echo
+    description: keep me
+`
+	if err := os.WriteFile(bpPath, []byte(bpYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	edited := config.ToolConfig{
+		Type:        "workflow",
+		Description: "edited via UI",
+		Steps: []config.StepConfig{
+			{
+				Tool:   "factorly.fetch",
+				Params: map[string]string{"url": "https://example.com/new"},
+				Store:  "data",
+			},
+			{
+				Tool:   "factorly.shell",
+				Params: map[string]string{"command": "echo done"},
+			},
+		},
+	}
+	if err := SaveTool(cfgPath, toolsDir, "ops.daily", edited); err != nil {
+		t.Fatalf("SaveTool: %v", err)
+	}
+
+	data, err := os.ReadFile(bpPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "edited via UI") {
+		t.Errorf("workflow description not updated; got:\n%s", got)
+	}
+	if !strings.Contains(got, "example.com/new") {
+		t.Errorf("workflow step url not updated; got:\n%s", got)
+	}
+	if strings.Contains(got, "example.com/old") {
+		t.Errorf("old workflow step url should be gone; got:\n%s", got)
+	}
+	if !strings.Contains(got, "echo done") {
+		t.Errorf("new workflow step not present; got:\n%s", got)
+	}
+	if !strings.Contains(got, "ops.helper") {
+		t.Errorf("sibling tool was lost; got:\n%s", got)
+	}
+	if !strings.Contains(got, "name: ops") {
+		t.Errorf("blueprint header was lost; got:\n%s", got)
+	}
+
+	// Confirm the saved YAML round-trips through the config loader and the
+	// workflow's edited shape is what comes back.
+	loaded, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load after save: %v", err)
+	}
+	tc, ok := loaded.Tools["ops.daily"]
+	if !ok {
+		t.Fatal("ops.daily missing after round-trip")
+	}
+	if tc.Type != "workflow" {
+		t.Errorf("expected type=workflow, got %q", tc.Type)
+	}
+	if tc.Description != "edited via UI" {
+		t.Errorf("description didn't round-trip; got %q", tc.Description)
+	}
+	if len(tc.Steps) != 2 {
+		t.Fatalf("expected 2 steps, got %d", len(tc.Steps))
+	}
+	if tc.Steps[0].Params["url"] != "https://example.com/new" {
+		t.Errorf("step 0 url didn't round-trip; got %q", tc.Steps[0].Params["url"])
+	}
+	if tc.Steps[1].Tool != "factorly.shell" {
+		t.Errorf("step 1 tool didn't round-trip; got %q", tc.Steps[1].Tool)
+	}
+
+	// No shadow copy anywhere else.
+	if entries, _ := os.ReadDir(toolsDir); len(entries) > 0 {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("toolsDir got a shadow copy of the workflow: %v", names)
+	}
+	cfgData, _ := os.ReadFile(cfgPath)
+	if strings.Contains(string(cfgData), "ops.daily") {
+		t.Errorf("main config got a shadow copy of the workflow:\n%s", cfgData)
+	}
+}
+
+// TestSaveOAuthProvider_EditsBlueprintInPlace guards against editing an
+// OAuth provider that came from a blueprint writing a duplicate entry to
+// factorly.yaml. The edit must update the blueprint file in place.
+func TestSaveOAuthProvider_EditsBlueprintInPlace(t *testing.T) {
+	dir := t.TempDir()
+	factorlyDir := filepath.Join(dir, ".factorly")
+	blueprintsSubDir := filepath.Join(factorlyDir, "blueprints")
+	if err := os.MkdirAll(blueprintsSubDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(factorlyDir, "factorly.yaml")
+	if err := os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	bpPath := filepath.Join(blueprintsSubDir, "gmail.yaml")
+	bpYAML := `name: gmail
+version: 1.0.0
+oauth_providers:
+  gmail:
+    client_id: "{{vault:GMAIL_CLIENT_ID}}"
+    client_secret: "{{vault:GMAIL_CLIENT_SECRET}}"
+    auth_url: https://accounts.google.com/o/oauth2/v2/auth
+    token_url: https://oauth2.googleapis.com/token
+    scopes:
+      - https://www.googleapis.com/auth/gmail.readonly
+tools:
+  gmail.list:
+    type: rest
+    description: keep me
+    base_url: https://gmail.googleapis.com/gmail/v1
+    method: GET
+    path: /users/me/messages
+`
+	if err := os.WriteFile(bpPath, []byte(bpYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	edited := config.OAuthProviderConfig{
+		ClientID:     "{{vault:GMAIL_CLIENT_ID}}",
+		ClientSecret: "{{vault:GMAIL_CLIENT_SECRET}}",
+		AuthURL:      "https://accounts.google.com/o/oauth2/v2/auth",
+		TokenURL:     "https://oauth2.googleapis.com/token",
+		Scopes:       []string{"https://www.googleapis.com/auth/gmail.modify"},
+	}
+	if err := SaveOAuthProvider(cfgPath, "gmail", edited); err != nil {
+		t.Fatalf("SaveOAuthProvider: %v", err)
+	}
+
+	// Blueprint should hold the edit (new scope), header + tool intact.
+	data, err := os.ReadFile(bpPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "gmail.modify") {
+		t.Errorf("blueprint not updated with new scope; got:\n%s", got)
+	}
+	if strings.Contains(got, "gmail.readonly") {
+		t.Errorf("old scope should have been replaced; got:\n%s", got)
+	}
+	if !strings.Contains(got, "gmail.list") {
+		t.Errorf("sibling tool was lost; got:\n%s", got)
+	}
+	if !strings.Contains(got, "name: gmail") {
+		t.Errorf("blueprint header was lost; got:\n%s", got)
+	}
+
+	// Main config must NOT have grown a duplicate oauth provider.
+	cfgData, _ := os.ReadFile(cfgPath)
+	if strings.Contains(string(cfgData), "oauth_providers") {
+		t.Errorf("main config got a shadow copy of the oauth provider:\n%s", cfgData)
+	}
+}
+
+// TestDeleteOAuthProvider_RemovesFromBlueprint guards against deleting an
+// OAuth provider that came from a blueprint leaving the provider on disk.
+// It should be stripped from the blueprint file; siblings and header must
+// survive.
+func TestDeleteOAuthProvider_RemovesFromBlueprint(t *testing.T) {
+	dir := t.TempDir()
+	factorlyDir := filepath.Join(dir, ".factorly")
+	blueprintsSubDir := filepath.Join(factorlyDir, "blueprints")
+	if err := os.MkdirAll(blueprintsSubDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(factorlyDir, "factorly.yaml")
+	if err := os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	bpPath := filepath.Join(blueprintsSubDir, "gmail.yaml")
+	bpYAML := `name: gmail
+version: 1.0.0
+oauth_providers:
+  gmail:
+    client_id: x
+    auth_url: https://accounts.google.com/o/oauth2/v2/auth
+    token_url: https://oauth2.googleapis.com/token
+tools:
+  gmail.list:
+    type: rest
+    description: keep me
+    base_url: https://gmail.googleapis.com/gmail/v1
+    method: GET
+    path: /users/me/messages
+`
+	if err := os.WriteFile(bpPath, []byte(bpYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DeleteOAuthProvider(cfgPath, "gmail"); err != nil {
+		t.Fatalf("DeleteOAuthProvider: %v", err)
+	}
+
+	data, err := os.ReadFile(bpPath)
+	if err != nil {
+		t.Fatalf("blueprint file should still exist: %v", err)
+	}
+	got := string(data)
+	// The provider key under oauth_providers should be gone, but sibling
+	// sections and the header should survive.
+	if strings.Contains(got, "client_id: x") {
+		t.Errorf("oauth provider was not removed; got:\n%s", got)
+	}
+	if !strings.Contains(got, "gmail.list") {
+		t.Errorf("sibling tool was lost; got:\n%s", got)
+	}
+	if !strings.Contains(got, "name: gmail") {
+		t.Errorf("blueprint header was lost; got:\n%s", got)
+	}
+}

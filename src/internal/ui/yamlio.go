@@ -45,6 +45,13 @@ func blueprintsDir(cfgPath string) string {
 // findToolInBlueprints scans .factorly/blueprints/*.yaml for a file whose
 // nested tools map contains name. Returns the file path, or "" if not found.
 func findToolInBlueprints(cfgPath, name string) string {
+	return findInBlueprintsSection(cfgPath, "tools", name)
+}
+
+// findInBlueprintsSection scans .factorly/blueprints/*.yaml for a file whose
+// nested <section> mapping contains entryName. section is "tools",
+// "oauth_providers", or "vault_backends".
+func findInBlueprintsSection(cfgPath, section, entryName string) string {
 	dir := blueprintsDir(cfgPath)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -59,44 +66,54 @@ func findToolInBlueprints(cfgPath, name string) string {
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())
-		if findToolInNestedFile(path, name) {
+		if findInNestedFile(path, section, entryName) {
 			return path
 		}
 	}
 	return ""
 }
 
-// findToolInNestedFile reports whether a YAML file with a top-level tools:
-// mapping contains a tool named name.
-func findToolInNestedFile(path, name string) bool {
+// findInNestedFile reports whether a YAML file's top-level <section> mapping
+// contains entryName.
+func findInNestedFile(path, section, entryName string) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return false
 	}
-	var doc struct {
-		Tools map[string]any `yaml:"tools"`
-	}
+	var doc map[string]any
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return false
 	}
-	_, exists := doc.Tools[name]
+	sec, ok := doc[section].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, exists := sec[entryName]
 	return exists
 }
 
 // updateToolInNestedFile replaces a tool inside a top-level tools: mapping,
 // preserving header fields and other tools/order.
 func updateToolInNestedFile(path, name string, tc config.ToolConfig) error {
+	return updateNestedFileEntry(path, "tools", name, tc)
+}
+
+// updateNestedFileEntry replaces (or inserts) an entry inside a top-level
+// <section> mapping in a YAML file, preserving header fields and other
+// entries/order. Used to edit a single tool / oauth_provider / vault_backend
+// in place inside an installed blueprint file.
+func updateNestedFileEntry(path, section, entryName string, value any) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
 
-	toolBytes, err := yaml.Marshal(tc)
+	valBytes, err := yaml.Marshal(value)
 	if err != nil {
 		return err
 	}
-	var toolNode yaml.Node
-	if err := yaml.Unmarshal(toolBytes, &toolNode); err != nil {
+	var valNode yaml.Node
+	if err := yaml.Unmarshal(valBytes, &valNode); err != nil {
 		return err
 	}
 
@@ -106,22 +123,35 @@ func updateToolInNestedFile(path, name string, tc config.ToolConfig) error {
 	}
 
 	root := docNode.Content[0]
-	var toolsNode *yaml.Node
+	var sectionNode *yaml.Node
 	for i := 0; i < len(root.Content)-1; i += 2 {
-		if root.Content[i].Value == "tools" {
-			toolsNode = root.Content[i+1]
+		if root.Content[i].Value == section {
+			sectionNode = root.Content[i+1]
 			break
 		}
 	}
-	if toolsNode == nil {
-		return fmt.Errorf("blueprint %s has no tools: mapping", path)
+	if sectionNode == nil {
+		root.Content = append(root.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: section},
+			&yaml.Node{Kind: yaml.MappingNode},
+		)
+		sectionNode = root.Content[len(root.Content)-1]
 	}
+	sectionNode.Style = 0
 
-	for i := 0; i < len(toolsNode.Content)-1; i += 2 {
-		if toolsNode.Content[i].Value == name {
-			toolsNode.Content[i+1] = toolNode.Content[0]
+	found := false
+	for i := 0; i < len(sectionNode.Content)-1; i += 2 {
+		if sectionNode.Content[i].Value == entryName {
+			sectionNode.Content[i+1] = valNode.Content[0]
+			found = true
 			break
 		}
+	}
+	if !found {
+		sectionNode.Content = append(sectionNode.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: entryName},
+			valNode.Content[0],
+		)
 	}
 
 	out, err := yaml.Marshal(&docNode)
@@ -152,6 +182,13 @@ func DeleteTool(cfgPath, toolsDir, name string) error {
 // mapping ends up empty, the file is left in place — the blueprint header
 // and any oauth_providers / vault_backends it carries stay installed.
 func removeToolFromNestedFile(path, name string) error {
+	return removeNestedFileEntry(path, "tools", name)
+}
+
+// removeNestedFileEntry removes an entry from inside a top-level <section>
+// mapping in a YAML file. The file (and any sibling sections, header) is
+// left in place even if the section ends up empty.
+func removeNestedFileEntry(path, section, entryName string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -163,25 +200,25 @@ func removeToolFromNestedFile(path, name string) error {
 	}
 
 	root := docNode.Content[0]
-	var toolsNode *yaml.Node
+	var sectionNode *yaml.Node
 	for i := 0; i < len(root.Content)-1; i += 2 {
-		if root.Content[i].Value == "tools" {
-			toolsNode = root.Content[i+1]
+		if root.Content[i].Value == section {
+			sectionNode = root.Content[i+1]
 			break
 		}
 	}
-	if toolsNode == nil {
+	if sectionNode == nil {
 		return nil
 	}
 
 	var newContent []*yaml.Node
-	for i := 0; i < len(toolsNode.Content)-1; i += 2 {
-		if toolsNode.Content[i].Value == name {
+	for i := 0; i < len(sectionNode.Content)-1; i += 2 {
+		if sectionNode.Content[i].Value == entryName {
 			continue
 		}
-		newContent = append(newContent, toolsNode.Content[i], toolsNode.Content[i+1])
+		newContent = append(newContent, sectionNode.Content[i], sectionNode.Content[i+1])
 	}
-	toolsNode.Content = newContent
+	sectionNode.Content = newContent
 
 	out, err := yaml.Marshal(&docNode)
 	if err != nil {
@@ -472,13 +509,24 @@ func deleteToolFromConfig(cfgPath, name string) error {
 	return os.WriteFile(cfgPath, out, 0o644)
 }
 
-// SaveOAuthProvider writes an OAuth provider config to the main config file.
+// SaveOAuthProvider writes an OAuth provider config. If the provider lives
+// inside an installed blueprint, the edit is written back into that
+// blueprint file (preserving header + sibling sections). Otherwise it falls
+// back to the main config file.
 func SaveOAuthProvider(cfgPath, name string, p config.OAuthProviderConfig) error {
+	if bpPath := findInBlueprintsSection(cfgPath, "oauth_providers", name); bpPath != "" {
+		return updateNestedFileEntry(bpPath, "oauth_providers", name, p)
+	}
 	return upsertConfigMapEntry(cfgPath, "oauth_providers", name, p)
 }
 
-// DeleteOAuthProvider removes an OAuth provider from the main config file.
+// DeleteOAuthProvider removes an OAuth provider. If the provider lives
+// inside an installed blueprint, it is stripped from that file. Otherwise
+// it is removed from the main config file.
 func DeleteOAuthProvider(cfgPath, name string) error {
+	if bpPath := findInBlueprintsSection(cfgPath, "oauth_providers", name); bpPath != "" {
+		return removeNestedFileEntry(bpPath, "oauth_providers", name)
+	}
 	return deleteConfigMapEntry(cfgPath, "oauth_providers", name)
 }
 
