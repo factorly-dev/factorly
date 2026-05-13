@@ -3812,12 +3812,12 @@ func repoFile(t *testing.T, relPath string) string {
 }
 
 func TestExampleBlueprintGmailInstalls(t *testing.T) {
-	// Dogfood test: the checked-in examples/blueprints/gmail.yaml is the canonical
-	// example of the blueprint format. If this test ever fails, it means a format
-	// change has broken the example — fix one or the other to keep them in
-	// sync. The blueprint is real: 6 REST tools and a self-shipped OAuth provider
-	// using vault refs for client credentials.
-	gmailBlueprint := repoFile(t, "examples/blueprints/gmail.yaml")
+	// Dogfood test: install one of the bundled blueprints from a file path.
+	// The bundled gmail blueprint exercises the install path end-to-end —
+	// 6 REST tools and a self-shipped OAuth provider using vault refs for
+	// client credentials. If this test ever fails, it means a format change
+	// has broken the bundled catalog.
+	gmailBlueprint := repoFile(t, "src/internal/blueprints/bundled/gmail.yaml")
 
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": "tools: {}\n",

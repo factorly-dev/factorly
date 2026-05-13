@@ -246,7 +246,7 @@ so the install flow knows what to prompt for. Publish the file anywhere — a Gi
 factorly blueprint install github.com/you/your-blueprint
 ```
 
-See [`examples/blueprints/gmail.yaml`](https://github.com/factorly-dev/factorly/blob/main/examples/blueprints/gmail.yaml) for the canonical reference shape.
+See the [community blueprints repo](https://github.com/factorly-dev/factorly-blueprints) for canonical reference shapes, or browse `src/internal/blueprints/bundled/` for the YAML behind each bundled blueprint.
 
 ## Reference
 
