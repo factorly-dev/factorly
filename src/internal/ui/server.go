@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/factorly-dev/factorly/internal/builtins"
 	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/oauth"
 	"github.com/factorly-dev/factorly/internal/output"
@@ -502,8 +503,12 @@ func (s *Server) reloadConfig() (ReloadStats, error) {
 
 	var stats ReloadStats
 
-	// Find removed tools (in old but not new)
+	// Find removed tools (in old but not new). Built-ins live in-memory only;
+	// they aren't on disk, so skip them or reload would wipe them out.
 	for name := range s.cfg.Tools {
+		if builtins.IsBuiltinTool(name) {
+			continue
+		}
 		if _, exists := newCfg.Tools[name]; !exists {
 			s.unregisterTool(name)
 			stats.Removed++
@@ -512,6 +517,9 @@ func (s *Server) reloadConfig() (ReloadStats, error) {
 
 	// Find added and changed tools
 	for name, newTC := range newCfg.Tools {
+		if builtins.IsBuiltinTool(name) {
+			continue
+		}
 		oldTC, exists := s.cfg.Tools[name]
 		if !exists {
 			stats.Added++
@@ -524,7 +532,16 @@ func (s *Server) reloadConfig() (ReloadStats, error) {
 		s.registerTool(name, newTC)
 	}
 
-	// Update oauth providers
+	// Replace tools with new set, but preserve the in-memory built-ins that
+	// aren't on disk.
+	for name, tc := range s.cfg.Tools {
+		if builtins.IsBuiltinTool(name) {
+			if newCfg.Tools == nil {
+				newCfg.Tools = make(map[string]config.ToolConfig)
+			}
+			newCfg.Tools[name] = tc
+		}
+	}
 	s.cfg.Tools = newCfg.Tools
 	s.cfg.OAuthProviders = newCfg.OAuthProviders
 

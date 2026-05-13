@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/factorly-dev/factorly/internal/builtins"
 	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/factorly-dev/factorly/internal/provider"
@@ -1398,4 +1399,58 @@ func TestAllTemplatesRender(t *testing.T) {
 	// Just verify that creating the server (which parses all templates) succeeds
 	_, _ = testServer(t, nil)
 	// If we get here without panic/fatal, all templates parse correctly
+}
+
+// TestReloadConfigPreservesBuiltins guards against a regression where reloading
+// the on-disk config (e.g. after installing a blueprint) wiped the in-memory
+// built-in tools because they aren't represented on disk.
+func TestReloadConfigPreservesBuiltins(t *testing.T) {
+	cfg := &config.Config{Tools: make(map[string]config.ToolConfig)}
+	builtins.Register(cfg, builtins.Options{Mode: "stdio"})
+
+	if !builtins.IsBuiltinTool("factorly.shell") {
+		t.Fatal("precondition: factorly.shell should be a built-in")
+	}
+	if _, ok := cfg.Tools["factorly.shell"]; !ok {
+		t.Fatal("precondition: factorly.shell should be registered into cfg before reload")
+	}
+
+	srv, cfgPath := testServerWithProxy(t, cfg)
+
+	// Register the built-ins into the live registry the way the real bootstrap does.
+	for name, tc := range cfg.Tools {
+		srv.registerTool(name, tc)
+	}
+
+	// Now simulate a blueprint install by writing a new tool to disk and reloading.
+	newCfg := []byte(`
+tools:
+  newly_installed:
+    type: cli
+    command: echo
+    description: from a freshly installed blueprint
+    args: ["hi"]
+`)
+	if err := os.WriteFile(cfgPath, newCfg, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := srv.reloadConfig(); err != nil {
+		t.Fatalf("reloadConfig: %v", err)
+	}
+
+	// Built-ins must still be in cfg.Tools so handlers and the proxy can find them.
+	for _, name := range []string{"factorly.shell", "factorly.fetch", "factorly.read_file"} {
+		if _, ok := srv.cfg.Tools[name]; !ok {
+			t.Errorf("built-in %q missing from cfg.Tools after reload", name)
+		}
+		if _, err := srv.registry.Get(name); err != nil {
+			t.Errorf("built-in %q missing from registry after reload: %v", name, err)
+		}
+	}
+
+	// The newly installed tool from disk should have been picked up.
+	if _, ok := srv.cfg.Tools["newly_installed"]; !ok {
+		t.Error("newly_installed tool from disk was not registered after reload")
+	}
 }
