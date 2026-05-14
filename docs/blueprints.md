@@ -67,6 +67,7 @@ You can also paste a blueprint YAML directly into the **Install Blueprint** moda
 |-----------|------|-------|-------------|
 | `anthropic` | api_key | 2 | Claude API — messages endpoint + simple ask interface |
 | `chatgpt` | api_key | 2 | OpenAI API — chat completions + simple ask interface |
+| `deepgram` | api_key | 2 | Speech-to-text transcription (local file upload + URL) |
 | `linear` | api_key | 6 | Issue tracking and project management |
 | `github` | bearer | 8 | Code hosting, issues, PRs, repositories |
 | `slack` | bearer | 6 | Team messaging, channels, notifications |

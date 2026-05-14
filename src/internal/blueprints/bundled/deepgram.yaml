@@ -1,0 +1,95 @@
+name: deepgram
+display_name: Deepgram
+version: 1.0.0
+description: Speech-to-text transcription with Deepgram's Nova models
+category: engineering
+author: factorly
+homepage: https://github.com/factorly-dev/factorly
+license: MIT
+auth_type: api_key
+auth_guide: "Create an API key at https://console.deepgram.com/project — Project Settings → API Keys"
+
+requires:
+  vault_keys:
+    - DEEPGRAM_API_KEY
+
+tools:
+  deepgram.transcribe_file:
+    type: rest
+    description: Transcribe a local audio file via Deepgram's /v1/listen endpoint
+    base_url: "https://api.deepgram.com"
+    method: POST
+    path: /v1/listen
+    headers:
+      Content-Type: "audio/*"
+    auth:
+      type: header
+      header: Authorization
+      value: "Token {{vault:DEEPGRAM_API_KEY}}"
+    parameters:
+      - name: file
+        description: Path to the local audio file to upload
+        in: file
+        required: true
+      - name: model
+        description: "Deepgram model (nova-3, nova-2, enhanced, base)"
+        in: query
+        default: nova-3
+      - name: smart_format
+        description: Apply punctuation, capitalization, and numeral formatting to the transcript
+        type: boolean
+        in: query
+        default: "true"
+      - name: punctuate
+        description: Add punctuation to the transcript (subset of smart_format)
+        type: boolean
+        in: query
+      - name: diarize
+        description: Label speakers in multi-speaker audio
+        type: boolean
+        in: query
+      - name: language
+        description: "BCP-47 language code (e.g. en, es, fr)"
+        in: query
+        default: en
+      - name: detect_language
+        description: Auto-detect the spoken language instead of using the "language" parameter
+        type: boolean
+        in: query
+
+  deepgram.transcribe_url:
+    type: rest
+    description: Transcribe an audio URL via Deepgram's /v1/listen endpoint
+    base_url: "https://api.deepgram.com"
+    method: POST
+    path: /v1/listen
+    headers:
+      Content-Type: application/json
+    auth:
+      type: header
+      header: Authorization
+      value: "Token {{vault:DEEPGRAM_API_KEY}}"
+    body: |
+      {"url": "{{url}}"}
+    parameters:
+      - name: url
+        description: Public URL to an audio file Deepgram can fetch
+        in: body
+        required: true
+      - name: model
+        description: "Deepgram model (nova-3, nova-2, enhanced, base)"
+        in: query
+        default: nova-3
+      - name: smart_format
+        description: Apply punctuation, capitalization, and numeral formatting to the transcript
+        type: boolean
+        in: query
+        default: "true"
+      - name: diarize
+        description: Label speakers in multi-speaker audio
+        type: boolean
+        in: query
+      - name: language
+        description: "BCP-47 language code (e.g. en, es, fr)"
+        in: query
+        default: en
