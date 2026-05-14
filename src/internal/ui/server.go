@@ -40,7 +40,18 @@ type Server struct {
 	mcpHandler    http.Handler
 	activity      *ActivityBroadcaster
 	confirmBroker *ConfirmBroker
+	// OnReload is invoked at the end of reloadConfig on success. Lets
+	// callers (e.g., the MCP server bridge) react to config changes.
+	OnReload func()
 }
+
+// Config returns the currently-loaded config. Pointer is shared with the
+// running server, so callers must treat it as read-only.
+func (s *Server) Config() *config.Config { return s.cfg }
+
+// CfgPath returns the path to the loaded config file (or the canonical
+// path the server writes back to).
+func (s *Server) CfgPath() string { return s.cfgPath }
 
 // Options configures the UI server.
 type Options struct {
@@ -75,6 +86,7 @@ func New(opts Options) (*Server, error) {
 		"templates/blueprints.html",
 		"templates/blueprints_browse.html",
 		"templates/blueprint_browse_detail.html",
+		"templates/yaml_view.html",
 	}
 	tmpls := make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
@@ -131,6 +143,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /tools/{name}/rename", s.handleToolRename)
 	s.mux.HandleFunc("GET /tools/{name}/try-panel", s.handleToolTryPanel)
 	s.mux.HandleFunc("POST /tools/{name}/try", s.handleToolTry)
+	s.mux.HandleFunc("GET /tools/{name}/yaml", s.handleToolYAML)
 	s.mux.HandleFunc("DELETE /tools/{name}", s.handleToolDelete)
 
 	// Import
@@ -149,6 +162,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /workflows/{name}/save", s.handleWorkflowSave)
 	s.mux.HandleFunc("GET /workflows/{name}/run-panel", s.handleWorkflowRunPanel)
 	s.mux.HandleFunc("POST /workflows/{name}/run", s.handleWorkflowRun)
+	s.mux.HandleFunc("GET /workflows/{name}/yaml", s.handleWorkflowYAML)
 	s.mux.HandleFunc("POST /workflows/{name}/duplicate", s.handleWorkflowDuplicate)
 	s.mux.HandleFunc("DELETE /workflows/{name}", s.handleWorkflowDelete)
 
@@ -187,6 +201,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /blueprints/browse/{name}/install", s.handleBlueprintBrowseInstall)
 	s.mux.HandleFunc("POST /blueprints/preview", s.handleBlueprintPreview)
 	s.mux.HandleFunc("POST /blueprints/install", s.handleBlueprintInstall)
+	s.mux.HandleFunc("GET /blueprints/installed/{name}/yaml", s.handleBlueprintYAML)
 	s.mux.HandleFunc("DELETE /blueprints/{name}", s.handleBlueprintUninstall)
 }
 
@@ -210,6 +225,46 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		s.mux.ServeHTTP(w, r)
+	})
+}
+
+// yamlViewArgs is the input contract for renderYAMLView. Render is called
+// after the args are valid; it returns the raw YAML bytes.
+type yamlViewArgs struct {
+	Name         string
+	Heading      string
+	Subheading   string
+	BackHref     string
+	BackLabel    string
+	DownloadName string
+	Render       func() ([]byte, error)
+}
+
+// renderYAMLView is the shared handler for "View YAML" pages.
+// ?download=1 emits raw application/yaml with an attachment disposition;
+// otherwise renders the HTML wrapper page with copy + download affordances.
+func (s *Server) renderYAMLView(w http.ResponseWriter, r *http.Request, args yamlViewArgs) {
+	data, err := args.Render()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if r.URL.Query().Get("download") == "1" {
+		w.Header().Set("Content-Type", "application/yaml")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", args.DownloadName))
+		_, _ = w.Write(data)
+		return
+	}
+	downloadHref := r.URL.Path + "?download=1"
+	s.render(w, "yaml_view.html", map[string]any{
+		"Title":        args.Heading + " — YAML",
+		"Nav":          "",
+		"Heading":      args.Heading,
+		"Subheading":   args.Subheading,
+		"BackHref":     args.BackHref,
+		"BackLabel":    args.BackLabel,
+		"DownloadHref": downloadHref,
+		"YAML":         string(data),
 	})
 }
 
@@ -550,6 +605,9 @@ func (s *Server) reloadConfig() (ReloadStats, error) {
 	s.cfg.Tools = newCfg.Tools
 	s.cfg.OAuthProviders = newCfg.OAuthProviders
 
+	if s.OnReload != nil {
+		s.OnReload()
+	}
 	return stats, nil
 }
 

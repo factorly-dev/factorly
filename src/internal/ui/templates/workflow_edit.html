@@ -35,6 +35,8 @@
     </form>
   </div>
   <div class="flex items-center gap-3">
+    <a href="/workflows/{{.Name}}/yaml" hx-boost="false"
+       class="text-gray-400 hover:text-indigo-600 text-sm">View YAML</a>
     <button hx-post="/workflows/{{.Name}}/duplicate"
             class="text-gray-400 hover:text-indigo-600 text-sm">Duplicate</button>
     <button hx-delete="/workflows/{{.Name}}"

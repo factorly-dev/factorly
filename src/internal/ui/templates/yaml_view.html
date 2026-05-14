@@ -1,0 +1,27 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+{{define "content"}}
+<div class="flex items-center justify-between mb-4">
+  <div>
+    <a href="{{.BackHref}}" hx-boost="false" class="text-xs text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1">
+      ← {{.BackLabel}}
+    </a>
+    <h1 class="text-2xl font-bold mt-1">{{.Heading}}</h1>
+    <p class="text-xs text-gray-500 font-mono mt-1">{{.Subheading}}</p>
+  </div>
+  <div class="flex items-center gap-2">
+    <button type="button"
+            onclick="navigator.clipboard.writeText(document.getElementById('yaml-body').textContent).then(() => { this.textContent='Copied'; setTimeout(() => this.textContent='Copy', 1500); })"
+            class="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Copy</button>
+    <a href="{{.DownloadHref}}" hx-boost="false"
+       class="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Download .yaml</a>
+  </div>
+</div>
+
+<div class="bg-gray-900 rounded-lg overflow-hidden">
+  <pre class="text-xs text-gray-100 font-mono leading-relaxed p-4 overflow-x-auto"><code id="yaml-body">{{.YAML}}</code></pre>
+</div>
+{{end}}

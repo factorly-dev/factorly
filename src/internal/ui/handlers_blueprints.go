@@ -13,6 +13,7 @@ import (
 
 	"github.com/factorly-dev/factorly/internal/blueprints"
 	"github.com/factorly-dev/factorly/internal/builtins"
+	"github.com/factorly-dev/factorly/internal/configyaml"
 )
 
 // previewRequest is the JSON body posted to /blueprints/preview.
@@ -375,4 +376,25 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+// handleBlueprintYAML renders the installed blueprint file from disk.
+// 404s if the named blueprint isn't installed.
+func (s *Server) handleBlueprintYAML(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	// Existence check up front so the 404 path doesn't get swallowed by
+	// renderYAMLView's 500 fallback.
+	if _, err := configyaml.RenderBlueprint(s.cfgPath, name); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	s.renderYAMLView(w, r, yamlViewArgs{
+		Name:         name,
+		Heading:      name,
+		Subheading:   "Installed blueprint",
+		BackHref:     "/blueprints",
+		BackLabel:    "Back to blueprints",
+		DownloadName: name + ".yaml",
+		Render:       func() ([]byte, error) { return configyaml.RenderBlueprint(s.cfgPath, name) },
+	})
 }

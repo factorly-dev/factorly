@@ -6,10 +6,14 @@ package server
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/factorly-dev/factorly/internal"
 	"github.com/factorly-dev/factorly/internal/agent"
+	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-dev/factorly/internal/configyaml"
 	"github.com/factorly-dev/factorly/internal/proxy"
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -63,9 +67,12 @@ func slog(ctx context.Context, format string, args ...any) {
 	}
 }
 
-// New creates an MCP server with all registry tools exposed.
+// New creates an MCP server with all registry tools exposed plus YAML
+// resources for tools, workflows, and installed blueprints. cfg and cfgPath
+// can be zero values (nil / "") in contexts where resource discovery isn't
+// wanted — only tools will be registered in that case.
 // An optional agent.Registry can be passed to track connected agents.
-func New(reg *registry.Registry, p *proxy.Proxy, agentReg ...*agent.Registry) *server.MCPServer {
+func New(reg *registry.Registry, p *proxy.Proxy, cfg *config.Config, cfgPath string, agentReg ...*agent.Registry) *server.MCPServer {
 	var ar *agent.Registry
 	if len(agentReg) > 0 {
 		ar = agentReg[0]
@@ -100,6 +107,7 @@ func New(reg *registry.Registry, p *proxy.Proxy, agentReg ...*agent.Registry) *s
 		internal.AppName,
 		internal.Version,
 		server.WithToolCapabilities(false),
+		server.WithResourceCapabilities(false, true),
 		server.WithElicitation(),
 		server.WithHooks(hooks),
 	)
@@ -114,7 +122,137 @@ func New(reg *registry.Registry, p *proxy.Proxy, agentReg ...*agent.Registry) *s
 		s.AddTool(mcpTool, handler)
 	}
 
+	if cfg != nil {
+		registerResources(s, cfg, cfgPath)
+	}
+
 	return s
+}
+
+// URI prefixes for the three resource kinds.
+const (
+	resourceURITool      = "factorly://tools/"
+	resourceURIWorkflow  = "factorly://workflows/"
+	resourceURIBlueprint = "factorly://blueprints/"
+)
+
+// registerResources walks the current config + installed blueprints and
+// registers one MCP resource per item. Each resource handler closes over
+// cfg/cfgPath so subsequent reads pick up the live state — important
+// because RefreshResources mutates the registered set in place but the
+// handler closures stay valid.
+func registerResources(s *server.MCPServer, cfg *config.Config, cfgPath string) {
+	for name, tc := range cfg.Tools {
+		uri, kind := resourceURIForTool(name, tc)
+		_ = kind // reserved for future use (e.g., labels)
+		res := mcp.NewResource(uri, name, mcp.WithMIMEType("application/yaml"))
+		nameCopy, tcCopy := name, tc
+		s.AddResource(res, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+			data, err := configyaml.RenderTool(nameCopy, tcCopy)
+			if err != nil {
+				return nil, err
+			}
+			return []mcp.ResourceContents{mcp.TextResourceContents{
+				URI:      request.Params.URI,
+				MIMEType: "application/yaml",
+				Text:     string(data),
+			}}, nil
+		})
+	}
+
+	if cfgPath == "" {
+		return
+	}
+	for _, name := range installedBlueprintNames(cfgPath) {
+		uri := resourceURIBlueprint + name
+		res := mcp.NewResource(uri, name, mcp.WithMIMEType("application/yaml"))
+		bpName, bpCfgPath := name, cfgPath
+		s.AddResource(res, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+			data, err := configyaml.RenderBlueprint(bpCfgPath, bpName)
+			if err != nil {
+				return nil, err
+			}
+			return []mcp.ResourceContents{mcp.TextResourceContents{
+				URI:      request.Params.URI,
+				MIMEType: "application/yaml",
+				Text:     string(data),
+			}}, nil
+		})
+	}
+}
+
+// RefreshResources reconciles the server's registered resources against the
+// live config. URIs that no longer correspond to a tool/workflow/blueprint
+// are removed; new ones are added. mcp-go auto-emits
+// notifications/resources/list_changed on DeleteResources when listChanged
+// capability is enabled, so connected MCP clients see the updated set
+// without reconnecting.
+func RefreshResources(s *server.MCPServer, cfg *config.Config, cfgPath string) {
+	desired := desiredResourceURIs(cfg, cfgPath)
+	current := s.ListResources()
+	var toRemove []string
+	for uri := range current {
+		if !strings.HasPrefix(uri, "factorly://") {
+			continue
+		}
+		if _, keep := desired[uri]; !keep {
+			toRemove = append(toRemove, uri)
+		}
+	}
+	if len(toRemove) > 0 {
+		s.DeleteResources(toRemove...)
+	}
+	// Register any new/updated resources. AddResource is idempotent on URI
+	// in the underlying library (last write wins), so unchanged URIs simply
+	// get their handler closure refreshed.
+	registerResources(s, cfg, cfgPath)
+}
+
+// resourceURIForTool returns the canonical URI for a tool/workflow plus a
+// label identifying which kind it is (mostly for callers that want both).
+func resourceURIForTool(name string, tc config.ToolConfig) (uri, kind string) {
+	if tc.Type == "workflow" {
+		return resourceURIWorkflow + name, "workflow"
+	}
+	return resourceURITool + name, "tool"
+}
+
+// desiredResourceURIs returns the set of URIs that should be registered for
+// the given config + blueprints directory.
+func desiredResourceURIs(cfg *config.Config, cfgPath string) map[string]struct{} {
+	out := make(map[string]struct{}, len(cfg.Tools))
+	for name, tc := range cfg.Tools {
+		uri, _ := resourceURIForTool(name, tc)
+		out[uri] = struct{}{}
+	}
+	if cfgPath != "" {
+		for _, name := range installedBlueprintNames(cfgPath) {
+			out[resourceURIBlueprint+name] = struct{}{}
+		}
+	}
+	return out
+}
+
+// installedBlueprintNames returns the basenames (without extension) of every
+// .yaml file in the configured blueprints directory. Missing dir → empty.
+func installedBlueprintNames(cfgPath string) []string {
+	dir := configyaml.BlueprintsDir(cfgPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		ext := filepath.Ext(e.Name())
+		if ext != ".yaml" && ext != ".yml" {
+			continue
+		}
+		names = append(names, strings.TrimSuffix(e.Name(), ext))
+	}
+	return names
 }
 
 // convertTool maps a registry.Tool to an mcp.Tool with JSON Schema.

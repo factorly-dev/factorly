@@ -45,15 +45,17 @@
       </div>
     </form>
   </div>
-  {{if not .IsBuiltin}}
   <div class="flex items-center gap-3">
+    <a href="/tools/{{.Tool.Name}}/yaml" hx-boost="false"
+       class="text-gray-400 hover:text-indigo-600 text-sm">View YAML</a>
+    {{if not .IsBuiltin}}
     <button hx-post="/tools/{{.Tool.Name}}/duplicate"
             class="text-gray-400 hover:text-indigo-600 text-sm">Duplicate</button>
     <button hx-delete="/tools/{{.Tool.Name}}"
             hx-confirm="Delete tool '{{.Tool.Name}}'?"
             class="text-red-400 hover:text-red-600 text-sm">Delete</button>
+    {{end}}
   </div>
-  {{end}}
 </div>
 
 {{if .Tool.Hidden}}

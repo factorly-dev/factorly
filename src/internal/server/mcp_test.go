@@ -5,8 +5,12 @@ package server
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/factorly-dev/factorly/internal/provider"
 	"github.com/factorly-dev/factorly/internal/proxy"
@@ -236,10 +240,150 @@ func TestNewRegistersAllTools(t *testing.T) {
 	}
 	p := proxy.New(reg, providers, logger.NopLogger{})
 
-	s := New(reg, p)
+	s := New(reg, p, nil, "")
 	if s == nil {
 		t.Fatal("expected non-nil server")
 	}
 	// The server was created with 3 tools — we can't easily inspect
 	// the internal state, but verify it doesn't panic and returns non-nil
+}
+
+// resourceTestFixture builds a temp .factorly/ tree with one tool, one
+// workflow, and one installed blueprint, returning the cfg + cfgPath the
+// MCP server should be wired against.
+func resourceTestFixture(t *testing.T) (*config.Config, string) {
+	t.Helper()
+	dir := t.TempDir()
+	factorlyDir := filepath.Join(dir, ".factorly")
+	bpDir := filepath.Join(factorlyDir, "blueprints")
+	if err := os.MkdirAll(bpDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(factorlyDir, "factorly.yaml")
+	if err := os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bpDir, "gmail.yaml"), []byte("name: gmail\nversion: 1.0.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"my.tool":     {Type: "cli", Description: "list", Command: "ls"},
+			"my.workflow": {Type: "workflow", Description: "wf", Steps: []config.StepConfig{{Tool: "my.tool"}}},
+		},
+	}
+	return cfg, cfgPath
+}
+
+func TestNew_RegistersResources(t *testing.T) {
+	cfg, cfgPath := resourceTestFixture(t)
+	p, reg := buildTestProxy(map[string]provider.CLIToolDef{"my.tool": {Command: "ls"}})
+	_ = reg
+
+	s := New(reg, p, cfg, cfgPath)
+
+	resources := s.ListResources()
+	want := []string{
+		"factorly://tools/my.tool",
+		"factorly://workflows/my.workflow",
+		"factorly://blueprints/gmail",
+	}
+	for _, uri := range want {
+		if _, ok := resources[uri]; !ok {
+			t.Errorf("expected resource %q registered, got URIs: %v", uri, resourceURIs(resources))
+		}
+	}
+}
+
+func TestRegisteredResource_ReadReturnsYAML(t *testing.T) {
+	cfg, cfgPath := resourceTestFixture(t)
+	p, reg := buildTestProxy(map[string]provider.CLIToolDef{"my.tool": {Command: "ls"}})
+
+	s := New(reg, p, cfg, cfgPath)
+
+	cases := []struct {
+		uri         string
+		mustContain []string
+	}{
+		{"factorly://tools/my.tool", []string{"my.tool", "command: ls"}},
+		{"factorly://workflows/my.workflow", []string{"my.workflow", "type: workflow"}},
+		{"factorly://blueprints/gmail", []string{"name: gmail", "version: 1.0.0"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.uri, func(t *testing.T) {
+			res, ok := s.ListResources()[tc.uri]
+			if !ok {
+				t.Fatalf("resource %q not registered", tc.uri)
+			}
+			req := mcp.ReadResourceRequest{}
+			req.Params.URI = tc.uri
+			contents, err := res.Handler(context.Background(), req)
+			if err != nil {
+				t.Fatalf("handler: %v", err)
+			}
+			if len(contents) != 1 {
+				t.Fatalf("expected 1 content item, got %d", len(contents))
+			}
+			tc2, ok := contents[0].(mcp.TextResourceContents)
+			if !ok {
+				t.Fatalf("expected TextResourceContents, got %T", contents[0])
+			}
+			if tc2.MIMEType != "application/yaml" {
+				t.Errorf("MIME = %q, want application/yaml", tc2.MIMEType)
+			}
+			for _, want := range tc.mustContain {
+				if !strings.Contains(tc2.Text, want) {
+					t.Errorf("body missing %q\ngot:\n%s", want, tc2.Text)
+				}
+			}
+		})
+	}
+}
+
+func TestRefreshResources_AddsAndRemoves(t *testing.T) {
+	cfg, cfgPath := resourceTestFixture(t)
+	p, reg := buildTestProxy(map[string]provider.CLIToolDef{"my.tool": {Command: "ls"}})
+
+	s := New(reg, p, cfg, cfgPath)
+
+	// Add a new tool and remove the workflow; refresh should reflect both.
+	delete(cfg.Tools, "my.workflow")
+	cfg.Tools["new.tool"] = config.ToolConfig{Type: "cli", Command: "pwd"}
+
+	RefreshResources(s, cfg, cfgPath)
+
+	resources := s.ListResources()
+	if _, ok := resources["factorly://tools/new.tool"]; !ok {
+		t.Error("expected factorly://tools/new.tool after refresh")
+	}
+	if _, ok := resources["factorly://workflows/my.workflow"]; ok {
+		t.Error("factorly://workflows/my.workflow should have been removed after refresh")
+	}
+	if _, ok := resources["factorly://tools/my.tool"]; !ok {
+		t.Error("factorly://tools/my.tool should still be registered after refresh")
+	}
+	if _, ok := resources["factorly://blueprints/gmail"]; !ok {
+		t.Error("factorly://blueprints/gmail should still be registered after refresh")
+	}
+
+	// Install a new blueprint by writing a file; refresh again.
+	bpDir := filepath.Join(filepath.Dir(cfgPath), "blueprints")
+	if err := os.WriteFile(filepath.Join(bpDir, "slack.yaml"), []byte("name: slack\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	RefreshResources(s, cfg, cfgPath)
+	if _, ok := s.ListResources()["factorly://blueprints/slack"]; !ok {
+		t.Error("expected factorly://blueprints/slack after second refresh")
+	}
+}
+
+// resourceURIs returns the set of registered URIs for assertion messages.
+// Typed as a generic map so the test stays decoupled from the mcp-go value
+// type (which collides namespace-wise with our package name).
+func resourceURIs[T any](m map[string]T) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

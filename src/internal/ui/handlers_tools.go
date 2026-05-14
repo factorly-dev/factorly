@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-dev/factorly/internal/configyaml"
 )
 
 type toolListItem struct {
@@ -123,6 +124,28 @@ func (s *Server) handleToolTryPanel(w http.ResponseWriter, r *http.Request) {
 	s.renderPartial(w, "try_panel", map[string]any{
 		"Name":   name,
 		"Params": tc.Parameters,
+	})
+}
+
+// handleToolYAML renders the tool's YAML definition. ?download=1 returns
+// raw application/yaml with Content-Disposition: attachment so the browser
+// saves it directly. Workflows live under /workflows/{name}/yaml — this
+// route 404s for type: workflow so the breadcrumb in the view stays right.
+func (s *Server) handleToolYAML(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	tc, ok := s.cfg.Tools[name]
+	if !ok || tc.Type == "workflow" {
+		http.NotFound(w, r)
+		return
+	}
+	s.renderYAMLView(w, r, yamlViewArgs{
+		Name:         name,
+		Heading:      name,
+		Subheading:   "Tool definition",
+		BackHref:     "/tools/" + name,
+		BackLabel:    "Back to " + name,
+		DownloadName: name + ".yaml",
+		Render:       func() ([]byte, error) { return configyaml.RenderTool(name, tc) },
 	})
 }
 

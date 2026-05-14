@@ -65,7 +65,7 @@ By default, uses stdio transport. Use --port to start an HTTP server instead.`,
 			}
 		}
 
-		s := factorlyServer.New(reg, p)
+		s := factorlyServer.New(reg, p, cfg, resolveCfgPath())
 
 		ctx, stop := signal.NotifyContext(context.Background(),
 			os.Interrupt, syscall.SIGTERM)

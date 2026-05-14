@@ -15,6 +15,7 @@ import (
 
 	"github.com/factorly-dev/factorly/internal/blueprints"
 	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-dev/factorly/internal/configyaml"
 )
 
 var (
@@ -71,6 +72,33 @@ var blueprintListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List installed blueprints",
 	RunE:  runBlueprintList,
+}
+
+var blueprintShowCmd = &cobra.Command{
+	Use:   "show <name>",
+	Short: "Print a blueprint's YAML to stdout (installed copy, or bundled if not installed)",
+	Args:  requireArgs(1, "factorly blueprint show <name>"),
+	RunE:  runBlueprintShow,
+}
+
+func runBlueprintShow(cmd *cobra.Command, args []string) error {
+	name := args[0]
+	cfgPath := resolveCfgPath()
+
+	// Prefer the installed copy on disk (preserves comments + local edits).
+	if data, err := configyaml.RenderBlueprint(cfgPath, name); err == nil {
+		_, werr := os.Stdout.Write(data)
+		return werr
+	}
+
+	// Fall back to the bundled YAML so `factorly blueprint show <name>` can
+	// preview a blueprint before installation.
+	if bp := blueprints.BundledByName(name); bp != nil {
+		_, err := os.Stdout.Write([]byte(bp.YAML))
+		return err
+	}
+
+	return fmt.Errorf("blueprint %q is not installed and is not in the bundled catalog", name)
 }
 
 func runBlueprintInstall(cmd *cobra.Command, args []string) error {
@@ -293,5 +321,5 @@ func isBundledName(source string) bool {
 func init() {
 	blueprintInstallCmd.Flags().BoolVar(&blueprintInstallDryRun, "dry-run", false, "preview without writing")
 	blueprintInstallCmd.Flags().BoolVar(&blueprintInstallNoPrompt, "no-prompt", false, "skip interactive vault key prompts")
-	blueprintCmd.AddCommand(blueprintInstallCmd, blueprintUninstallCmd, blueprintListCmd)
+	blueprintCmd.AddCommand(blueprintInstallCmd, blueprintUninstallCmd, blueprintListCmd, blueprintShowCmd)
 }

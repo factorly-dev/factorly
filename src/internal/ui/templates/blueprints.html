@@ -42,6 +42,8 @@
         <td class="px-4 py-3 text-xs text-gray-600">{{if .Version}}{{.Version}}{{else}}<span class="text-gray-300">—</span>{{end}}</td>
         <td class="px-4 py-3 text-xs text-gray-600">{{if .Description}}{{.Description}}{{else}}<span class="text-gray-300">—</span>{{end}}</td>
         <td class="px-4 py-3 text-right">
+          <a href="/blueprints/installed/{{.Name}}/yaml" hx-boost="false"
+             class="text-gray-400 hover:text-indigo-600 text-xs mr-3">View YAML</a>
           <button data-blueprint-action="uninstall" data-blueprint-name="{{.Name}}"
                   class="text-red-400 hover:text-red-600 text-xs">Uninstall</button>
         </td>

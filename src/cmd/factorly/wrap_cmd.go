@@ -185,7 +185,7 @@ func runWrap(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	s := factorlyServer.New(reg, p)
+	s := factorlyServer.New(reg, p, cfg, "")
 
 	ctx, stop := signal.NotifyContext(context.Background(),
 		os.Interrupt, syscall.SIGTERM)

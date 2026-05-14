@@ -169,8 +169,13 @@ func runUI(cmd *cobra.Command, args []string) error {
 
 	// Optionally mount MCP endpoint on the UI server's mux
 	if uiMCP {
-		mcpSrv := factorlyServer.New(reg, p)
+		mcpSrv := factorlyServer.New(reg, p, cfg, configPath)
 		mcpHTTP := mcpserver.NewStreamableHTTPServer(mcpSrv)
+		// Re-register MCP resources whenever the UI reloads config so the
+		// list_changed notification fires for connected clients.
+		srv.OnReload = func() {
+			factorlyServer.RefreshResources(mcpSrv, srv.Config(), srv.CfgPath())
+		}
 
 		// Resolve MCP token: flag → env var → vault refs
 		if uiMCPToken == "" {

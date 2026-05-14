@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-dev/factorly/internal/configyaml"
 )
 
 func (s *Server) handleWorkflowNew(w http.ResponseWriter, r *http.Request) {
@@ -390,6 +391,26 @@ func (s *Server) handleWorkflowRunPanel(w http.ResponseWriter, r *http.Request) 
 	s.renderPartial(w, "workflow_run_panel", map[string]any{
 		"Name":   name,
 		"Params": tc.Parameters,
+	})
+}
+
+// handleWorkflowYAML renders the workflow's YAML definition. 404s for
+// non-workflow tools so the breadcrumb stays correct.
+func (s *Server) handleWorkflowYAML(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	tc, ok := s.cfg.Tools[name]
+	if !ok || tc.Type != "workflow" {
+		http.NotFound(w, r)
+		return
+	}
+	s.renderYAMLView(w, r, yamlViewArgs{
+		Name:         name,
+		Heading:      name,
+		Subheading:   "Workflow definition",
+		BackHref:     "/workflows/" + name,
+		BackLabel:    "Back to " + name,
+		DownloadName: name + ".yaml",
+		Render:       func() ([]byte, error) { return configyaml.RenderTool(name, tc) },
 	})
 }
 

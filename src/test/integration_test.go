@@ -3897,3 +3897,64 @@ func TestExampleBlueprintGmailInstalls(t *testing.T) {
 		}
 	}
 }
+
+// TestToolsShowAndBlueprintShow verifies the read-only "show" subcommands
+// reach the same YAML serializer used by the MCP resources surface and the
+// UI's "View YAML" page. Smoke covers: a configured tool, a not-configured
+// tool, an installed blueprint, and a bundled (but not installed) blueprint.
+func TestToolsShowAndBlueprintShow(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools:
+  echo:
+    type: cli
+    command: echo
+    description: print arg
+    args:
+      - hi
+`,
+	})
+
+	// `factorly tools show echo` — happy path
+	stdout, _, code := run(t, dir, "tools", "show", "echo")
+	if code != 0 {
+		t.Fatalf("tools show: exit %d, %s", code, stdout)
+	}
+	if !strings.Contains(stdout, "echo:") || !strings.Contains(stdout, "command: echo") {
+		t.Errorf("tools show stdout missing expected fields:\n%s", stdout)
+	}
+
+	// `factorly tools show nope` — nonzero exit + error message
+	stdout, _, code = run(t, dir, "tools", "show", "nope")
+	if code == 0 {
+		t.Errorf("tools show nope: expected nonzero exit, got 0; stdout=%q", stdout)
+	}
+
+	// Install a bundled blueprint, then `factorly blueprint show` reads the
+	// installed copy from disk.
+	_, _, code = run(t, dir, "blueprint", "install", "linear", "--no-prompt")
+	if code != 0 {
+		t.Fatalf("blueprint install linear failed: exit %d", code)
+	}
+	stdout, _, code = run(t, dir, "blueprint", "show", "linear")
+	if code != 0 {
+		t.Fatalf("blueprint show linear: exit %d, %s", code, stdout)
+	}
+	if !strings.Contains(stdout, "name: linear") {
+		t.Errorf("blueprint show stdout missing header:\n%s", stdout)
+	}
+
+	// `factorly blueprint show <not-installed>` — falls back to bundled.
+	stdout, _, code = run(t, dir, "blueprint", "show", "github")
+	if code != 0 {
+		t.Fatalf("blueprint show github (bundled fallback): exit %d, %s", code, stdout)
+	}
+	if !strings.Contains(stdout, "name: github") {
+		t.Errorf("blueprint show github stdout missing header:\n%s", stdout)
+	}
+
+	// `factorly blueprint show nope` — neither installed nor bundled.
+	stdout, _, code = run(t, dir, "blueprint", "show", "definitely-not-a-blueprint")
+	if code == 0 {
+		t.Errorf("blueprint show nope: expected nonzero exit, got 0; stdout=%q", stdout)
+	}
+}

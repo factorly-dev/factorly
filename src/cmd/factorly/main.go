@@ -19,6 +19,7 @@ import (
 	"github.com/factorly-dev/factorly/internal"
 	"github.com/factorly-dev/factorly/internal/builtins"
 	"github.com/factorly-dev/factorly/internal/config"
+	"github.com/factorly-dev/factorly/internal/configyaml"
 	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/factorly-dev/factorly/internal/oauth"
 	"github.com/factorly-dev/factorly/internal/openapi"
@@ -159,6 +160,31 @@ var toolsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all configured tools",
 	RunE:  runToolsList,
+}
+
+var toolsShowCmd = &cobra.Command{
+	Use:   "show <name>",
+	Short: "Print a tool's (or workflow's) YAML definition to stdout",
+	Args:  requireArgs(1, "factorly tools show <name>"),
+	RunE:  runToolsShow,
+}
+
+func runToolsShow(cmd *cobra.Command, args []string) error {
+	name := args[0]
+	cfg, _, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	tc, ok := cfg.Tools[name]
+	if !ok {
+		return fmt.Errorf("tool %q is not configured", name)
+	}
+	out, err := configyaml.RenderTool(name, tc)
+	if err != nil {
+		return err
+	}
+	_, err = os.Stdout.Write(out)
+	return err
 }
 
 func runToolsList(cmd *cobra.Command, args []string) error {
@@ -470,7 +496,7 @@ func init() {
 	importOpenAPICmd.Flags().StringVarP(&importOpenAPIPrefix, "prefix", "p", "", "tool name prefix (default: from spec title)")
 	importCmd.AddCommand(importOpenAPICmd)
 
-	toolsCmd.AddCommand(toolsListCmd, addCmd, removeCmd, importCmd, recordCmd, statusCmd)
+	toolsCmd.AddCommand(toolsListCmd, toolsShowCmd, addCmd, removeCmd, importCmd, recordCmd, statusCmd)
 	utilsCmd.AddCommand(autocompleteCmd)
 	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, authCmd, serveCmd, wrapCmd, execCmd, logsCmd, utilsCmd, uiCmd, blueprintCmd)
 }

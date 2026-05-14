@@ -1608,3 +1608,115 @@ func TestToolCreate_CLI_PersistsEnvAndIsolation(t *testing.T) {
 		t.Errorf("env_isolation not persisted; got %q", got.EnvIsolation)
 	}
 }
+
+func TestHandleToolYAML(t *testing.T) {
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"echo":       {Type: "cli", Command: "echo", Description: "echo back"},
+			"deploy.all": {Type: "workflow", Steps: []config.StepConfig{{Tool: "echo"}}},
+		},
+	}
+	srv, _ := testServer(t, cfg)
+
+	// Happy path
+	req := httptest.NewRequest("GET", "/tools/echo/yaml", nil)
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "echo") || !strings.Contains(w.Body.String(), "command: echo") {
+		t.Errorf("expected yaml in body, got:\n%s", w.Body.String())
+	}
+
+	// Workflow under /tools/ → 404 (separate route)
+	req = httptest.NewRequest("GET", "/tools/deploy.all/yaml", nil)
+	w = httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("workflow under /tools/ should 404, got %d", w.Code)
+	}
+
+	// Unknown tool → 404
+	req = httptest.NewRequest("GET", "/tools/nope/yaml", nil)
+	w = httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("unknown → 404, got %d", w.Code)
+	}
+
+	// ?download=1 → application/yaml + attachment disposition
+	req = httptest.NewRequest("GET", "/tools/echo/yaml?download=1", nil)
+	w = httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("download: expected 200, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/yaml" {
+		t.Errorf("download Content-Type = %q, want application/yaml", ct)
+	}
+	if cd := w.Header().Get("Content-Disposition"); !strings.Contains(cd, "echo.yaml") {
+		t.Errorf("download Content-Disposition missing filename: %q", cd)
+	}
+}
+
+func TestHandleWorkflowYAML(t *testing.T) {
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"echo":       {Type: "cli", Command: "echo"},
+			"deploy.all": {Type: "workflow", Description: "deploy", Steps: []config.StepConfig{{Tool: "echo"}}},
+		},
+	}
+	srv, _ := testServer(t, cfg)
+
+	req := httptest.NewRequest("GET", "/workflows/deploy.all/yaml", nil)
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "type: workflow") {
+		t.Errorf("expected workflow yaml in body, got:\n%s", w.Body.String())
+	}
+
+	// Non-workflow tool under /workflows/ → 404
+	req = httptest.NewRequest("GET", "/workflows/echo/yaml", nil)
+	w = httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("non-workflow → 404, got %d", w.Code)
+	}
+}
+
+func TestHandleBlueprintYAML(t *testing.T) {
+	srv, cfgPath := testServer(t, nil)
+
+	// cfgPath is <dir>/factorly.yaml; blueprints live under <dir>/.factorly/blueprints.
+	bpDir := filepath.Join(filepath.Dir(cfgPath), ".factorly", "blueprints")
+	if err := os.MkdirAll(bpDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bpYAML := []byte("# my blueprint\nname: gmail\nversion: 1.0.0\n")
+	if err := os.WriteFile(filepath.Join(bpDir, "gmail.yaml"), bpYAML, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest("GET", "/blueprints/installed/gmail/yaml", nil)
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	// Comment should be preserved (raw bytes, not re-marshal)
+	if !strings.Contains(w.Body.String(), "# my blueprint") {
+		t.Errorf("expected blueprint comment preserved, got:\n%s", w.Body.String())
+	}
+
+	// Missing blueprint → 404
+	req = httptest.NewRequest("GET", "/blueprints/installed/nope/yaml", nil)
+	w = httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("missing blueprint → 404, got %d", w.Code)
+	}
+}
