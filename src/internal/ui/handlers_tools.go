@@ -325,6 +325,27 @@ func (s *Server) handleToolCreate(w http.ResponseWriter, r *http.Request) {
 		if args := r.FormValue("args"); args != "" {
 			tc.Args = splitArgs(args)
 		}
+		// Env vars (key/value rows) + isolation toggle
+		envKeys := r.Form["env_key[]"]
+		envVals := r.Form["env_val[]"]
+		env := make(map[string]string)
+		for i, k := range envKeys {
+			k = strings.TrimSpace(k)
+			if k == "" {
+				continue
+			}
+			v := ""
+			if i < len(envVals) {
+				v = envVals[i]
+			}
+			env[k] = v
+		}
+		if len(env) > 0 {
+			tc.Env = env
+		}
+		if r.FormValue("env_isolation") == "strict" {
+			tc.EnvIsolation = "strict"
+		}
 	case "rest":
 		tc.BaseURL = r.FormValue("base_url")
 		tc.Method = r.FormValue("method")
@@ -422,6 +443,31 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 			tc.Args = splitArgs(args)
 		} else {
 			tc.Args = nil
+		}
+		// Env vars (key/value rows) + isolation toggle
+		envKeys := r.Form["env_key[]"]
+		envVals := r.Form["env_val[]"]
+		env := make(map[string]string)
+		for i, k := range envKeys {
+			k = strings.TrimSpace(k)
+			if k == "" {
+				continue
+			}
+			v := ""
+			if i < len(envVals) {
+				v = envVals[i]
+			}
+			env[k] = v
+		}
+		if len(env) > 0 {
+			tc.Env = env
+		} else {
+			tc.Env = nil
+		}
+		if r.FormValue("env_isolation") == "strict" {
+			tc.EnvIsolation = "strict"
+		} else {
+			tc.EnvIsolation = ""
 		}
 	case "rest":
 		tc.BaseURL = r.FormValue("base_url")

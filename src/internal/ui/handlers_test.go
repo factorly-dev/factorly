@@ -1491,3 +1491,120 @@ func TestRegisterTool_LazyCreatesWorkflowProvider(t *testing.T) {
 		t.Errorf("provider lookup still failed after lazy-create: %v", err)
 	}
 }
+
+// TestToolSave_CLI_PersistsEnvAndIsolation guards against the env-vars UI
+// form fields being dropped on save. Posting env_key[]/env_val[] rows and
+// the env_isolation toggle should round-trip into cfg.Tools and the
+// registry/provider.
+func TestToolSave_CLI_PersistsEnvAndIsolation(t *testing.T) {
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"my.cli": {Type: "cli", Command: "echo"},
+		},
+	}
+	srv, _ := testServerWithProxy(t, cfg)
+	srv.registerTool("my.cli", cfg.Tools["my.cli"])
+
+	form := url.Values{}
+	form.Set("description", "updated")
+	form.Set("command", "echo")
+	form.Set("args", "hi")
+	form.Add("env_key[]", "FOO")
+	form.Add("env_val[]", "bar")
+	form.Add("env_key[]", "TOKEN")
+	form.Add("env_val[]", "{{vault:MY_TOKEN}}")
+	form.Add("env_key[]", "") // blank row should be ignored
+	form.Add("env_val[]", "ignored")
+	form.Set("env_isolation", "strict")
+
+	req := httptest.NewRequest("POST", "/tools/my.cli", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	got := srv.cfg.Tools["my.cli"]
+	if got.Env["FOO"] != "bar" {
+		t.Errorf("env FOO not persisted; got %v", got.Env)
+	}
+	if got.Env["TOKEN"] != "{{vault:MY_TOKEN}}" {
+		t.Errorf("env TOKEN (vault ref) not persisted; got %v", got.Env)
+	}
+	if _, ok := got.Env[""]; ok {
+		t.Errorf("blank env key should have been skipped; got %v", got.Env)
+	}
+	if got.EnvIsolation != "strict" {
+		t.Errorf("env_isolation not persisted; got %q", got.EnvIsolation)
+	}
+
+	// Now clear env via a follow-up save (empty rows) and confirm Env is
+	// reset to nil rather than left stale.
+	form2 := url.Values{}
+	form2.Set("description", "updated again")
+	form2.Set("command", "echo")
+	// no env_key[] / env_val[] / env_isolation
+	req2 := httptest.NewRequest("POST", "/tools/my.cli", strings.NewReader(form2.Encode()))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w2 := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("clear save: expected 200, got %d: %s", w2.Code, w2.Body.String())
+	}
+	got2 := srv.cfg.Tools["my.cli"]
+	if got2.Env != nil {
+		t.Errorf("env should be cleared on save with no env rows; got %v", got2.Env)
+	}
+	if got2.EnvIsolation != "" {
+		t.Errorf("env_isolation should be cleared when toggle is off; got %q", got2.EnvIsolation)
+	}
+}
+
+// TestToolCreate_CLI_PersistsEnvAndIsolation guards against env-vars UI rows
+// being dropped when creating a new CLI tool. Same parsing as the save path,
+// but exercised through POST /tools/_new.
+func TestToolCreate_CLI_PersistsEnvAndIsolation(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+
+	form := url.Values{}
+	form.Set("name", "test.envcli")
+	form.Set("type", "cli")
+	form.Set("description", "with env")
+	form.Set("command", "printenv")
+	form.Add("env_key[]", "FOO")
+	form.Add("env_val[]", "bar")
+	form.Add("env_key[]", "TOKEN")
+	form.Add("env_val[]", "{{vault:MY_TOKEN}}")
+	form.Add("env_key[]", "") // blank should be skipped
+	form.Add("env_val[]", "ignored")
+	form.Set("env_isolation", "strict")
+
+	req := httptest.NewRequest("POST", "/tools/_new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d: %s", w.Code, w.Body.String())
+	}
+
+	got, ok := srv.cfg.Tools["test.envcli"]
+	if !ok {
+		t.Fatal("tool not registered in cfg")
+	}
+	if got.Env["FOO"] != "bar" {
+		t.Errorf("env FOO not persisted; got %v", got.Env)
+	}
+	if got.Env["TOKEN"] != "{{vault:MY_TOKEN}}" {
+		t.Errorf("env TOKEN (vault ref) not persisted; got %v", got.Env)
+	}
+	if _, ok := got.Env[""]; ok {
+		t.Errorf("blank env key should have been skipped; got %v", got.Env)
+	}
+	if got.EnvIsolation != "strict" {
+		t.Errorf("env_isolation not persisted; got %q", got.EnvIsolation)
+	}
+}

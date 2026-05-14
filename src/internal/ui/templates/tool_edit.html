@@ -134,6 +134,27 @@
                    class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
           </div>
 
+          <div>
+            <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Environment</label>
+            <div id="env-list" class="space-y-1 mb-1">
+              {{range $k, $v := .Tool.Env}}
+              <div class="env-row flex gap-1">
+                <input type="text" name="env_key[]" value="{{$k}}" placeholder="VAR_NAME"
+                       class="w-1/3 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
+                <input type="text" name="env_val[]" value="{{$v}}" placeholder="value or {{"{{vault:KEY}}"}}"
+                       class="flex-1 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
+                <button type="button" onclick="this.closest('.env-row').remove()" class="text-gray-300 hover:text-red-500 text-xs px-1">✕</button>
+              </div>
+              {{end}}
+            </div>
+            <button type="button" onclick="addEnv()" class="inline-flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700">{{icon "plus"}} env var</button>
+            <label class="mt-2 flex items-center gap-2 text-[10px] text-gray-500">
+              <input type="checkbox" name="env_isolation" value="strict" {{if eq .Tool.EnvIsolation "strict"}}checked{{end}}
+                     class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-200">
+              <span>Strict isolation — start the child with a minimal env instead of inheriting the parent's</span>
+            </label>
+          </div>
+
           {{else if eq .Tool.Type "rest"}}
           <div class="flex gap-2">
             <div class="w-28">
@@ -469,6 +490,18 @@ function addHeader() {
     <input type="text" name="header_key[]" placeholder="Header name" class="w-1/3 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
     <input type="text" name="header_val[]" placeholder="value" class="flex-1 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
     <button type="button" onclick="this.closest('.header-row').remove()" class="text-gray-300 hover:text-red-500 text-xs px-1">✕</button>
+  `;
+  list.appendChild(row);
+}
+
+function addEnv() {
+  const list = document.getElementById('env-list');
+  const row = document.createElement('div');
+  row.className = 'env-row flex gap-1';
+  row.innerHTML = `
+    <input type="text" name="env_key[]" placeholder="VAR_NAME" class="w-1/3 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
+    <input type="text" name="env_val[]" placeholder="value or {{"{{vault:KEY}}"}}" class="flex-1 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
+    <button type="button" onclick="this.closest('.env-row').remove()" class="text-gray-300 hover:text-red-500 text-xs px-1">✕</button>
   `;
   list.appendChild(row);
 }
