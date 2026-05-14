@@ -10,6 +10,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{if .Title}}{{.Title}} — {{end}}Factorly</title>
   <link rel="icon" type="image/png" href="/static/logo.png">
+  <link rel="stylesheet" href="/static/style.css">
   <script src="/static/tailwind.js"></script>
   <script src="/static/htmx.min.js"></script>
   <script src="/static/sse.js"></script>
@@ -137,7 +138,7 @@
     {{end}}
 
     <!-- Main content -->
-    <main class="flex-1 overflow-y-auto p-6">
+    <main id="main-content" class="flex-1 overflow-y-auto p-6">
       <div class="max-w-5xl mx-auto">
         {{template "content" .}}
       </div>

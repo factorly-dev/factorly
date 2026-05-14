@@ -147,6 +147,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /workflows/{name}/add-step", s.handleWorkflowAddStep)
 	s.mux.HandleFunc("GET /workflows/{name}/step-params", s.handleWorkflowStepParams)
 	s.mux.HandleFunc("POST /workflows/{name}/save", s.handleWorkflowSave)
+	s.mux.HandleFunc("GET /workflows/{name}/run-panel", s.handleWorkflowRunPanel)
 	s.mux.HandleFunc("POST /workflows/{name}/run", s.handleWorkflowRun)
 	s.mux.HandleFunc("POST /workflows/{name}/duplicate", s.handleWorkflowDuplicate)
 	s.mux.HandleFunc("DELETE /workflows/{name}", s.handleWorkflowDelete)

@@ -5,7 +5,8 @@
     <span class="text-[10px] text-gray-400 font-mono">{{.Name}}</span>
   </div>
 
-  <form hx-post="/tools/{{.Name}}/try" hx-target="#try-result" hx-swap="innerHTML" hx-indicator="#try-spinner"
+  <form data-run-form
+        hx-post="/tools/{{.Name}}/try" hx-target="#try-result" hx-swap="innerHTML" hx-indicator="#try-spinner"
         hx-on::before-request="document.getElementById('try-result').innerHTML=''">
     {{if .Params}}
     <div class="space-y-3 mb-4">
@@ -33,10 +34,11 @@
     <p class="text-xs text-gray-400 mb-4">No parameters.</p>
     {{end}}
 
-    <button type="submit"
+    <button type="submit" data-run-btn
             class="w-full px-4 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm inline-flex items-center justify-center gap-2">
       {{icon "play"}} Run
     </button>
+    <p data-run-hint class="mt-2 text-center text-[10px] text-gray-400">Save or cancel your changes to run</p>
     <span id="try-spinner" class="htmx-indicator block mt-2 text-center text-xs text-gray-400">
       <span class="inline-block animate-pulse">●</span> executing...
     </span>

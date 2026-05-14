@@ -1,2 +1,15 @@
 /* Factorly UI — minimal custom styles beyond Tailwind */
 .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+
+/* Dirty-form state for tool/workflow edit pages. Toggled by setting
+   data-dirty="1" on the wrapper marked .dirty-aware.
+   When clean: Save is disabled, Cancel hidden, Run enabled.
+   When dirty: Save is enabled, Cancel shown, Run is disabled (user must
+   save or cancel first). */
+.dirty-aware [data-save-btn] { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+.dirty-aware [data-cancel-btn] { display: none; }
+.dirty-aware[data-dirty="1"] [data-save-btn] { opacity: 1; cursor: pointer; pointer-events: auto; }
+.dirty-aware[data-dirty="1"] [data-cancel-btn] { display: inline-block; }
+.dirty-aware[data-dirty="1"] [data-run-btn] { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+.dirty-aware[data-dirty="1"] [data-run-hint] { display: block; }
+.dirty-aware [data-run-hint] { display: none; }

@@ -283,6 +283,13 @@ func (s *Server) handleWorkflowSave(w http.ResponseWriter, r *http.Request) {
 	s.cfg.Tools[name] = tc
 	s.registerTool(name, tc)
 
+	// htmx callers get an inline status fragment so save-and-run can chain.
+	// Non-htmx form posts redirect back to the edit page as before.
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<span class="text-green-600 text-xs font-medium">✓ Saved</span>`)
+		return
+	}
 	http.Redirect(w, r, "/workflows/"+name, http.StatusFound)
 }
 
@@ -368,6 +375,22 @@ func (s *Server) handleWorkflowDelete(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("HX-Redirect", "/workflows")
 	w.WriteHeader(http.StatusOK)
+}
+
+// handleWorkflowRunPanel renders just the run-form partial. The workflow
+// edit page calls this after a save so the run form's inputs reflect the
+// freshly-saved parameter list before chaining a Save-and-Run.
+func (s *Server) handleWorkflowRunPanel(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	tc, ok := s.cfg.Tools[name]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	s.renderPartial(w, "workflow_run_panel", map[string]any{
+		"Name":   name,
+		"Params": tc.Parameters,
+	})
 }
 
 func (s *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) {
