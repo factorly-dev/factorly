@@ -5,7 +5,8 @@
     <span class="text-[10px] text-gray-400 font-mono">{{.Name}}</span>
   </div>
 
-  <form hx-post="/tools/{{.Name}}/try" hx-target="#try-result" hx-swap="innerHTML" hx-indicator="#try-spinner">
+  <form hx-post="/tools/{{.Name}}/try" hx-target="#try-result" hx-swap="innerHTML" hx-indicator="#try-spinner"
+        hx-on::before-request="document.getElementById('try-result').innerHTML=''">
     {{if .Params}}
     <div class="space-y-3 mb-4">
       {{range .Params}}

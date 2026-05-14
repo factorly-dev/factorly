@@ -329,7 +329,8 @@
       <form hx-post="/workflows/{{.Name}}/run"
             hx-target="#run-result"
             hx-swap="innerHTML"
-            hx-indicator="#run-spinner">
+            hx-indicator="#run-spinner"
+            hx-on::before-request="document.getElementById('run-result').innerHTML=''">
 
         {{if .Params}}
         <div class="space-y-3 mb-4">
