@@ -17,12 +17,23 @@
           {{if .Required}}<span class="text-red-400">*</span>{{end}}
           {{if .Type}}<span class="text-gray-300 font-normal">{{.Type}}</span>{{end}}
         </label>
+        {{if eq .Type "boolean"}}
+        <label class="flex items-start gap-2 text-xs text-gray-600">
+          <input type="checkbox" name="param_{{.Name}}" value="true"
+                 {{if or (eq .Default "true") (eq .Default "1") (eq .Default "yes")}}checked{{end}}
+                 class="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-200">
+          <span>
+            {{if .Description}}<span class="text-gray-400">{{.Description}}</span>{{end}}
+            <span class="text-[10px] text-gray-300"> (default: {{if or (eq .Default "true") (eq .Default "1") (eq .Default "yes")}}true{{else}}false{{end}})</span>
+          </span>
+        </label>
+        {{else if eq .Type "text"}}
         {{if .Description}}<p class="text-[10px] text-gray-400 mb-1">{{.Description}}</p>{{end}}
-        {{if eq .Type "text"}}
         <textarea name="param_{{.Name}}" rows="4"
                   class="w-full px-3 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200"
                   {{if .Required}}required{{end}}>{{.Default}}</textarea>
         {{else}}
+        {{if .Description}}<p class="text-[10px] text-gray-400 mb-1">{{.Description}}</p>{{end}}
         <input type="text" name="param_{{.Name}}" value="{{.Default}}"
                class="w-full px-3 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200"
                {{if .Required}}required{{end}}>
