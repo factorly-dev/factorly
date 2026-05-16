@@ -919,10 +919,12 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			}
 			registered++
 		}
-		if registered > 0 {
-			p.RegisterProvider("code", cp)
-			vlog("initialized code provider (%d code tools)", registered)
-		}
+		// Always register the provider when at least one code tool is in
+		// the config — even if every script failed to compile. That way
+		// invoking a broken code tool surfaces a meaningful error instead
+		// of "no provider for tool X (key: code)".
+		p.RegisterProvider("code", cp)
+		vlog("initialized code provider (%d/%d code tools compiled)", registered, len(codeTools))
 	}
 
 	return p, nil

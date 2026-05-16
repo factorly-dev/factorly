@@ -44,10 +44,13 @@ type Provider struct {
 	scripts map[string]*entry
 }
 
-// entry is one registered code tool's compiled state.
+// entry is one registered code tool's compiled state. If compileErr is
+// non-nil the script failed validation and Execute should return the
+// stored error instead of attempting to run.
 type entry struct {
-	src      string
-	maxCalls int
+	src        string
+	maxCalls   int
+	compileErr error
 }
 
 // NewProvider creates a code provider wired to the given executor.
@@ -67,20 +70,22 @@ func (p *Provider) Teardown() error { return nil }
 
 // RegisterCode validates the script and stashes it for later execution.
 // Validation runs yaegi against the source so syntax errors, missing
-// `Run`, wrong signature, and denied imports all surface here — before
-// any agent tries to invoke the tool. Callers should log a warning and
-// skip the tool when this returns an error rather than fail config load.
+// `Run`, wrong signature, and denied imports all surface here.
+//
+// When validation fails, the script is still stashed with its compile
+// error so a later Execute call returns a helpful "script failed to
+// compile" message rather than the proxy's generic "no provider"
+// failure mode. RegisterCode still returns the error so the caller can
+// log a warning at registration time too.
 func (p *Provider) RegisterCode(name, src string, maxCalls int) error {
-	if err := validateScript(src); err != nil {
-		return err
-	}
 	if maxCalls <= 0 {
 		maxCalls = DefaultMaxCalls
 	}
+	compileErr := validateScript(src)
 	p.mu.Lock()
-	p.scripts[name] = &entry{src: src, maxCalls: maxCalls}
+	p.scripts[name] = &entry{src: src, maxCalls: maxCalls, compileErr: compileErr}
 	p.mu.Unlock()
-	return nil
+	return compileErr
 }
 
 // RemoveCode unregisters a previously-registered script. Used by the UI
@@ -109,6 +114,15 @@ func (p *Provider) ExecuteWithContext(ctx context.Context, toolName string, para
 	p.mu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("code provider: tool %q not registered", toolName)
+	}
+	// Script was registered but failed yaegi validation. Surface the
+	// compile error as a script-level failure (ExitCode 1) so callers see
+	// the underlying message and can fix the source.
+	if e.compileErr != nil {
+		return &provider.Result{
+			Error:    fmt.Sprintf("script failed to compile: %v", e.compileErr),
+			ExitCode: 1,
+		}, nil
 	}
 
 	start := time.Now()

@@ -342,3 +342,35 @@ func Run(params map[string]string) (any, error) { return "x", nil }`
 		t.Errorf("expected not-registered error, got %v", err)
 	}
 }
+
+// TestRegisterCode_StashesCompileError ensures that when a script fails
+// validation, ExecuteWithContext still finds the tool and returns a
+// helpful "script failed to compile" message — never the generic "no
+// provider" failure mode the proxy emits.
+func TestRegisterCode_StashesCompileError(t *testing.T) {
+	p := NewProvider(&fakeExecutor{}, false)
+
+	// Bad map literal — same shape as the user's real error.
+	bad := `package s
+func Run(params map[string]string) (any, error) {
+    _ = map[string]string{:"value"}
+    return nil, nil
+}`
+	if err := p.RegisterCode("broken", bad, 100); err == nil {
+		t.Fatal("expected compile error from RegisterCode")
+	}
+
+	// Despite the registration error, the tool should be addressable —
+	// so Execute returns the underlying compile message instead of
+	// "not registered" (which the proxy would mask as "no provider").
+	res, err := p.ExecuteWithContext(context.Background(), "broken", nil)
+	if err != nil {
+		t.Fatalf("ExecuteWithContext should return (*Result, nil), got err: %v", err)
+	}
+	if res.ExitCode != 1 {
+		t.Errorf("ExitCode = %d, want 1", res.ExitCode)
+	}
+	if !strings.Contains(res.Error, "compile") {
+		t.Errorf("Error = %q, want to contain 'compile'", res.Error)
+	}
+}
