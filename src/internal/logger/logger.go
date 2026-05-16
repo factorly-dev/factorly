@@ -38,6 +38,12 @@ type Entry struct {
 	ProcessedBytes  int               `json:"processed_bytes,omitempty"`
 	PrevHash        string            `json:"prev_hash,omitempty"`
 	Hash            string            `json:"hash,omitempty"`
+	// SourceSHA is the SHA-256 (hex) of a code-tool's script body when
+	// the call ran inside the code provider, or the agent-supplied
+	// source body when the future factorly.code builtin invoked yaegi.
+	// Lets the audit log identify "what code actually ran" without
+	// inlining the source itself.
+	SourceSHA string `json:"source_sha,omitempty"`
 }
 
 type Logger interface {

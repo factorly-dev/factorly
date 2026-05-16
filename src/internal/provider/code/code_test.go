@@ -374,3 +374,103 @@ func Run(params map[string]string) (any, error) {
 		t.Errorf("Error = %q, want to contain 'compile'", res.Error)
 	}
 }
+
+// TestRun_BypassesRegistry guards the V2 foundation: the public Run
+// method compiles + executes an arbitrary source string without needing
+// the script to be registered first. This is the entry point a future
+// factorly.code builtin will use to run agent-supplied source.
+func TestRun_BypassesRegistry(t *testing.T) {
+	fake := &fakeExecutor{
+		respond: func(name string, params map[string]string) (*provider.Result, error) {
+			return &provider.Result{Output: "ok"}, nil
+		},
+	}
+	p := NewProvider(fake, false)
+
+	src := `package s
+import "factorly"
+func Run(params map[string]string) (any, error) {
+    res, err := factorly.Call("anything", nil)
+    if err != nil { return nil, err }
+    return res.Output + ":" + params["x"], nil
+}`
+	res, err := p.Run(context.Background(), src, map[string]string{"x": "hi"}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Output != "ok:hi" {
+		t.Errorf("Output = %q", res.Output)
+	}
+}
+
+// TestListTools_SnapshotInScript guards factorly.ListTools() — scripts
+// can introspect the registered tool set (name + params) and the
+// snapshot is stable for the duration of one Run.
+func TestListTools_SnapshotInScript(t *testing.T) {
+	fake := &fakeExecutorWithList{
+		fakeExecutor: fakeExecutor{},
+		tools: []ToolInfo{
+			{Name: "alpha", Description: "first"},
+			{Name: "beta", Description: "second", Parameters: []ParamInfo{
+				{Name: "q", Type: "string", Required: true, Description: "the query"},
+			}},
+		},
+	}
+	p := NewProvider(fake, false)
+
+	src := `package s
+import (
+    "factorly"
+    "strings"
+)
+func Run(params map[string]string) (any, error) {
+    tools := factorly.ListTools()
+    names := []string{}
+    for _, t := range tools {
+        names = append(names, t.Name)
+    }
+    return strings.Join(names, ","), nil
+}`
+	res, err := p.Run(context.Background(), src, nil, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Output, "alpha") || !strings.Contains(res.Output, "beta") {
+		t.Errorf("Output = %q, want both tool names", res.Output)
+	}
+}
+
+func TestSourceSHA_StableHash(t *testing.T) {
+	p := NewProvider(&fakeExecutor{}, false)
+	src := `package s
+func Run(params map[string]string) (any, error) { return "x", nil }`
+	if err := p.RegisterCode("t", src, 100); err != nil {
+		t.Fatal(err)
+	}
+	got := p.SourceSHA("t")
+	if got == "" {
+		t.Fatal("expected non-empty SHA")
+	}
+	if got != SHA(src) {
+		t.Errorf("SourceSHA mismatch: provider=%s, direct=%s", got, SHA(src))
+	}
+	// SHA-256 hex is 64 chars.
+	if len(got) != 64 {
+		t.Errorf("SHA length = %d, want 64", len(got))
+	}
+	// Unknown tool → "".
+	if p.SourceSHA("nope") != "" {
+		t.Errorf("unknown tool should yield empty SHA")
+	}
+}
+
+// fakeExecutorWithList adds the optional toolLister capability so we
+// can exercise factorly.ListTools without standing up the real proxy.
+type fakeExecutorWithList struct {
+	fakeExecutor
+	tools []ToolInfo
+}
+
+func (f *fakeExecutorWithList) ListVisibleToolsForScript() []ToolInfo {
+	return f.tools
+}

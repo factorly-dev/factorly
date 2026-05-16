@@ -23,3 +23,21 @@ func (r *Result) IsError() bool {
 	}
 	return r.ExitCode != 0 || r.Error != ""
 }
+
+// ToolInfo describes one registered tool surfaced into the in-script
+// SDK via factorly.ListTools(). Hidden tools are excluded.
+type ToolInfo struct {
+	Name        string
+	Description string
+	Parameters  []ParamInfo
+}
+
+// ParamInfo describes one parameter of a tool. Type is the declared
+// type or "string" by default.
+type ParamInfo struct {
+	Name        string
+	Type        string
+	Required    bool
+	Description string
+	Default     string
+}

@@ -856,7 +856,11 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 		vlog("logging disabled (FACTORLY_NO_LOG set)")
 		logIface = logger.NopLogger{}
 	} else {
-		log, err := logger.NewJSONL("")
+		// FACTORLY_LOG_PATH overrides the default ~/.config/factorly/calls.jsonl
+		// location. Useful for isolation in tests and for advanced users
+		// who want per-project audit logs.
+		logPath := os.Getenv("FACTORLY_LOG_PATH")
+		log, err := logger.NewJSONL(logPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to open log: %v\n", err)
 			logIface = logger.NopLogger{}

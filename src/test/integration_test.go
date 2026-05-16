@@ -6,6 +6,8 @@
 package test
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -4007,5 +4009,245 @@ func TestCodeToolEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "hello from cli x3") {
 		t.Errorf("stdout missing expected output: %q", stdout)
+	}
+}
+
+// TestCodeToolListsRegisteredTools exercises factorly.ListTools() against
+// the real proxy + registry. Confirms the script sees the CLI tool's
+// declared parameters and itself, and that a hidden tool is excluded.
+// Covers the V2 foundation seam where the proxy's
+// ListVisibleToolsForScript builds code.ToolInfo from registry data.
+func TestCodeToolListsRegisteredTools(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools:
+  data.source:
+    type: cli
+    description: emits a fixed payload
+    command: echo
+    args: ["hi"]
+    parameters:
+      - name: format
+        description: payload format hint
+        type: string
+        required: true
+      - name: limit
+        type: integer
+        default: "10"
+  internal.helper:
+    type: cli
+    description: should not appear
+    hidden: true
+    command: echo
+    args: ["secret"]
+  introspect:
+    type: code
+    description: dump the visible tool catalogue
+    code: |
+      package main
+      import (
+          "encoding/json"
+          "factorly"
+      )
+      func Run(params map[string]string) (any, error) {
+          return factorly.ListTools(), nil
+      }
+      var _ = json.Marshal
+`,
+	})
+
+	stdout, stderr, code := run(t, dir, "call", "introspect")
+	if code != 0 {
+		t.Fatalf("call introspect: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+
+	var tools []struct {
+		Name        string
+		Description string
+		Parameters  []struct {
+			Name        string
+			Type        string
+			Required    bool
+			Description string
+			Default     string
+		}
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &tools); err != nil {
+		t.Fatalf("parsing tools JSON: %v\nraw stdout: %s", err, stdout)
+	}
+
+	byName := map[string]int{}
+	for i, t := range tools {
+		byName[t.Name] = i
+	}
+
+	// Visible tools should be present.
+	for _, name := range []string{"data.source", "introspect", "factorly.shell", "factorly.fetch"} {
+		if _, ok := byName[name]; !ok {
+			names := make([]string, 0, len(byName))
+			for k := range byName {
+				names = append(names, k)
+			}
+			t.Errorf("expected tool %q in ListTools output; got %v", name, names)
+		}
+	}
+
+	// Hidden tool must be excluded.
+	if _, ok := byName["internal.helper"]; ok {
+		t.Errorf("hidden tool internal.helper should not appear in ListTools output")
+	}
+
+	// data.source should expose its declared parameters with metadata.
+	idx, ok := byName["data.source"]
+	if !ok {
+		t.Fatal("data.source missing from output")
+	}
+	ds := tools[idx]
+	if ds.Description != "emits a fixed payload" {
+		t.Errorf("data.source description = %q", ds.Description)
+	}
+	var formatP, limitP *struct {
+		Name        string
+		Type        string
+		Required    bool
+		Description string
+		Default     string
+	}
+	for i := range ds.Parameters {
+		p := &ds.Parameters[i]
+		switch p.Name {
+		case "format":
+			formatP = p
+		case "limit":
+			limitP = p
+		}
+	}
+	if formatP == nil {
+		t.Fatal("data.source param 'format' missing")
+	}
+	if !formatP.Required {
+		t.Errorf("format should be required")
+	}
+	if formatP.Type != "string" {
+		t.Errorf("format type = %q, want string", formatP.Type)
+	}
+	if formatP.Description != "payload format hint" {
+		t.Errorf("format description = %q", formatP.Description)
+	}
+	if limitP == nil {
+		t.Fatal("data.source param 'limit' missing")
+	}
+	if limitP.Default != "10" {
+		t.Errorf("limit default = %q, want 10", limitP.Default)
+	}
+}
+
+// TestCodeToolStampsSourceSHAInAuditLog verifies the audit log entry
+// for a code-tool call carries a 64-char hex SHA-256 of the script body
+// in source_sha. Also verifies a non-code call (CLI tool) leaves the
+// field empty. Uses FACTORLY_LOG_PATH to redirect the audit log into a
+// temp file so the test stays isolated from the user's real log.
+func TestCodeToolStampsSourceSHAInAuditLog(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools:
+  echo.cli:
+    type: cli
+    description: plain CLI tool
+    command: printf
+    args: ["%s", "ok"]
+  echo.code:
+    type: code
+    description: a code tool
+    code: |
+      package main
+      func Run(params map[string]string) (any, error) {
+          return "ok from code", nil
+      }
+`,
+	})
+
+	logPath := filepath.Join(t.TempDir(), "calls.jsonl")
+
+	runWithLog := func(args ...string) (string, int) {
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"FACTORLY_LOG_PATH="+logPath,
+			"FACTORLY_NO_UPDATE_CHECK=1",
+		)
+		var out, errb strings.Builder
+		cmd.Stdout = &out
+		cmd.Stderr = &errb
+		err := cmd.Run()
+		code := 0
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				code = ee.ExitCode()
+			} else {
+				t.Fatalf("run %v: %v\nstderr: %s", args, err, errb.String())
+			}
+		}
+		return out.String(), code
+	}
+
+	if _, code := runWithLog("call", "echo.code"); code != 0 {
+		t.Fatalf("call echo.code: exit %d", code)
+	}
+	if _, code := runWithLog("call", "echo.cli"); code != 0 {
+		t.Fatalf("call echo.cli: exit %d", code)
+	}
+
+	// Walk the JSONL log; collect the two relevant entries.
+	f, err := os.Open(logPath)
+	if err != nil {
+		t.Fatalf("open log: %v", err)
+	}
+	defer f.Close()
+
+	type entry struct {
+		Tool      string `json:"tool"`
+		SourceSHA string `json:"source_sha"`
+		Status    string `json:"status"`
+	}
+	var codeEntry, cliEntry *entry
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		var e entry
+		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+			t.Fatalf("parsing log line: %v\nline: %s", err, scanner.Text())
+		}
+		switch e.Tool {
+		case "echo.code":
+			ec := e
+			codeEntry = &ec
+		case "echo.cli":
+			ce := e
+			cliEntry = &ce
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scanning log: %v", err)
+	}
+
+	if codeEntry == nil {
+		t.Fatal("no audit entry for echo.code")
+	}
+	if cliEntry == nil {
+		t.Fatal("no audit entry for echo.cli")
+	}
+	if codeEntry.Status != "success" {
+		t.Errorf("echo.code status = %q, want success", codeEntry.Status)
+	}
+	if len(codeEntry.SourceSHA) != 64 {
+		t.Errorf("code-tool source_sha length = %d, want 64 (hex SHA-256); got %q", len(codeEntry.SourceSHA), codeEntry.SourceSHA)
+	}
+	for _, c := range codeEntry.SourceSHA {
+		isHex := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')
+		if !isHex {
+			t.Errorf("source_sha contains non-hex char %q in %q", c, codeEntry.SourceSHA)
+			break
+		}
+	}
+	if cliEntry.SourceSHA != "" {
+		t.Errorf("CLI tool should not have source_sha; got %q", cliEntry.SourceSHA)
 	}
 }

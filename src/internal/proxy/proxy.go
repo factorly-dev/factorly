@@ -16,6 +16,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/factorly-dev/factorly/internal/output"
 	"github.com/factorly-dev/factorly/internal/provider"
+	codeprov "github.com/factorly-dev/factorly/internal/provider/code"
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/factorly-dev/factorly/internal/shadow"
 	"github.com/factorly-dev/factorly/internal/vault"
@@ -67,6 +68,9 @@ type CallEvent struct {
 	AgentID      string
 	Output       string
 	Error        string
+	// SourceSHA mirrors logger.Entry.SourceSHA — present when the tool
+	// that ran was a code tool (or, in V2, the factorly.code builtin).
+	SourceSHA string
 }
 
 type Proxy struct {
@@ -112,6 +116,43 @@ func (p *Proxy) Provider(key string) provider.Provider {
 // Shadow returns the shadow policy, or nil if none is configured.
 func (p *Proxy) Shadow() *shadow.Policy {
 	return p.shadow
+}
+
+// ListVisibleToolsForScript satisfies the optional toolLister interface
+// the code provider uses to surface factorly.ListTools() into scripts.
+// Returns non-hidden tools only; mirrors what MCP's tools/list and the
+// `factorly tools` CLI show. Snapshot at call time; the caller (code
+// provider) snapshots again at script start to keep the in-script view
+// stable.
+func (p *Proxy) ListVisibleToolsForScript() []codeprov.ToolInfo {
+	tools := p.registry.ListVisible()
+	out := make([]codeprov.ToolInfo, 0, len(tools))
+	for _, t := range tools {
+		// Hide tools blocked outright by shadow policy — they aren't
+		// callable, so the script shouldn't be advertised them.
+		if p.shadow != nil && p.shadow.IsDenied(t.Name) {
+			continue
+		}
+		ti := codeprov.ToolInfo{
+			Name:        t.Name,
+			Description: t.Description,
+		}
+		for _, par := range t.Parameters {
+			pType := par.Type
+			if pType == "" {
+				pType = "string"
+			}
+			ti.Parameters = append(ti.Parameters, codeprov.ParamInfo{
+				Name:        par.Name,
+				Type:        pType,
+				Required:    par.Required,
+				Description: par.Description,
+				Default:     par.Default,
+			})
+		}
+		out = append(out, ti)
+	}
+	return out
 }
 
 // Teardown shuts down all providers (closes child processes, connections).
@@ -301,6 +342,14 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		entry.Status = "success"
 		entry.Output = result.Output
 	}
+	// Stamp the source SHA for code-tool calls so the audit trail can
+	// identify exactly which script body ran, without inlining the
+	// source itself.
+	if tool.ProviderKey == "code" {
+		if cp, ok := prov.(*codeprov.Provider); ok {
+			entry.SourceSHA = cp.SourceSHA(toolName)
+		}
+	}
 	if logErr := p.logger.Log(entry); logErr != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to log call: %v\n", logErr)
 	}
@@ -328,6 +377,7 @@ func (p *Proxy) emitCallEvent(entry *logger.Entry) {
 		AgentID:      entry.AgentID,
 		Output:       output,
 		Error:        entry.Error,
+		SourceSHA:    entry.SourceSHA,
 	})
 }
 

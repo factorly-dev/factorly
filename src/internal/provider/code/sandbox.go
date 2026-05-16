@@ -47,14 +47,22 @@ func stdlibSubset() interp.Exports {
 // call counter and invokes the proxy.
 type callFunc func(name string, params map[string]string) (*Result, error)
 
+// listToolsFunc is the signature scripts see as factorly.ListTools. The
+// host wires each script execution with a snapshot of currently-visible
+// tools so the snapshot is stable for the duration of one Run.
+type listToolsFunc func() []ToolInfo
+
 // factorlyExports builds the in-script "factorly" package. The map key
 // "factorly/factorly" follows yaegi's "importpath/pkgname" convention so
 // the script can write `import "factorly"`.
-func factorlyExports(call callFunc) interp.Exports {
+func factorlyExports(call callFunc, list listToolsFunc) interp.Exports {
 	return interp.Exports{
 		"factorly/factorly": {
-			"Call":   reflect.ValueOf(call),
-			"Result": reflect.ValueOf((*Result)(nil)),
+			"Call":      reflect.ValueOf(call),
+			"ListTools": reflect.ValueOf(list),
+			"Result":    reflect.ValueOf((*Result)(nil)),
+			"ToolInfo":  reflect.ValueOf((*ToolInfo)(nil)),
+			"ParamInfo": reflect.ValueOf((*ParamInfo)(nil)),
 		},
 	}
 }

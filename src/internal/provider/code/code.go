@@ -14,6 +14,8 @@ package code
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -21,6 +23,13 @@ import (
 
 	"github.com/factorly-dev/factorly/internal/provider"
 )
+
+// SHA returns the SHA-256 (hex) of a script source. Public so the proxy
+// can compute the same hash for log entries when needed.
+func SHA(src string) string {
+	sum := sha256.Sum256([]byte(src))
+	return hex.EncodeToString(sum[:])
+}
 
 // DefaultMaxCalls is the cap on inner factorly.Call invocations per
 // script execution when the tool's max_calls field is unset.
@@ -88,6 +97,20 @@ func (p *Provider) RegisterCode(name, src string, maxCalls int) error {
 	return compileErr
 }
 
+// SourceSHA returns the SHA-256 of the registered script for toolName,
+// or "" if the tool isn't registered. Used by the proxy to stamp call
+// events / audit log entries with a stable identifier for the source
+// that actually ran.
+func (p *Provider) SourceSHA(toolName string) string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	e, ok := p.scripts[toolName]
+	if !ok {
+		return ""
+	}
+	return SHA(e.src)
+}
+
 // RemoveCode unregisters a previously-registered script. Used by the UI
 // when a tool is deleted or renamed.
 func (p *Provider) RemoveCode(name string) {
@@ -124,11 +147,27 @@ func (p *Provider) ExecuteWithContext(ctx context.Context, toolName string, para
 			ExitCode: 1,
 		}, nil
 	}
+	return p.Run(ctx, e.src, params, e.maxCalls)
+}
+
+// Run compiles + executes an arbitrary script source. Unlike
+// ExecuteWithContext it doesn't go through the registered-scripts map —
+// the caller supplies the source directly. Used by ExecuteWithContext
+// for registered type:code tools, and intended to be used by a future
+// factorly.code builtin that takes agent-supplied source at call time.
+//
+// maxCalls = 0 → DefaultMaxCalls. Returns (*Result, nil) for every
+// outcome (success, script error, panic, compile error). Returns an
+// infrastructure error only for unrecoverable plumbing failures.
+func (p *Provider) Run(ctx context.Context, src string, params map[string]string, maxCalls int) (*provider.Result, error) {
+	if maxCalls <= 0 {
+		maxCalls = DefaultMaxCalls
+	}
 
 	start := time.Now()
 
-	// Per-execution call counter. Wrapping captures e.maxCalls so each
-	// script gets its own budget without sharing state across runs.
+	// Per-execution call counter. Wrapping captures maxCalls so each
+	// script invocation gets its own budget without sharing state.
 	var (
 		callCount int
 		callMu    sync.Mutex
@@ -138,8 +177,8 @@ func (p *Provider) ExecuteWithContext(ctx context.Context, toolName string, para
 		callCount++
 		current := callCount
 		callMu.Unlock()
-		if current > e.maxCalls {
-			return nil, fmt.Errorf("script exceeded max_calls (%d) — increase max_calls on the tool definition or reduce the script's call volume", e.maxCalls)
+		if current > maxCalls {
+			return nil, fmt.Errorf("script exceeded max_calls (%d) — increase max_calls on the tool definition or reduce the script's call volume", maxCalls)
 		}
 		res, err := p.executor.ExecuteWithContext(ctx, name, callParams, "code")
 		if err != nil {
@@ -153,7 +192,7 @@ func (p *Provider) ExecuteWithContext(ctx context.Context, toolName string, para
 		}, nil
 	}
 
-	val, runErr := runScript(ctx, e.src, params, call)
+	val, runErr := runScript(ctx, src, params, call, p.tools())
 	duration := time.Since(start)
 
 	// Map (val, runErr) → provider.Result per the documented contract.
@@ -182,4 +221,22 @@ func (p *Provider) ExecuteWithContext(ctx context.Context, toolName string, para
 	}
 
 	return out, nil
+}
+
+// tools returns the current snapshot of registered tools for the
+// in-script factorly.ListTools() helper. Excludes hidden tools. Returns
+// an empty slice if the executor doesn't expose a tool inventory.
+func (p *Provider) tools() []ToolInfo {
+	lister, ok := p.executor.(toolLister)
+	if !ok {
+		return nil
+	}
+	return lister.ListVisibleToolsForScript()
+}
+
+// toolLister is the optional capability ToolExecutor implementations
+// can expose to surface tool metadata into the in-script SDK. The proxy
+// implements this via ListVisibleToolsForScript on *proxy.Proxy.
+type toolLister interface {
+	ListVisibleToolsForScript() []ToolInfo
 }

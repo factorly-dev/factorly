@@ -50,7 +50,8 @@ func validateScript(src string) error {
 	noopCall := func(string, map[string]string) (*Result, error) {
 		return &Result{}, nil
 	}
-	if err := i.Use(factorlyExports(noopCall)); err != nil {
+	noopList := func() []ToolInfo { return nil }
+	if err := i.Use(factorlyExports(noopCall, noopList)); err != nil {
 		return fmt.Errorf("factorly setup: %w", err)
 	}
 	if _, err := i.Eval(src); err != nil {
@@ -71,7 +72,7 @@ func validateScript(src string) error {
 // (any, error) result returned. Yaegi's EvalWithContext is used for
 // timeout/cancellation: it runs in a goroutine internally, recovers
 // panics into an interp.Panic error, and cancels via ctx.
-func runScript(ctx context.Context, src string, params map[string]string, call callFunc) (any, error) {
+func runScript(ctx context.Context, src string, params map[string]string, call callFunc, tools []ToolInfo) (any, error) {
 	pkgName, err := extractPackageName(src)
 	if err != nil {
 		return nil, err
@@ -80,7 +81,11 @@ func runScript(ctx context.Context, src string, params map[string]string, call c
 	if err := i.Use(stdlibSubset()); err != nil {
 		return nil, fmt.Errorf("stdlib setup: %w", err)
 	}
-	if err := i.Use(factorlyExports(call)); err != nil {
+	// Snapshot tools at script-start so multiple calls to
+	// factorly.ListTools within one Run see a stable view.
+	toolsSnap := append([]ToolInfo(nil), tools...)
+	list := func() []ToolInfo { return toolsSnap }
+	if err := i.Use(factorlyExports(call, list)); err != nil {
 		return nil, fmt.Errorf("factorly setup: %w", err)
 	}
 	if _, err := i.EvalWithContext(ctx, src); err != nil {
