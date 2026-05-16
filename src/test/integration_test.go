@@ -3958,3 +3958,54 @@ func TestToolsShowAndBlueprintShow(t *testing.T) {
 		t.Errorf("blueprint show nope: expected nonzero exit, got 0; stdout=%q", stdout)
 	}
 }
+
+// TestCodeToolEndToEnd installs a type: code tool whose script calls
+// a sibling CLI tool, transforms its output, and returns a string.
+// Exercises the full provider/proxy/yaegi pipeline through the real CLI
+// binary. Uses a CLI tool (not factorly.fetch) so the test stays
+// hermetic without poking holes in the URL safety guard.
+func TestCodeToolEndToEnd(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools:
+  data.source:
+    type: cli
+    description: emits a fixed JSON payload
+    command: printf
+    args:
+      - '%s'
+      - '{"message":"hello from cli","count":3}'
+  greet.test:
+    type: code
+    description: call data.source and extract the message field
+    code: |
+      package main
+      import (
+          "encoding/json"
+          "errors"
+          "factorly"
+          "strconv"
+      )
+      func Run(params map[string]string) (any, error) {
+          res, err := factorly.Call("data.source", nil)
+          if err != nil { return nil, err }
+          if res.IsError() { return nil, errors.New(res.Error) }
+          var body struct{
+              Message string ` + "`json:\"message\"`" + `
+              Count   int    ` + "`json:\"count\"`" + `
+          }
+          if err := json.Unmarshal([]byte(res.Output), &body); err != nil {
+              return nil, err
+          }
+          return body.Message + " x" + strconv.Itoa(body.Count), nil
+      }
+`,
+	})
+
+	stdout, stderr, code := run(t, dir, "call", "greet.test")
+	if code != 0 {
+		t.Fatalf("call greet.test: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "hello from cli x3") {
+		t.Errorf("stdout missing expected output: %q", stdout)
+	}
+}

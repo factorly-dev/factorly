@@ -1,0 +1,23 @@
+# Example: a `type: code` tool that calls factorly.fetch and reshapes
+# the JSON response. Drop into .factorly/ to install. The script must
+# declare `func Run(params map[string]string) (any, error)`. Allowed
+# imports: fmt, strings, strconv, time, encoding/json, errors, factorly.
+tools:
+  github.zen:
+    type: code
+    description: Fetch the GitHub Zen koan via factorly.fetch and return it.
+    code: |
+      package main
+      import "factorly"
+      func Run(params map[string]string) (any, error) {
+          res, err := factorly.Call("factorly.fetch", map[string]string{
+              "url": "https://api.github.com/zen",
+          })
+          if err != nil {
+              return nil, err
+          }
+          if res.IsError() {
+              return nil, nil
+          }
+          return res.Output, nil
+      }

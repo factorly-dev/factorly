@@ -314,6 +314,8 @@ func (s *Server) handleToolFormPartial(w http.ResponseWriter, r *http.Request) {
 		partialName = "tool_form_rest"
 	case "mcp":
 		partialName = "tool_form_mcp"
+	case "code":
+		partialName = "tool_form_code"
 	}
 	s.renderPartial(w, partialName, nil)
 }
@@ -379,6 +381,13 @@ func (s *Server) handleToolCreate(w http.ResponseWriter, r *http.Request) {
 			tc.Args = splitArgs(args)
 		}
 		tc.URL = r.FormValue("url")
+	case "code":
+		tc.Code = r.FormValue("code")
+		if mc := r.FormValue("max_calls"); mc != "" {
+			if n, err := strconv.Atoi(mc); err == nil {
+				tc.MaxCalls = n
+			}
+		}
 	}
 
 	// Parse auth (for REST tools)
@@ -522,6 +531,17 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 			tc.Args = splitArgs(args)
 		} else {
 			tc.Args = nil
+		}
+	case "code":
+		tc.Code = r.FormValue("code")
+		if mc := r.FormValue("max_calls"); mc != "" {
+			if n, err := strconv.Atoi(mc); err == nil {
+				tc.MaxCalls = n
+			} else {
+				tc.MaxCalls = 0
+			}
+		} else {
+			tc.MaxCalls = 0
 		}
 	}
 

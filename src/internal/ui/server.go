@@ -18,6 +18,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/oauth"
 	"github.com/factorly-dev/factorly/internal/output"
 	"github.com/factorly-dev/factorly/internal/provider"
+	codeprov "github.com/factorly-dev/factorly/internal/provider/code"
 	"github.com/factorly-dev/factorly/internal/proxy"
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/factorly-dev/factorly/internal/shadow"
@@ -342,6 +343,8 @@ func (s *Server) registerProvider(name string, tc config.ToolConfig) []string {
 		s.registerRESTProvider(name, tc, &vaultKeys)
 	case "workflow":
 		s.registerWorkflowProvider(name, tc)
+	case "code":
+		s.registerCodeProvider(name, tc)
 	}
 	return vaultKeys
 }
@@ -487,6 +490,26 @@ func (s *Server) registerWorkflowProvider(name string, tc config.ToolConfig) {
 	wp.RegisterWorkflow(name, steps)
 }
 
+// registerCodeProvider lazy-creates the code provider on first use and
+// compiles the script. A compile/lookup failure is logged but doesn't
+// fail the registration of the surrounding tool — the user can fix the
+// code through the UI and re-save.
+func (s *Server) registerCodeProvider(name string, tc config.ToolConfig) {
+	prov := s.proxy.Provider("code")
+	if prov == nil {
+		cp := codeprov.NewProvider(s.proxy, false)
+		s.proxy.RegisterProvider("code", cp)
+		prov = cp
+	}
+	cp, ok := prov.(*codeprov.Provider)
+	if !ok {
+		return
+	}
+	if err := cp.RegisterCode(name, tc.Code, tc.MaxCalls); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: code tool %q failed to compile: %v\n", name, err)
+	}
+}
+
 // unregisterTool removes a tool from the live registry and provider.
 func (s *Server) unregisterTool(name string) {
 	if s.registry == nil {
@@ -503,6 +526,8 @@ func (s *Server) unregisterTool(name string) {
 					p.RemoveTool(name)
 				case *provider.WorkflowProvider:
 					p.RemoveWorkflow(name)
+				case *codeprov.Provider:
+					p.RemoveCode(name)
 				}
 			}
 		}

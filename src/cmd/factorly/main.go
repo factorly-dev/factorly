@@ -25,6 +25,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/openapi"
 	"github.com/factorly-dev/factorly/internal/output"
 	"github.com/factorly-dev/factorly/internal/provider"
+	codeprov "github.com/factorly-dev/factorly/internal/provider/code"
 	"github.com/factorly-dev/factorly/internal/proxy"
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/factorly-dev/factorly/internal/shadow"
@@ -622,6 +623,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	restTools := make(map[string]provider.RESTToolDef)
 	mcpServers := make(map[string]provider.MCPServerDef)
 	workflowDefs := make(map[string][]provider.WorkflowStep)
+	codeTools := make(map[string]config.ToolConfig)
 	hasOAuth := false
 
 	for name, toolCfg := range cfg.Tools {
@@ -760,6 +762,9 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			}
 			workflowDefs[name] = steps
 			vlog("  registered workflow: %s (%d steps)", name, len(steps))
+		case "code":
+			codeTools[name] = toolCfg
+			vlog("  registered code tool: %s", name)
 		}
 
 		// Store vault keys on registry tool for audit logging
@@ -899,6 +904,25 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 		}
 		p.RegisterProvider("workflow", wp)
 		vlog("initialized workflow provider (%d workflows)", len(workflowDefs))
+	}
+
+	// Wire code provider after proxy creation. Bad scripts (compile error,
+	// missing Run, denied import) log a warning and are skipped so a single
+	// broken tool doesn't fail the whole config load.
+	if len(codeTools) > 0 {
+		cp := codeprov.NewProvider(p, verbose)
+		registered := 0
+		for name, tc := range codeTools {
+			if err := cp.RegisterCode(name, tc.Code, tc.MaxCalls); err != nil {
+				vlog("warning: code tool %q failed to register: %v", name, err)
+				continue
+			}
+			registered++
+		}
+		if registered > 0 {
+			p.RegisterProvider("code", cp)
+			vlog("initialized code provider (%d code tools)", registered)
+		}
 	}
 
 	return p, nil

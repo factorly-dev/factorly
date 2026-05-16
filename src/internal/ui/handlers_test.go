@@ -1720,3 +1720,62 @@ func TestHandleBlueprintYAML(t *testing.T) {
 		t.Errorf("missing blueprint → 404, got %d", w.Code)
 	}
 }
+
+// TestToolSave_Code_PersistsParameters guards against a regression where
+// editing a code tool dropped the parameters list. The save handler must
+// parse param_name_<i>/param_type_<i>/etc. for code tools just like it
+// does for cli/rest/mcp.
+func TestToolSave_Code_PersistsParameters(t *testing.T) {
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"my.code": {
+				Type:        "code",
+				Description: "orig",
+				Code:        "package m\nfunc Run(params map[string]string) (any, error) { return \"x\", nil }",
+			},
+		},
+	}
+	srv, _ := testServerWithProxy(t, cfg)
+	srv.registerTool("my.code", cfg.Tools["my.code"])
+
+	form := url.Values{}
+	form.Set("description", "updated")
+	form.Set("code", "package m\nfunc Run(params map[string]string) (any, error) { return params[\"who\"], nil }")
+	form.Set("max_calls", "50")
+	form.Set("param_name_0", "who")
+	form.Set("param_type_0", "string")
+	form.Set("param_in_0", "query")
+	form.Set("param_required_0", "on")
+	form.Set("param_default_0", "world")
+	form.Set("param_desc_0", "the greetee")
+
+	req := httptest.NewRequest("POST", "/tools/my.code", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	got := srv.cfg.Tools["my.code"]
+	if len(got.Parameters) != 1 {
+		t.Fatalf("Parameters not persisted, got %d entries: %+v", len(got.Parameters), got.Parameters)
+	}
+	p := got.Parameters[0]
+	if p.Name != "who" {
+		t.Errorf("param Name = %q, want who", p.Name)
+	}
+	if p.Default != "world" {
+		t.Errorf("param Default = %q, want world", p.Default)
+	}
+	if !p.Required {
+		t.Error("param Required should be true")
+	}
+	if got.MaxCalls != 50 {
+		t.Errorf("MaxCalls = %d, want 50", got.MaxCalls)
+	}
+	if !strings.Contains(got.Code, "params[\"who\"]") {
+		t.Errorf("Code body not updated; got:\n%s", got.Code)
+	}
+}

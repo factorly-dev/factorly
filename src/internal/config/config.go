@@ -95,6 +95,10 @@ type ToolConfig struct {
 	// Workflow fields
 	Steps []StepConfig `yaml:"steps,omitempty"`
 
+	// Code fields (type: code) — inline Go source executed in yaegi.
+	Code     string `yaml:"code,omitempty"`
+	MaxCalls int    `yaml:"max_calls,omitempty"` // cap on factorly.Call invocations per script run; 0 → default
+
 	// Shadow (oversight)
 	Shadow *ShadowConfig `yaml:"shadow,omitempty"`
 
@@ -631,7 +635,7 @@ func validate(cfg *Config) error {
 	if len(cfg.Tools) == 0 {
 		return nil
 	}
-	validTypes := map[string]bool{"cli": true, "mcp": true, "rest": true, "workflow": true}
+	validTypes := map[string]bool{"cli": true, "mcp": true, "rest": true, "workflow": true, "code": true}
 	for name, tool := range cfg.Tools {
 		if tool.Type == "" {
 			return fmt.Errorf("config: tool %q missing type", name)

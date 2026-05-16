@@ -106,4 +106,6 @@ function removeStep(btn) {
   if (document.querySelectorAll('.step-row').length === 0) {
     document.getElementById('steps-list').innerHTML = '<div class="px-4 py-8 text-center text-gray-400 text-sm" id="empty-state">No steps. Click "+ Add" to start.</div>';
   }
+  const area = document.getElementById('tool-edit-area');
+  if (area) area.dataset.dirty = '1';
 }
