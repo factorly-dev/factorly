@@ -16,8 +16,11 @@ import (
 	"time"
 )
 
-// BuiltinHandler is a function that executes a built-in tool in-process.
-type BuiltinHandler func(params map[string]string) (*Result, error)
+// BuiltinHandler executes a built-in tool in-process. Handlers receive
+// the caller's context so deadlines and cancellation propagate (e.g.,
+// an outer code-tool timeout cancels the inner shell command).
+// Handlers may layer their own timeout on top via context.WithTimeout.
+type BuiltinHandler func(ctx context.Context, params map[string]string) (*Result, error)
 
 // BuiltinProvider executes built-in tools in-process without forking subprocesses.
 type BuiltinProvider struct {
@@ -51,13 +54,24 @@ func NewBuiltinProvider(mode string, rootDir string) *BuiltinProvider {
 func (bp *BuiltinProvider) Setup() error    { return nil }
 func (bp *BuiltinProvider) Teardown() error { return nil }
 
+// Execute satisfies provider.Provider. Uses context.Background() — the
+// proxy's ExecuteWithContext path on the BuiltinProvider plumbs the
+// real caller context through to handlers; this no-ctx entry point
+// stays here for compatibility with the existing interface.
 func (bp *BuiltinProvider) Execute(toolName string, params map[string]string) (*Result, error) {
+	return bp.ExecuteWithContext(context.Background(), toolName, params)
+}
+
+// ExecuteWithContext runs the builtin handler for toolName with the
+// caller-supplied context. Handlers honor ctx — deadlines, cancellation,
+// and AfterFunc all propagate.
+func (bp *BuiltinProvider) ExecuteWithContext(ctx context.Context, toolName string, params map[string]string) (*Result, error) {
 	h, ok := bp.handlers[toolName]
 	if !ok {
 		return nil, fmt.Errorf("builtin: unknown tool %q", toolName)
 	}
 	start := time.Now()
-	result, err := h(params)
+	result, err := h(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +106,12 @@ func (bp *BuiltinProvider) scopedPath(path string) (string, *Result) {
 }
 
 // builtinReadFile reads a file using os.ReadFile, scoped to project dir.
-func (bp *BuiltinProvider) builtinReadFile(params map[string]string) (*Result, error) {
+// ctx is checked before the read so an already-canceled caller doesn't
+// pay the I/O cost; stdlib file I/O is itself uncancellable mid-read.
+func (bp *BuiltinProvider) builtinReadFile(ctx context.Context, params map[string]string) (*Result, error) {
+	if err := ctx.Err(); err != nil {
+		return &Result{Error: err.Error(), ExitCode: 1}, nil
+	}
 	abs, errResult := bp.scopedPath(params["path"])
 	if errResult != nil {
 		return errResult, nil
@@ -105,7 +124,11 @@ func (bp *BuiltinProvider) builtinReadFile(params map[string]string) (*Result, e
 }
 
 // builtinWriteFile writes content to a file using os.WriteFile, scoped to project dir.
-func (bp *BuiltinProvider) builtinWriteFile(params map[string]string) (*Result, error) {
+// Same ctx-pre-check pattern as builtinReadFile.
+func (bp *BuiltinProvider) builtinWriteFile(ctx context.Context, params map[string]string) (*Result, error) {
+	if err := ctx.Err(); err != nil {
+		return &Result{Error: err.Error(), ExitCode: 1}, nil
+	}
 	abs, errResult := bp.scopedPath(params["path"])
 	if errResult != nil {
 		return errResult, nil
@@ -128,17 +151,24 @@ func shellCmd() (string, string) {
 	return "sh", "-c"
 }
 
-// builtinShell executes a shell command with a timeout.
-func builtinShell(params map[string]string) (*Result, error) {
+// builtinShell executes a shell command with a 30s default timeout.
+// The caller's ctx is honored — a caller deadline (e.g., from an outer
+// code-tool timeout) preempts the shell's own 30s when shorter.
+func builtinShell(ctx context.Context, params map[string]string) (*Result, error) {
 	command := params["command"]
 	if command == "" {
 		return &Result{Error: "command is required", ExitCode: 1}, nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	shell, flag := shellCmd()
 	cmd := exec.CommandContext(ctx, shell, flag, command)
+	// Run the shell + its children in a new process group on Unix so
+	// ctx cancellation kills the whole group (sh + any child like sleep).
+	// Without this, `sh -c "sleep 5"` survives ctx cancellation because
+	// SIGKILL goes to sh but not to its sleep child.
+	setShellProcessGroup(cmd)
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -146,10 +176,19 @@ func builtinShell(params map[string]string) (*Result, error) {
 	err := cmd.Run()
 	exitCode := 0
 	if err != nil {
+		// Check ctx first: when the parent ctx is canceled, exec.Cmd.Run
+		// returns a "signal: killed" *exec.ExitError. Falling into the
+		// generic ExitError branch would mask the ctx cancellation as a
+		// normal nonzero exit. Surface the cancel reason instead.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			msg := "command canceled"
+			if ctxErr == context.DeadlineExceeded {
+				msg = "command timed out"
+			}
+			return &Result{Error: msg + ": " + ctxErr.Error(), ExitCode: 124}, nil
+		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
-		} else if ctx.Err() == context.DeadlineExceeded {
-			return &Result{Error: "command timed out after 30s", ExitCode: 124}, nil
 		} else {
 			return &Result{Error: err.Error(), ExitCode: 1}, nil
 		}
@@ -161,8 +200,10 @@ func builtinShell(params map[string]string) (*Result, error) {
 	}, nil
 }
 
-// builtinFetch performs an HTTP GET using net/http.
-func builtinFetch(params map[string]string) (*Result, error) {
+// builtinFetch performs an HTTP GET using net/http. Honors the caller's
+// ctx in addition to a 30s default request timeout — whichever fires
+// first cancels the request.
+func builtinFetch(ctx context.Context, params map[string]string) (*Result, error) {
 	url := params["url"]
 	if url == "" {
 		return &Result{Error: "url is required", ExitCode: 1}, nil
@@ -171,8 +212,14 @@ func builtinFetch(params map[string]string) (*Result, error) {
 		return &Result{Error: "url must start with http:// or https://", ExitCode: 1}, nil
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(url)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
+	if err != nil {
+		return &Result{Error: err.Error(), ExitCode: 1}, nil
+	}
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		return &Result{Error: err.Error(), ExitCode: 1}, nil
 	}
@@ -193,15 +240,16 @@ func builtinFetch(params map[string]string) (*Result, error) {
 	return &Result{Output: string(body)}, nil
 }
 
-// builtinClipboard copies text to the system clipboard.
-func builtinClipboard(params map[string]string) (*Result, error) {
+// builtinClipboard copies text to the system clipboard. Honors the
+// caller's ctx so cancellation cuts a stuck clipboard process short.
+func builtinClipboard(ctx context.Context, params map[string]string) (*Result, error) {
 	text := params["text"]
 	if text == "" {
 		return &Result{Error: "text is required", ExitCode: 1}, nil
 	}
 
 	cmd, args := clipboardCmd()
-	c := exec.Command(cmd, args...)
+	c := exec.CommandContext(ctx, cmd, args...)
 	c.Stdin = strings.NewReader(text)
 
 	if err := c.Run(); err != nil {

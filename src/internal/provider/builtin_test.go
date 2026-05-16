@@ -4,9 +4,12 @@
 package provider
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestBuiltinReadFile(t *testing.T) {
@@ -206,5 +209,53 @@ func TestBuiltinWriteFile_ScopedToProject(t *testing.T) {
 	}
 	if result.ExitCode != 1 {
 		t.Error("expected error for path outside project")
+	}
+}
+
+// TestBuiltinShell_HonorsParentCtxCancel guards the ctx-threading
+// foundation: a parent ctx cancellation must preempt the shell's own
+// 30s internal timeout. Without ctx-propagation a `sleep 5` invoked
+// inside an outer 200ms-deadline call would still run to completion.
+func TestBuiltinShell_HonorsParentCtxCancel(t *testing.T) {
+	bp := NewBuiltinProvider("stdio", "")
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	result, err := bp.ExecuteWithContext(ctx, "factorly.shell", map[string]string{
+		"command": "sleep 5",
+	})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("ctx cancel didn't propagate; ran for %s", elapsed)
+	}
+	if result.ExitCode == 0 {
+		t.Errorf("expected nonzero exit on cancel, got 0; output=%q", result.Output)
+	}
+}
+
+// TestBuiltinReadFile_PreChecksCtx guards the cheap pre-check we added
+// to file handlers: an already-canceled ctx short-circuits before the
+// I/O. Without it, the read would still happen and we'd waste the
+// disk hit even though the caller has given up.
+func TestBuiltinReadFile_PreChecksCtx(t *testing.T) {
+	tmp := filepath.Join(t.TempDir(), "test.txt")
+	if err := os.WriteFile(tmp, []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	bp := NewBuiltinProvider("stdio", "")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	result, err := bp.ExecuteWithContext(ctx, "factorly.read_file", map[string]string{"path": tmp})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExitCode != 1 {
+		t.Errorf("expected nonzero exit on canceled ctx, got %d", result.ExitCode)
+	}
+	if !strings.Contains(result.Error, "canceled") {
+		t.Errorf("expected ctx-canceled error, got %q", result.Error)
 	}
 }

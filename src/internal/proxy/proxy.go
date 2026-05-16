@@ -273,9 +273,22 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		return nil, fmt.Errorf("no provider for tool %q (key: %s)", toolName, tool.ProviderKey)
 	}
 
-	result, err := prov.Execute(toolName, params)
-	if err != nil {
-		return nil, fmt.Errorf("executing %q: %w", toolName, err)
+	// Prefer the context-aware path when the provider offers it so
+	// caller deadlines + cancellation actually propagate into the call.
+	// Falls back to the no-ctx Execute for providers that haven't been
+	// migrated.
+	type ctxExecutor interface {
+		ExecuteWithContext(ctx context.Context, toolName string, params map[string]string) (*provider.Result, error)
+	}
+	var result *provider.Result
+	var execErr error
+	if ce, ok := prov.(ctxExecutor); ok {
+		result, execErr = ce.ExecuteWithContext(ctx, toolName, params)
+	} else {
+		result, execErr = prov.Execute(toolName, params)
+	}
+	if execErr != nil {
+		return nil, fmt.Errorf("executing %q: %w", toolName, execErr)
 	}
 
 	// Apply output processing (compression + truncation)
