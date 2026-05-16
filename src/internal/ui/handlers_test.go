@@ -1772,8 +1772,8 @@ func TestToolSave_Code_PersistsParameters(t *testing.T) {
 	if !p.Required {
 		t.Error("param Required should be true")
 	}
-	if got.MaxCalls != 50 {
-		t.Errorf("MaxCalls = %d, want 50", got.MaxCalls)
+	if got.Shadow == nil || got.Shadow.MaxCalls != 50 {
+		t.Errorf("Shadow.MaxCalls = %v, want 50", got.Shadow)
 	}
 	if !strings.Contains(got.Code, "params[\"who\"]") {
 		t.Errorf("Code body not updated; got:\n%s", got.Code)

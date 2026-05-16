@@ -54,6 +54,14 @@ func NewBuiltinProvider(mode string, rootDir string) *BuiltinProvider {
 func (bp *BuiltinProvider) Setup() error    { return nil }
 func (bp *BuiltinProvider) Teardown() error { return nil }
 
+// RegisterHandler adds or replaces a handler for the named builtin.
+// Lets the bootstrap layer wire late-bound handlers (e.g.,
+// factorly.code, whose closure needs the live code provider that's
+// only created after the proxy itself).
+func (bp *BuiltinProvider) RegisterHandler(name string, h BuiltinHandler) {
+	bp.handlers[name] = h
+}
+
 // Execute satisfies provider.Provider. Uses context.Background() — the
 // proxy's ExecuteWithContext path on the BuiltinProvider plumbs the
 // real caller context through to handlers; this no-ctx entry point

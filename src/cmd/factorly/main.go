@@ -910,28 +910,76 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 		vlog("initialized workflow provider (%d workflows)", len(workflowDefs))
 	}
 
-	// Wire code provider after proxy creation. Bad scripts (compile error,
-	// missing Run, denied import) log a warning and are skipped so a single
-	// broken tool doesn't fail the whole config load.
-	if len(codeTools) > 0 {
+	// Wire code provider after proxy creation. Built in two cases:
+	//   1. User has at least one type:code tool in config (V1 path).
+	//   2. The factorly.code builtin is registered (the agent-authored
+	//      script path — V2). In stdio mode it's always registered.
+	//
+	// Bad scripts (compile error, missing Run, denied import) log a
+	// warning and are skipped so a single broken tool doesn't fail the
+	// whole config load.
+	_, hasCodeBuiltin := cfg.Tools["factorly.code"]
+	if len(codeTools) > 0 || hasCodeBuiltin {
 		cp := codeprov.NewProvider(p, verbose)
 		registered := 0
 		for name, tc := range codeTools {
-			if err := cp.RegisterCode(name, tc.Code, tc.MaxCalls); err != nil {
+			maxCalls := 0
+			if tc.Shadow != nil {
+				maxCalls = tc.Shadow.MaxCalls
+			}
+			if err := cp.RegisterCode(name, tc.Code, maxCalls); err != nil {
 				vlog("warning: code tool %q failed to register: %v", name, err)
 				continue
 			}
 			registered++
 		}
-		// Always register the provider when at least one code tool is in
-		// the config — even if every script failed to compile. That way
-		// invoking a broken code tool surfaces a meaningful error instead
-		// of "no provider for tool X (key: code)".
 		p.RegisterProvider("code", cp)
 		vlog("initialized code provider (%d/%d code tools compiled)", registered, len(codeTools))
+
+		// V2: register the factorly.code builtin handler now that the
+		// code provider exists. Handler unpacks `code` + `params` and
+		// delegates to cp.Run with the user-configured (or default)
+		// max_calls budget read from the builtin's shadow config.
+		if hasCodeBuiltin {
+			if bp, ok := providers["builtin"].(*provider.BuiltinProvider); ok {
+				builtinCfg := cfg.Tools["factorly.code"]
+				bp.RegisterHandler("factorly.code", makeFactorlyCodeHandler(cp, builtinCfg))
+				vlog("initialized factorly.code builtin handler")
+			}
+		}
 	}
 
 	return p, nil
+}
+
+// makeFactorlyCodeHandler returns a builtin handler that compiles +
+// runs an agent-supplied Go script through the code provider. params
+// arrives as map[string]string; the JSON inner "params" field is parsed
+// to a map[string]string and forwarded as the script's Run() arg.
+func makeFactorlyCodeHandler(cp *codeprov.Provider, builtinCfg config.ToolConfig) provider.BuiltinHandler {
+	defaultMaxCalls := 0
+	if builtinCfg.Shadow != nil {
+		defaultMaxCalls = builtinCfg.Shadow.MaxCalls
+	}
+	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
+		src := params["code"]
+		if src == "" {
+			return &provider.Result{Error: "code is required", ExitCode: 1}, nil
+		}
+		// Unpack params["params"] (JSON object) into the map the script's
+		// Run() expects. Tolerate empty/missing → empty map.
+		innerParams := map[string]string{}
+		if raw := params["params"]; raw != "" {
+			var parsed map[string]any
+			if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+				return &provider.Result{Error: "params must be a JSON object: " + err.Error(), ExitCode: 1}, nil
+			}
+			for k, v := range parsed {
+				innerParams[k] = fmt.Sprint(v)
+			}
+		}
+		return cp.Run(ctx, src, innerParams, defaultMaxCalls)
+	}
 }
 
 // checkCommandAllowed returns an error if the command is disabled in config.

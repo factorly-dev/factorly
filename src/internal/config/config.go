@@ -96,8 +96,7 @@ type ToolConfig struct {
 	Steps []StepConfig `yaml:"steps,omitempty"`
 
 	// Code fields (type: code) — inline Go source executed in yaegi.
-	Code     string `yaml:"code,omitempty"`
-	MaxCalls int    `yaml:"max_calls,omitempty"` // cap on factorly.Call invocations per script run; 0 → default
+	Code string `yaml:"code,omitempty"`
 
 	// Shadow (oversight)
 	Shadow *ShadowConfig `yaml:"shadow,omitempty"`
@@ -160,6 +159,7 @@ type ShadowConfig struct {
 	Deny          []string    `yaml:"deny,omitempty"`
 	Confirm       interface{} `yaml:"confirm,omitempty"` // []string or bool
 	RateLimit     string      `yaml:"rate_limit,omitempty"`
+	MaxCalls      int         `yaml:"max_calls,omitempty"` // cap on inner factorly.Call invocations per code-script run (0 → default 100)
 	LogParams     []string    `yaml:"log_params,omitempty"`
 	AllowPatterns []string    `yaml:"allow_patterns,omitempty"` // override denied shell patterns
 	AllowPaths    []string    `yaml:"allow_paths,omitempty"`    // override denied file paths
@@ -635,7 +635,7 @@ func validate(cfg *Config) error {
 	if len(cfg.Tools) == 0 {
 		return nil
 	}
-	validTypes := map[string]bool{"cli": true, "mcp": true, "rest": true, "workflow": true, "code": true}
+	validTypes := map[string]bool{"cli": true, "mcp": true, "rest": true, "workflow": true, "code": true, "builtin": true}
 	for name, tool := range cfg.Tools {
 		if tool.Type == "" {
 			return fmt.Errorf("config: tool %q missing type", name)

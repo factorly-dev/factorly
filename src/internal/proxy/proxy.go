@@ -355,12 +355,20 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		entry.Status = "success"
 		entry.Output = result.Output
 	}
-	// Stamp the source SHA for code-tool calls so the audit trail can
-	// identify exactly which script body ran, without inlining the
-	// source itself.
+	// Stamp the source SHA for code-flavored calls so the audit trail
+	// can identify exactly which script body ran, without inlining the
+	// source itself. Two cases:
+	//   - tool.ProviderKey == "code": registered type:code tool. The
+	//     code provider holds the stashed source — ask it.
+	//   - toolName == "factorly.code": agent-supplied source comes in
+	//     as the `code` param. Hash it directly.
 	if tool.ProviderKey == "code" {
 		if cp, ok := prov.(*codeprov.Provider); ok {
 			entry.SourceSHA = cp.SourceSHA(toolName)
+		}
+	} else if toolName == "factorly.code" {
+		if src := params["code"]; src != "" {
+			entry.SourceSHA = codeprov.SHA(src)
 		}
 	}
 	if logErr := p.logger.Log(entry); logErr != nil {

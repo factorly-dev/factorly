@@ -385,7 +385,10 @@ func (s *Server) handleToolCreate(w http.ResponseWriter, r *http.Request) {
 		tc.Code = r.FormValue("code")
 		if mc := r.FormValue("max_calls"); mc != "" {
 			if n, err := strconv.Atoi(mc); err == nil {
-				tc.MaxCalls = n
+				if tc.Shadow == nil {
+					tc.Shadow = &config.ShadowConfig{}
+				}
+				tc.Shadow.MaxCalls = n
 			}
 		}
 	}
@@ -534,14 +537,19 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 		}
 	case "code":
 		tc.Code = r.FormValue("code")
+		newMaxCalls := 0
 		if mc := r.FormValue("max_calls"); mc != "" {
 			if n, err := strconv.Atoi(mc); err == nil {
-				tc.MaxCalls = n
-			} else {
-				tc.MaxCalls = 0
+				newMaxCalls = n
 			}
-		} else {
-			tc.MaxCalls = 0
+		}
+		if newMaxCalls > 0 {
+			if tc.Shadow == nil {
+				tc.Shadow = &config.ShadowConfig{}
+			}
+			tc.Shadow.MaxCalls = newMaxCalls
+		} else if tc.Shadow != nil {
+			tc.Shadow.MaxCalls = 0
 		}
 	}
 
@@ -567,10 +575,26 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 	deny := splitComma(r.FormValue("shadow_deny"))
 	confirmOn := r.FormValue("shadow_confirm") == "on"
 	rateLimit := r.FormValue("shadow_rate_limit")
-	if len(deny) > 0 || confirmOn || rateLimit != "" {
+	// Preserve fields the type-specific switch above (e.g., code's
+	// max_calls) may have stashed in Shadow before this generic parser
+	// rebuilds it.
+	var preservedMaxCalls int
+	var preservedAllowPatterns, preservedAllowPaths, preservedAllowURLs []string
+	if tc.Shadow != nil {
+		preservedMaxCalls = tc.Shadow.MaxCalls
+		preservedAllowPatterns = tc.Shadow.AllowPatterns
+		preservedAllowPaths = tc.Shadow.AllowPaths
+		preservedAllowURLs = tc.Shadow.AllowURLs
+	}
+	if len(deny) > 0 || confirmOn || rateLimit != "" || preservedMaxCalls > 0 ||
+		len(preservedAllowPatterns) > 0 || len(preservedAllowPaths) > 0 || len(preservedAllowURLs) > 0 {
 		sc := &config.ShadowConfig{
-			Deny:      deny,
-			RateLimit: rateLimit,
+			Deny:          deny,
+			RateLimit:     rateLimit,
+			MaxCalls:      preservedMaxCalls,
+			AllowPatterns: preservedAllowPatterns,
+			AllowPaths:    preservedAllowPaths,
+			AllowURLs:     preservedAllowURLs,
 		}
 		if confirmOn {
 			sc.Confirm = true

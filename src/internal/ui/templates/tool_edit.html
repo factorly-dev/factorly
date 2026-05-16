@@ -265,7 +265,7 @@
           </div>
           <div>
             <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Max factorly.Call invocations</label>
-            <input type="number" name="max_calls" value="{{if .Tool.MaxCalls}}{{.Tool.MaxCalls}}{{end}}" placeholder="100" min="1"
+            <input type="number" name="max_calls" value="{{if and .Tool.Shadow .Tool.Shadow.MaxCalls}}{{.Tool.Shadow.MaxCalls}}{{end}}" placeholder="100" min="1"
                    class="w-32 px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
             <p class="text-[10px] text-gray-400 mt-1">Hard cap on inner tool calls per script run. Default 100.</p>
           </div>

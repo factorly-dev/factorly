@@ -505,7 +505,11 @@ func (s *Server) registerCodeProvider(name string, tc config.ToolConfig) {
 	if !ok {
 		return
 	}
-	if err := cp.RegisterCode(name, tc.Code, tc.MaxCalls); err != nil {
+	maxCalls := 0
+	if tc.Shadow != nil {
+		maxCalls = tc.Shadow.MaxCalls
+	}
+	if err := cp.RegisterCode(name, tc.Code, maxCalls); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: code tool %q failed to compile: %v\n", name, err)
 	}
 }

@@ -4251,3 +4251,161 @@ func TestCodeToolStampsSourceSHAInAuditLog(t *testing.T) {
 		t.Errorf("CLI tool should not have source_sha; got %q", cliEntry.SourceSHA)
 	}
 }
+
+// TestFactorlyCodeBuiltinHappyPath confirms the wire-up: agent submits
+// a code body that returns a string, factorly.code returns it through
+// the proxy and out to stdout.
+func TestFactorlyCodeBuiltinHappyPath(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": "tools: {}\n",
+	})
+	stdout, stderr, code := run(t, dir,
+		"call", "factorly.code",
+		"--code", "package main\nfunc Run(p map[string]string) (any, error) { return \"hello-\" + p[\"name\"], nil }",
+		"--params", `{"name":"world"}`,
+	)
+	if code != 0 {
+		t.Fatalf("call factorly.code: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "hello-world") {
+		t.Errorf("stdout = %q, want to contain 'hello-world'", stdout)
+	}
+}
+
+// TestFactorlyCodeBuiltinCallsInnerTool confirms a submitted script can
+// call a sibling tool via factorly.Call and propagate its output.
+func TestFactorlyCodeBuiltinCallsInnerTool(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools:
+  data.source:
+    type: cli
+    description: emits a fixed payload
+    command: printf
+    args: ["%s", "inner-result"]
+`,
+	})
+	stdout, stderr, code := run(t, dir,
+		"call", "factorly.code",
+		"--code", `package main
+import (
+    "factorly"
+    "errors"
+)
+func Run(p map[string]string) (any, error) {
+    res, err := factorly.Call("data.source", nil)
+    if err != nil { return nil, err }
+    if res.IsError() { return nil, errors.New(res.Error) }
+    return "wrapped: " + res.Output, nil
+}`,
+		"--params", `{}`,
+	)
+	if code != 0 {
+		t.Fatalf("call factorly.code: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "wrapped: inner-result") {
+		t.Errorf("stdout = %q, want to contain 'wrapped: inner-result'", stdout)
+	}
+}
+
+// TestFactorlyCodeBuiltinMaxCallsBudget confirms the user-side
+// shadow.max_calls override on the factorly.code builtin caps the
+// script's inner-call budget. Submitted script loops 200 times calling
+// a no-op tool; user config sets max_calls to 5.
+func TestFactorlyCodeBuiltinMaxCallsBudget(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools:
+  noop:
+    type: cli
+    command: true
+  factorly.code:
+    type: builtin
+    shadow:
+      max_calls: 5
+`,
+	})
+	stdout, stderr, code := run(t, dir,
+		"call", "factorly.code",
+		"--code", `package main
+import (
+    "fmt"
+    "factorly"
+)
+func Run(p map[string]string) (any, error) {
+    for i := 0; i < 200; i++ {
+        _, err := factorly.Call("noop", nil)
+        if err != nil {
+            return nil, fmt.Errorf("call %d: %w", i, err)
+        }
+    }
+    return "completed", nil
+}`,
+		"--params", `{}`,
+	)
+	// Script error → CLI returns nonzero exit. We mainly care that the
+	// budget error message reaches stderr or stdout.
+	combined := stdout + stderr
+	if !strings.Contains(combined, "max_calls") {
+		t.Errorf("expected max_calls budget error\nstdout: %s\nstderr: %s\nexit: %d", stdout, stderr, code)
+	}
+}
+
+// TestFactorlyCodeBuiltinStampsSourceSHA verifies the audit log entry
+// for a factorly.code call carries source_sha computed over the
+// agent-supplied `code` param (V2 path, distinct from V1 type:code
+// tools whose source is stashed in the provider).
+func TestFactorlyCodeBuiltinStampsSourceSHA(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": "tools: {}\n",
+	})
+	logPath := filepath.Join(t.TempDir(), "calls.jsonl")
+
+	cmd := exec.Command(binary,
+		"call", "factorly.code",
+		"--code", "package main\nfunc Run(p map[string]string) (any, error) { return \"sha-test\", nil }",
+		"--params", "{}",
+	)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_LOG_PATH="+logPath,
+		"FACTORLY_NO_UPDATE_CHECK=1",
+	)
+	var out, errb strings.Builder
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("call factorly.code: %v\nstderr: %s", err, errb.String())
+	}
+
+	f, err := os.Open(logPath)
+	if err != nil {
+		t.Fatalf("open log: %v", err)
+	}
+	defer f.Close()
+
+	type entry struct {
+		Tool      string `json:"tool"`
+		SourceSHA string `json:"source_sha"`
+		Status    string `json:"status"`
+	}
+	var got *entry
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		var e entry
+		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+			t.Fatalf("parsing log line: %v", err)
+		}
+		if e.Tool == "factorly.code" {
+			ec := e
+			got = &ec
+		}
+	}
+	if got == nil {
+		t.Fatal("no audit entry for factorly.code")
+	}
+	if got.Status != "success" {
+		t.Errorf("status = %q, want success", got.Status)
+	}
+	if len(got.SourceSHA) != 64 {
+		t.Errorf("source_sha length = %d, want 64 (hex SHA-256); got %q", len(got.SourceSHA), got.SourceSHA)
+	}
+}
