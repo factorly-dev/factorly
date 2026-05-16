@@ -82,7 +82,7 @@
           hx-post="/tools/{{.Tool.Name}}" hx-target="#save-status" hx-swap="innerHTML"
           hx-on:input="document.getElementById('tool-edit-area').dataset.dirty='1'"
           hx-on:change="document.getElementById('tool-edit-area').dataset.dirty='1'"
-          hx-on::after-request="if(event.detail.successful){document.getElementById('tool-edit-area').dataset.dirty=''; setTimeout(() => {htmx.ajax('GET', '/tools/{{.Tool.Name}}', {target:'#tool-edit-form', swap:'outerHTML', select:'#tool-edit-form'}); htmx.ajax('GET', '/tools/{{.Tool.Name}}/try-panel', {target:'#try-panel', swap:'innerHTML'});}, 300)}"
+          hx-on::after-request="if(event.detail.successful && event.detail.elt === this){document.getElementById('tool-edit-area').dataset.dirty=''; setTimeout(() => {htmx.ajax('GET', '/tools/{{.Tool.Name}}', {target:'#tool-edit-form', swap:'outerHTML', select:'#tool-edit-form'}); htmx.ajax('GET', '/tools/{{.Tool.Name}}/try-panel', {target:'#try-panel', swap:'innerHTML'});}, 300)}"
           class="space-y-4">
 
       {{if .IsBuiltin}}
@@ -311,7 +311,7 @@
                     <input type="checkbox" name="param_required_{{$i}}" {{if $p.Required}}checked{{end}} class="rounded border-gray-300"> req
                   </label>
                 </div>
-                <button type="button" onclick="this.closest('.param-row').remove(); document.getElementById('tool-edit-area').dataset.dirty='1'; updateParamCount()" class="text-gray-300 hover:text-red-500 text-xs ml-2">✕</button>
+                <button type="button" onclick="this.closest('.param-row').remove(); reindexToolParams(); document.getElementById('tool-edit-area').dataset.dirty='1'; updateParamCount()" class="text-gray-300 hover:text-red-500 text-xs ml-2">✕</button>
               </div>
               <div class="flex gap-2">
                 <input type="text" name="param_default_{{$i}}" value="{{$p.Default}}" placeholder="default"
@@ -596,7 +596,7 @@ function addToolParam() {
           <input type="checkbox" name="param_required_${count}" class="rounded border-gray-300"> req
         </label>
       </div>
-      <button type="button" onclick="this.closest('.param-row').remove(); document.getElementById('tool-edit-area').dataset.dirty='1'; updateParamCount()" class="text-gray-300 hover:text-red-500 text-xs ml-2">✕</button>
+      <button type="button" onclick="this.closest('.param-row').remove(); reindexToolParams(); document.getElementById('tool-edit-area').dataset.dirty='1'; updateParamCount()" class="text-gray-300 hover:text-red-500 text-xs ml-2">✕</button>
     </div>
     <div class="flex gap-2">
       <input type="text" name="param_default_${count}" placeholder="default" class="w-1/3 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
@@ -612,6 +612,23 @@ function updateParamCount() {
   if (!label) return;
   const n = document.querySelectorAll('#params-list .param-row').length;
   label.textContent = n > 0 ? '(' + n + ')' : '';
+}
+
+// reindexToolParams renumbers every param-row's input names so they
+// run 0..N-1 with no gaps. The server-side parser stops at the first
+// empty param_name_<i>, so a gap means later params are lost on save.
+function reindexToolParams() {
+  const list = document.getElementById('params-list');
+  if (!list) return;
+  const rows = list.querySelectorAll('.param-row');
+  rows.forEach((r, i) => {
+    r.querySelectorAll('[name^="param_name_"]').forEach(el => el.name = 'param_name_' + i);
+    r.querySelectorAll('[name^="param_type_"]').forEach(el => el.name = 'param_type_' + i);
+    r.querySelectorAll('[name^="param_in_"]').forEach(el => el.name = 'param_in_' + i);
+    r.querySelectorAll('[name^="param_required_"]').forEach(el => el.name = 'param_required_' + i);
+    r.querySelectorAll('[name^="param_default_"]').forEach(el => el.name = 'param_default_' + i);
+    r.querySelectorAll('[name^="param_desc_"]').forEach(el => el.name = 'param_desc_' + i);
+  });
 }
 </script>
 {{end}}

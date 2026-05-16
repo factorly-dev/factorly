@@ -51,7 +51,7 @@
     <form hx-post="/workflows/{{.Name}}/save" hx-target="#save-status" hx-swap="innerHTML"
           hx-on:input="document.getElementById('tool-edit-area').dataset.dirty='1'"
           hx-on:change="document.getElementById('tool-edit-area').dataset.dirty='1'"
-          hx-on::after-request="if(event.detail.successful){document.getElementById('tool-edit-area').dataset.dirty=''; setTimeout(() => {htmx.ajax('GET', '/workflows/{{.Name}}', {target:'#workflow-form', swap:'outerHTML', select:'#workflow-form'}); htmx.ajax('GET', '/workflows/{{.Name}}/run-panel', {target:'#run-panel', swap:'innerHTML'});}, 300)}"
+          hx-on::after-request="if(event.detail.successful && event.detail.elt === this){document.getElementById('tool-edit-area').dataset.dirty=''; setTimeout(() => {htmx.ajax('GET', '/workflows/{{.Name}}', {target:'#workflow-form', swap:'outerHTML', select:'#workflow-form'}); htmx.ajax('GET', '/workflows/{{.Name}}/run-panel', {target:'#run-panel', swap:'innerHTML'});}, 300)}"
           id="workflow-form">
       <input type="hidden" name="description" value="{{.Description}}">
 
@@ -90,7 +90,7 @@
                        class="flex-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white">
               </div>
             </div>
-            <button type="button" onclick="this.closest('.wf-param-row').remove(); document.getElementById('tool-edit-area').dataset.dirty='1'" class="text-gray-300 hover:text-red-500 text-xs mt-1">✕</button>
+            <button type="button" onclick="this.closest('.wf-param-row').remove(); reindexWfParams(); document.getElementById('tool-edit-area').dataset.dirty='1'" class="text-gray-300 hover:text-red-500 text-xs mt-1">✕</button>
           </div>
           {{end}}
         </div>
@@ -135,10 +135,10 @@
               {{if $step.Require}}<span class="text-[9px] px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded shrink-0">req</span>{{end}}
 
               <span class="flex gap-0.5 shrink-0 ml-1">
-                <button type="button" onclick="event.preventDefault(); moveStep(this, -1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move up">▲</button>
-                <button type="button" onclick="event.preventDefault(); moveStep(this, 1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move down">▼</button>
+                <button type="button" onclick="event.preventDefault(); event.stopPropagation(); moveStep(this, -1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move up">▲</button>
+                <button type="button" onclick="event.preventDefault(); event.stopPropagation(); moveStep(this, 1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move down">▼</button>
               </span>
-              <button type="button" onclick="event.preventDefault(); removeStep(this)" class="text-gray-300 hover:text-red-500 text-xs shrink-0">✕</button>
+              <button type="button" onclick="event.preventDefault(); event.stopPropagation(); removeStep(this)" class="text-gray-300 hover:text-red-500 text-xs shrink-0">✕</button>
             </summary>
 
             <div class="px-4 pb-4 pt-1 pl-11 space-y-3 bg-gray-50/50">
@@ -456,7 +456,7 @@ function addWorkflowParam() {
         <input type="text" name="wf_param_desc_${count}" placeholder="description" class="flex-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white">
       </div>
     </div>
-    <button type="button" onclick="this.closest('.wf-param-row').remove(); document.getElementById('tool-edit-area').dataset.dirty='1'" class="text-gray-300 hover:text-red-500 text-xs mt-1">✕</button>
+    <button type="button" onclick="this.closest('.wf-param-row').remove(); reindexWfParams(); document.getElementById('tool-edit-area').dataset.dirty='1'" class="text-gray-300 hover:text-red-500 text-xs mt-1">✕</button>
   `;
   list.appendChild(row);
 }

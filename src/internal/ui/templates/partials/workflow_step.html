@@ -4,10 +4,10 @@
     <span class="step-num text-[10px] font-bold text-gray-400 w-4 text-right shrink-0">{{inc .Index}}</span>
     <span class="text-sm font-mono text-gray-400 flex-1">new step</span>
     <span class="flex gap-0.5 shrink-0 ml-1">
-      <button type="button" onclick="event.preventDefault(); moveStep(this, -1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move up">▲</button>
-      <button type="button" onclick="event.preventDefault(); moveStep(this, 1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move down">▼</button>
+      <button type="button" onclick="event.preventDefault(); event.stopPropagation(); moveStep(this, -1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move up">▲</button>
+      <button type="button" onclick="event.preventDefault(); event.stopPropagation(); moveStep(this, 1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move down">▼</button>
     </span>
-    <button type="button" onclick="event.preventDefault(); removeStep(this)" class="text-gray-300 hover:text-red-500 text-xs shrink-0">✕</button>
+    <button type="button" onclick="event.preventDefault(); event.stopPropagation(); removeStep(this)" class="text-gray-300 hover:text-red-500 text-xs shrink-0">✕</button>
   </summary>
   <div class="px-4 pb-4 pt-1 pl-11 space-y-3 bg-gray-50/50">
     <div>

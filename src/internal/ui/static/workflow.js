@@ -15,6 +15,24 @@ function addParam(btn) {
   container.appendChild(row);
 }
 
+// reindexWfParams renumbers every wf-param-row's input names so they
+// run 0..N-1 with no gaps. Call after add/remove/reorder so the form's
+// indexed wf_param_*_<i> names stay contiguous — the server-side parser
+// stops at the first empty index, so a gap means later params get lost
+// on save.
+function reindexWfParams() {
+  const list = document.getElementById('wf-params-list');
+  if (!list) return;
+  const rows = list.querySelectorAll('.wf-param-row');
+  rows.forEach((r, i) => {
+    r.querySelectorAll('[name^="wf_param_name_"]').forEach(el => el.name = 'wf_param_name_' + i);
+    r.querySelectorAll('[name^="wf_param_type_"]').forEach(el => el.name = 'wf_param_type_' + i);
+    r.querySelectorAll('[name^="wf_param_required_"]').forEach(el => el.name = 'wf_param_required_' + i);
+    r.querySelectorAll('[name^="wf_param_default_"]').forEach(el => el.name = 'wf_param_default_' + i);
+    r.querySelectorAll('[name^="wf_param_desc_"]').forEach(el => el.name = 'wf_param_desc_' + i);
+  });
+}
+
 function reindexSteps() {
   const list = document.getElementById('steps-list');
   const rows = list.querySelectorAll('.step-row');
