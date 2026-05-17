@@ -144,8 +144,32 @@ The factorly host package exposes:
       res.Error / res.ExitCode) or (nil, err) on infrastructure
       failure.
   factorly.ListTools() []ToolInfo
-      Snapshot of currently-callable tools with name, description,
-      and parameter metadata. Stable for the duration of one Run.
+      Discovery API: returns a snapshot of every currently-callable
+      tool. Use this before composing a script when you're not sure
+      which tool name to call. The snapshot is stable for the
+      duration of one Run; hidden and shadow-denied tools are
+      excluded so what you see is what you can call.
+
+      ToolInfo {
+          Name        string         // pass to factorly.Call
+          Description string         // what the tool does
+          Parameters  []ParamInfo    // what to pass
+      }
+      ParamInfo {
+          Name        string         // map key for factorly.Call's params
+          Type        string         // "string" (default), "boolean", "integer", "json", "text"
+          Required    bool
+          Description string
+          Default     string
+      }
+
+      Discovery example — find a tool by name prefix and inspect its params:
+
+          for _, t := range factorly.ListTools() {
+              if strings.HasPrefix(t.Name, "gmail.") {
+                  // t.Name, t.Description, t.Parameters available here
+              }
+          }
 
 Example — fetch a URL and return part of the JSON response:
 
