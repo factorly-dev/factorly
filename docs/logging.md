@@ -1,6 +1,6 @@
 # Call Log
 
-Every tool call — whether through `factorly call` or `factorly serve` — is logged to `~/.config/factorly/calls.jsonl`:
+Every tool call — whether through `factorly call` or `factorly serve` — is logged to JSONL. Project configs get a per-project log at `<project>/.factorly/audit.jsonl`; the global config falls back to `~/.config/factorly/audit.jsonl`:
 
 ```json
 {"timestamp":"2026-04-03T09:15:32Z","interface":"cli","tool":"web.fetch","params":{"url":"https://example.com"},"status":"success","duration_ms":215,"output":"<!doctype html>..."}
@@ -28,9 +28,10 @@ Every tool call — whether through `factorly call` or `factorly serve` — is l
 
 ## Location
 
-Default: `~/.config/factorly/calls.jsonl`
-
-Set `FACTORLY_NO_LOG=1` to disable logging.
+- Project-scoped (when a project `factorly.yaml` is active): `<project>/.factorly/audit.jsonl`
+- Global fallback: `~/.config/factorly/audit.jsonl`
+- Override with `FACTORLY_LOG_PATH=<path>`
+- Disable with `FACTORLY_NO_LOG=1`
 
 ## Viewing Logs
 
@@ -65,7 +66,7 @@ $ factorly logs -n 5
 
 ```
 $ factorly logs stats
-  Log: ~/.config/factorly/calls.jsonl (194 entries)
+  Log: ~/.config/factorly/audit.jsonl (194 entries)
 
   By Status:
     success    162  (83.5%)
@@ -131,7 +132,7 @@ The `params` field contains the key name (e.g., `{"key": "GITHUB_TOKEN"}`) but n
 When output processing is enabled (compression or truncation), the log records `original_bytes` and `processed_bytes` for each call. Query savings with `jq`:
 
 ```bash
-cat ~/.config/factorly/calls.jsonl | jq 'select(.original_bytes) | {tool, saved: (.original_bytes - .processed_bytes)}'
+cat ~/.config/factorly/audit.jsonl | jq 'select(.original_bytes) | {tool, saved: (.original_bytes - .processed_bytes)}'
 ```
 
 Run `factorly tools status` for an aggregate output savings summary across all tools.
@@ -141,7 +142,7 @@ Run `factorly tools status` for an aggregate output savings summary across all t
 MCP sessions are tracked by `agent_id` (session ID). Each agent gets independent rate-limit quotas. Use the field to filter logs per agent:
 
 ```bash
-cat ~/.config/factorly/calls.jsonl | jq 'select(.agent_id == "session-abc")'
+cat ~/.config/factorly/audit.jsonl | jq 'select(.agent_id == "session-abc")'
 ```
 
 ## Hash chain integrity

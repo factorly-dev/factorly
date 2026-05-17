@@ -843,3 +843,44 @@ func TestVerifyChainNonexistentFile(t *testing.T) {
 		t.Error("expected error for nonexistent file")
 	}
 }
+
+func TestProjectLogPathEmpty(t *testing.T) {
+	got := ProjectLogPath("")
+	want := DefaultLogPath()
+	if got != want {
+		t.Errorf("empty cfgPath: got %q, want %q", got, want)
+	}
+}
+
+func TestProjectLogPathGlobalConfigYieldsGlobalLog(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir")
+	}
+	cfg := filepath.Join(home, ".config", "factorly", "factorly.yaml")
+	got := ProjectLogPath(cfg)
+	want := DefaultLogPath()
+	if got != want {
+		t.Errorf("global cfg: got %q, want %q", got, want)
+	}
+}
+
+func TestProjectLogPathTopLevelProjectConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "factorly.yaml")
+	got := ProjectLogPath(cfg)
+	want := filepath.Join(dir, ".factorly", "audit.jsonl")
+	if got != want {
+		t.Errorf("top-level cfg: got %q, want %q", got, want)
+	}
+}
+
+func TestProjectLogPathDotFactorlyDirConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, ".factorly", "factorly.yaml")
+	got := ProjectLogPath(cfg)
+	want := filepath.Join(dir, ".factorly", "audit.jsonl")
+	if got != want {
+		t.Errorf(".factorly cfg: got %q, want %q", got, want)
+	}
+}

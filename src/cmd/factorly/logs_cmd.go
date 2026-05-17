@@ -16,9 +16,24 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/spf13/cobra"
 )
+
+// resolveLogPath returns the active project's log path: FACTORLY_LOG_PATH
+// wins, then --config (if set), then the same FindConfig walk the
+// proxy uses, then the global default.
+func resolveLogPath() string {
+	if p := os.Getenv("FACTORLY_LOG_PATH"); p != "" {
+		return p
+	}
+	cfgPath := configPath
+	if cfgPath == "" {
+		cfgPath = config.FindConfig()
+	}
+	return logger.ProjectLogPath(cfgPath)
+}
 
 var (
 	logsLines     int
@@ -88,7 +103,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	logPath := logger.DefaultLogPath()
+	logPath := resolveLogPath()
 	f, err := os.Open(logPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -322,7 +337,7 @@ func printLogsDetail(entries []logger.Entry) {
 }
 
 func runLogsStats() error {
-	logPath := logger.DefaultLogPath()
+	logPath := resolveLogPath()
 	f, err := os.Open(logPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -453,7 +468,7 @@ func runLogsStats() error {
 }
 
 func runLogsRepair() error {
-	logPath := logger.DefaultLogPath()
+	logPath := resolveLogPath()
 
 	repaired, err := logger.RepairChain(logPath)
 	if err != nil {
@@ -473,7 +488,7 @@ func runLogsRepair() error {
 }
 
 func runLogsVerify() error {
-	logPath := logger.DefaultLogPath()
+	logPath := resolveLogPath()
 
 	verified, skipped, err := logger.VerifyChain(logPath)
 	if err != nil {

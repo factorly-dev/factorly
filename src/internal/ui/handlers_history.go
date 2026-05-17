@@ -33,7 +33,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	toolFilter := r.URL.Query().Get("tool")
 	statusFilter := r.URL.Query().Get("status")
 
-	entries := readRecentLogs(100)
+	entries := readRecentLogs(s.cfgPath, 100)
 
 	// Apply filters
 	if toolFilter != "" || statusFilter != "" {
@@ -59,8 +59,14 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func readRecentLogs(max int) []historyEntry {
-	path := logger.DefaultLogPath()
+func readRecentLogs(cfgPath string, max int) []historyEntry {
+	if p := os.Getenv("FACTORLY_LOG_PATH"); p != "" {
+		return readLogsFromPath(p, max)
+	}
+	return readLogsFromPath(logger.ProjectLogPath(cfgPath), max)
+}
+
+func readLogsFromPath(path string, max int) []historyEntry {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil

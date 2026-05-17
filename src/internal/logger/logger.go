@@ -130,9 +130,38 @@ func (l *JSONLLogger) Close() error {
 func DefaultLogPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "factorly-calls.jsonl"
+		return "factorly-audit.jsonl"
 	}
-	return filepath.Join(home, ".config", "factorly", "calls.jsonl")
+	return filepath.Join(home, ".config", "factorly", "audit.jsonl")
+}
+
+// ProjectLogPath returns the log path that pairs with the given config
+// path. A project-scoped config (one not under the user's global
+// config dir) gets its log under that project's .factorly/ dir, so
+// audit history travels with the repo. Anything else falls back to
+// DefaultLogPath. Empty cfgPath also yields the global default.
+func ProjectLogPath(cfgPath string) string {
+	if cfgPath == "" {
+		return DefaultLogPath()
+	}
+	abs, err := filepath.Abs(cfgPath)
+	if err != nil {
+		return DefaultLogPath()
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		globalDir, err := filepath.Abs(filepath.Join(home, ".config", "factorly"))
+		if err == nil {
+			rel, err := filepath.Rel(globalDir, abs)
+			if err == nil && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel) {
+				return DefaultLogPath()
+			}
+		}
+	}
+	dir := filepath.Dir(abs)
+	if filepath.Base(dir) == ".factorly" {
+		return filepath.Join(dir, "audit.jsonl")
+	}
+	return filepath.Join(dir, ".factorly", "audit.jsonl")
 }
 
 // ComputeHash returns the hex-encoded SHA-256 of prevHash + payload.

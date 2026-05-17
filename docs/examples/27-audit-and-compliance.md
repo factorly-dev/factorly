@@ -48,7 +48,7 @@ factorly logs --stats
 ```
 
 ```
-Log: ~/.config/factorly/calls.jsonl (194 entries)
+Log: ~/.config/factorly/audit.jsonl (194 entries)
 
 By Status:
   success    162  (83.5%)
@@ -72,7 +72,7 @@ factorly logs --status blocked
 
 ### JSONL entry structure
 
-Each call produces one line in `~/.config/factorly/calls.jsonl`:
+Each call produces one line in the audit log (`<project>/.factorly/audit.jsonl` for project configs, `~/.config/factorly/audit.jsonl` for the global fallback):
 
 ```json
 {

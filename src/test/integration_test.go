@@ -2554,24 +2554,28 @@ tools:
 `,
 	})
 
-	logPath := filepath.Join(t.TempDir(), "calls.jsonl")
-
-	// Run with logging enabled to a custom path — we need to test the
-	// actual log file permissions. Override via env since there's no flag.
+	// The project-scoped logger writes to <dir>/.factorly/audit.jsonl;
+	// strip FACTORLY_NO_LOG so the logger actually runs.
 	cmd := exec.Command(binary, "call", "echo.test", "--msg", "test")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "HOME="+filepath.Dir(filepath.Dir(logPath)))
-	// Create the expected directory structure
-	_ = os.MkdirAll(filepath.Join(filepath.Dir(filepath.Dir(logPath)), ".config", "factorly"), 0o755)
+	env := []string{}
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(kv, "FACTORLY_NO_LOG=") {
+			continue
+		}
+		env = append(env, kv)
+	}
+	cmd.Env = append(env, "FACTORLY_NO_UPDATE_CHECK=1")
 	_ = cmd.Run()
 
-	// Check that the log file was created — if it exists, verify permissions
-	configLogPath := filepath.Join(filepath.Dir(filepath.Dir(logPath)), ".config", "factorly", "calls.jsonl")
-	if info, err := os.Stat(configLogPath); err == nil {
-		perm := info.Mode().Perm()
-		if perm != 0o600 {
-			t.Errorf("expected log file permissions 0600, got %04o", perm)
-		}
+	auditPath := filepath.Join(dir, ".factorly", "audit.jsonl")
+	info, err := os.Stat(auditPath)
+	if err != nil {
+		t.Fatalf("expected audit log at %s: %v", auditPath, err)
+	}
+	perm := info.Mode().Perm()
+	if perm != 0o600 {
+		t.Errorf("expected log file permissions 0600, got %04o", perm)
 	}
 }
 
@@ -4165,7 +4169,7 @@ func TestCodeToolStampsSourceSHAInAuditLog(t *testing.T) {
 `,
 	})
 
-	logPath := filepath.Join(t.TempDir(), "calls.jsonl")
+	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
 
 	runWithLog := func(args ...string) (string, int) {
 		cmd := exec.Command(binary, args...)
@@ -4357,7 +4361,7 @@ func TestFactorlyCodeBuiltinStampsSourceSHA(t *testing.T) {
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": "tools: {}\n",
 	})
-	logPath := filepath.Join(t.TempDir(), "calls.jsonl")
+	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
 
 	cmd := exec.Command(binary,
 		"call", "factorly.code",
@@ -4547,4 +4551,66 @@ func extractFirstYAMLBlock(t *testing.T, relPath string) string {
 		t.Fatalf("no ```yaml block found in %s", relPath)
 	}
 	return strings.Join(out, "\n") + "\n"
+}
+
+// TestProjectScopedLogPath verifies that a call run inside a project
+// directory writes its audit log to <project>/.factorly/audit.jsonl
+// rather than the global ~/.config/factorly/audit.jsonl. We isolate
+// HOME to a fresh temp dir so the test can't ever touch the user's
+// real log, and we leave FACTORLY_LOG_PATH unset so resolution falls
+// through to ProjectLogPath.
+func TestProjectScopedLogPath(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools:
+  echo.test:
+    type: cli
+    command: printf
+    args: ["%s", "ok"]
+`,
+	})
+
+	fakeHome := t.TempDir()
+
+	cmd := exec.Command(binary, "call", "echo.test")
+	cmd.Dir = dir
+	// Strip FACTORLY_LOG_PATH/FACTORLY_NO_LOG from the inherited env so the
+	// resolver actually exercises ProjectLogPath; isolate HOME so the
+	// "global fallback" branch points to a writable temp dir, not the
+	// user's real ~/.config/factorly.
+	env := []string{}
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(kv, "FACTORLY_LOG_PATH=") {
+			continue
+		}
+		if strings.HasPrefix(kv, "FACTORLY_NO_LOG=") {
+			continue
+		}
+		if strings.HasPrefix(kv, "HOME=") {
+			continue
+		}
+		env = append(env, kv)
+	}
+	env = append(env, "HOME="+fakeHome, "FACTORLY_NO_UPDATE_CHECK=1")
+	cmd.Env = env
+
+	var out, errb strings.Builder
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("call echo.test: %v\nstderr: %s", err, errb.String())
+	}
+
+	projectLog := filepath.Join(dir, ".factorly", "audit.jsonl")
+	info, err := os.Stat(projectLog)
+	if err != nil {
+		t.Fatalf("expected project log at %s: %v", projectLog, err)
+	}
+	if info.Size() == 0 {
+		t.Errorf("project log exists but is empty")
+	}
+
+	globalLog := filepath.Join(fakeHome, ".config", "factorly", "audit.jsonl")
+	if _, err := os.Stat(globalLog); !os.IsNotExist(err) {
+		t.Errorf("global log should not exist at %s (err: %v)", globalLog, err)
+	}
 }

@@ -856,10 +856,14 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 		vlog("logging disabled (FACTORLY_NO_LOG set)")
 		logIface = logger.NopLogger{}
 	} else {
-		// FACTORLY_LOG_PATH overrides the default ~/.config/factorly/calls.jsonl
-		// location. Useful for isolation in tests and for advanced users
-		// who want per-project audit logs.
+		// FACTORLY_LOG_PATH wins. Otherwise the log lives next to the
+		// active config: project configs get .factorly/audit.jsonl in
+		// their directory; the global config falls back to
+		// ~/.config/factorly/audit.jsonl.
 		logPath := os.Getenv("FACTORLY_LOG_PATH")
+		if logPath == "" {
+			logPath = logger.ProjectLogPath(configPath)
+		}
 		log, err := logger.NewJSONL(logPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to open log: %v\n", err)
