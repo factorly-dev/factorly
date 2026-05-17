@@ -106,15 +106,77 @@ func Register(cfg *config.Config, opts Options) {
 	// can only reach what's already exposed as a tool.
 	register("factorly.code", config.ToolConfig{
 		Type:        "builtin",
-		Description: "Run a Go script that can call other factorly tools (overseen, logged)",
+		Description: factorlyCodeDescription,
 		Compress:    []string{"all"},
 		MaxOutput:   50000,
 		Parameters: []config.ParamConfig{
-			{Name: "code", Type: "text", Description: "Go source declaring `func Run(params map[string]string) (any, error)`", Required: true},
-			{Name: "params", Type: "json", Description: "JSON object of params to pass to Run"},
+			{Name: "code", Type: "text", Required: true, Description: factorlyCodeParamCodeDescription},
+			{Name: "params", Type: "json", Description: factorlyCodeParamParamsDescription},
 		},
 	})
 }
+
+// factorlyCodeDescription teaches an MCP agent enough to compose a
+// working script without trial-and-error. Kept in one place so the
+// reference docs and the agent-facing string stay in sync.
+const factorlyCodeDescription = `Execute a Go script that can call other registered factorly tools.
+
+The script runs in a sandboxed yaegi interpreter. It must declare:
+
+    package main
+    import "factorly"  // host SDK; see below
+    func Run(params map[string]string) (any, error) { ... }
+
+The Run function's return value becomes this tool's output:
+  - string → passes through verbatim
+  - anything else → JSON-marshaled
+  - nil → empty
+  - returning an error → ExitCode 1 with the error message
+
+Allowed imports: fmt, strings, strconv, time, encoding/json, errors,
+and "factorly" (host SDK). Everything else (os, net, reflect, unsafe,
+io, http, etc.) is denied at compile time.
+
+The factorly host package exposes:
+  factorly.Call(name, params map[string]string) (*Result, error)
+      Call another registered tool. Returns (*Result, nil) on
+      success (check res.IsError() for tool-level failure with
+      res.Error / res.ExitCode) or (nil, err) on infrastructure
+      failure.
+  factorly.ListTools() []ToolInfo
+      Snapshot of currently-callable tools with name, description,
+      and parameter metadata. Stable for the duration of one Run.
+
+Example — fetch a URL and return part of the JSON response:
+
+    package main
+    import (
+        "encoding/json"
+        "errors"
+        "factorly"
+    )
+    func Run(p map[string]string) (any, error) {
+        res, err := factorly.Call("factorly.fetch", map[string]string{"url": p["url"]})
+        if err != nil { return nil, err }
+        if res.IsError() { return nil, errors.New(res.Error) }
+        var body struct{ Message string ` + "`" + `json:"message"` + "`" + ` }
+        if err := json.Unmarshal([]byte(res.Output), &body); err != nil { return nil, err }
+        return body.Message, nil
+    }
+
+Use factorly.ListTools() first if you need to discover which tools
+are available. Each inner factorly.Call is subject to that tool's
+shadow rules (confirm, rate limit, deny). The script itself runs
+under a max_calls cap (default 100) and any timeout configured on
+this tool.`
+
+const factorlyCodeParamCodeDescription = `The full Go source for the script. Must start with a 'package <name>' declaration and export a Run function with signature:
+
+    func Run(params map[string]string) (any, error)
+
+Allowed imports: fmt, strings, strconv, time, encoding/json, errors, and "factorly" (host SDK exposing Call and ListTools). Anything else fails at compile time.`
+
+const factorlyCodeParamParamsDescription = `JSON object whose keys/values become the params map passed to Run. Values are stringified — use strconv.Atoi / strconv.ParseBool inside the script if you need numeric or boolean types. Empty/omitted is fine; the script will see an empty map.`
 
 // mergeShadow combines the builtin's default Shadow with a user-supplied
 // one. User fields win when explicitly set; otherwise builtin defaults
