@@ -102,7 +102,7 @@ func validateTool(t *testing.T, name string, tc config.ToolConfig, filename stri
 		return
 	}
 
-	validTypes := map[string]bool{"cli": true, "rest": true, "mcp": true, "workflow": true}
+	validTypes := map[string]bool{"cli": true, "rest": true, "mcp": true, "workflow": true, "code": true, "builtin": true}
 	if !validTypes[tc.Type] {
 		t.Errorf("[%s] tool %q has invalid type %q", filename, name, tc.Type)
 	}
@@ -127,6 +127,13 @@ func validateTool(t *testing.T, name string, tc config.ToolConfig, filename stri
 		if len(tc.Steps) == 0 {
 			t.Errorf("[%s] workflow tool %q has no steps", filename, name)
 		}
+	case "code":
+		if tc.Code == "" {
+			t.Errorf("[%s] code tool %q missing code body", filename, name)
+		}
+	case "builtin":
+		// Built-in tool overrides only need the type field — everything
+		// else (parameters, command, etc.) is set by the runtime.
 	}
 }
 

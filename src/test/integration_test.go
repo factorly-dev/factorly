@@ -4409,3 +4409,142 @@ func TestFactorlyCodeBuiltinStampsSourceSHA(t *testing.T) {
 		t.Errorf("source_sha length = %d, want 64 (hex SHA-256); got %q", len(got.SourceSHA), got.SourceSHA)
 	}
 }
+
+// TestDocsCodeToolExamples extracts the YAML config from each
+// docs/examples/3[4-7]*.md page, drops it into a temp project, runs
+// the documented invocation, and asserts the documented output. Guards
+// the docs against drift — if the SDK contract or the script API
+// changes such that an example stops working, this test fails before
+// users hit the same wall.
+//
+// Example 35 hits api.github.com (external) and the response is
+// non-deterministic, so we only assert "exit 0 + non-empty output"
+// instead of locking to a specific koan.
+func TestDocsCodeToolExamples(t *testing.T) {
+	cases := []struct {
+		name        string
+		doc         string
+		args        []string
+		mustContain string // empty → only assert exit 0 and non-empty output
+	}{
+		{
+			name:        "34_hello_code_tool",
+			doc:         "docs/examples/34-hello-code-tool.md",
+			args:        []string{"call", "greet", "--name", "alice"},
+			mustContain: "hello alice",
+		},
+		{
+			name:        "36_cross_tool_composition",
+			doc:         "docs/examples/36-cross-tool-composition.md",
+			args:        []string{"call", "user.summary"},
+			mustContain: "Ada <ada@example.com> — dark theme, UTC",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := extractFirstYAMLBlock(t, tc.doc)
+			dir := setupDir(t, map[string]string{
+				"factorly.yaml": cfg,
+			})
+			stdout, stderr, code := run(t, dir, tc.args...)
+			if code != 0 {
+				t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+			}
+			if tc.mustContain != "" {
+				if !strings.Contains(stdout, tc.mustContain) {
+					t.Errorf("stdout missing %q\nstdout: %s", tc.mustContain, stdout)
+				}
+			} else if strings.TrimSpace(stdout) == "" {
+				t.Errorf("expected non-empty stdout\nstderr: %s", stderr)
+			}
+		})
+	}
+
+	// Example 35 hits a public URL in the doc but the test stays local
+	// by standing up a httptest server and substituting its URL into
+	// the doc's YAML body. Also requires shadow.allow_urls because the
+	// fetch guard blocks loopback by default.
+	t.Run("35_fetch_and_transform", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("Beauty of style and harmony and grace."))
+		}))
+		defer srv.Close()
+
+		cfg := extractFirstYAMLBlock(t, "docs/examples/35-fetch-and-transform.md")
+		cfg = strings.Replace(cfg, "https://api.github.com/zen", srv.URL, 1)
+		// Allow the test loopback URL through the fetch safety guard.
+		cfg += `  factorly.fetch:
+    type: builtin
+    shadow:
+      allow_urls:
+        - "127.0.0.1"
+`
+
+		dir := setupDir(t, map[string]string{"factorly.yaml": cfg})
+		stdout, stderr, code := run(t, dir, "call", "zen")
+		if code != 0 {
+			t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+		}
+		if !strings.Contains(stdout, "Beauty of style and harmony and grace.") {
+			t.Errorf("stdout missing fetched body\nstdout: %s", stdout)
+		}
+	})
+}
+
+// TestDocsFactorlyCodeBuiltinExample is the sibling of TestDocsCodeToolExamples
+// for example 37, which doesn't have a YAML config block — the script is
+// passed inline on the command line. Pulled out separately so the bash
+// quoting stays readable.
+func TestDocsFactorlyCodeBuiltinExample(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": "tools: {}\n",
+	})
+	stdout, stderr, code := run(t, dir,
+		"call", "factorly.code",
+		"--code", `package main
+import "fmt"
+func Run(p map[string]string) (any, error) {
+    return fmt.Sprintf("hello %s (%s)", p["name"], p["greeting"]), nil
+}`,
+		"--params", `{"name":"alice","greeting":"hi"}`,
+	)
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "hello alice (hi)") {
+		t.Errorf("stdout missing 'hello alice (hi)'\nstdout: %s", stdout)
+	}
+}
+
+// extractFirstYAMLBlock pulls the first ```yaml fenced block from a
+// Markdown file at the given repo-relative path. Doc files for code-tool
+// examples lead with the canonical YAML config; extracting the first
+// block gives us the source-of-truth project layout.
+func extractFirstYAMLBlock(t *testing.T, relPath string) string {
+	t.Helper()
+	path := repoFile(t, relPath)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", relPath, err)
+	}
+	lines := strings.Split(string(data), "\n")
+	var out []string
+	in := false
+	for _, line := range lines {
+		if !in {
+			if strings.HasPrefix(line, "```yaml") {
+				in = true
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "```") {
+			break
+		}
+		out = append(out, line)
+	}
+	if len(out) == 0 {
+		t.Fatalf("no ```yaml block found in %s", relPath)
+	}
+	return strings.Join(out, "\n") + "\n"
+}

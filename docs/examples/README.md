@@ -74,6 +74,15 @@ Practical, copy-paste examples for every Factorly feature. Each is self-containe
 | 32 | [Changelog Workflow](32-changelog-workflow.md) | Gather git log, diff stats, and contributors in one call |
 | 33 | [Workflow Expressions](33-workflow-expressions.md) | Transform data between steps with `now()`, `jsonpath()`, `concat()`, and more |
 
+## Code Tools
+
+| # | Example | Description |
+|---|---------|-------------|
+| 34 | [Hello Code Tool](34-hello-code-tool.md) | Minimum viable Go script as a tool, with a parameter |
+| 35 | [Fetch and Transform](35-fetch-and-transform.md) | Call `factorly.fetch` from inside a script, shape the response |
+| 36 | [Cross-tool Composition](36-cross-tool-composition.md) | Call multiple sibling tools, parse each, merge into one summary |
+| 37 | [factorly.code Builtin](37-factorly-code-builtin.md) | Same engine, agent-supplied source at call time |
+
 ## Compliance
 
 | # | Example | Description |
