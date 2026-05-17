@@ -29,7 +29,7 @@
         </button>
         {{end}}
       </div>
-      {{if .Tool.Description}}<p class="text-sm text-gray-400 mt-1">{{.Tool.Description}}</p>{{end}}
+      {{if .Tool.Description}}<div class="prose-description text-sm text-gray-500 mt-1">{{markdown .Tool.Description}}</div>{{end}}
     </div>
     <!-- Edit form (hidden by default) -->
     <form id="tool-header-edit" class="hidden"
@@ -37,8 +37,8 @@
       <div class="space-y-2">
         <input type="text" name="rename" value="{{.Tool.Name}}"
                class="w-full px-2 py-1 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
-        <input type="text" name="description" value="{{.Tool.Description}}" placeholder="Description"
-               class="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-indigo-200">
+        <textarea name="description" rows="4" placeholder="Description (markdown supported)"
+                  class="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-indigo-200 resize-y">{{.Tool.Description}}</textarea>
         <div class="flex items-center gap-2">
           <button type="submit" class="px-2.5 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700">Save</button>
           <button type="button" onclick="document.getElementById('tool-header-edit').classList.add('hidden');document.getElementById('tool-header-static').classList.remove('hidden');"

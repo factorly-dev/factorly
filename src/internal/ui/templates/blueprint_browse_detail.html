@@ -18,7 +18,7 @@
   {{end}}
 </div>
 {{if .BP.Header.Description}}
-<p class="text-gray-600 mb-6">{{.BP.Header.Description}}</p>
+<div class="prose-description text-gray-600 mb-6">{{markdown .BP.Header.Description}}</div>
 {{end}}
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">

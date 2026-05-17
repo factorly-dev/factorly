@@ -13,3 +13,39 @@
 .dirty-aware[data-dirty="1"] [data-run-btn] { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 .dirty-aware[data-dirty="1"] [data-run-hint] { display: block; }
 .dirty-aware [data-run-hint] { display: none; }
+
+/* .prose-description — applied to wrappers around markdown-rendered
+   tool / workflow / param descriptions. Tight typography that flows
+   inside both wide panels and table cells; lets multi-paragraph,
+   list, and code-block descriptions render naturally while keeping
+   one-liners compact. Inherits color from the wrapper class. */
+.prose-description > p { margin: 0 0 0.5em 0; }
+.prose-description > p:last-child { margin-bottom: 0; }
+.prose-description code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
+  padding: 0.05em 0.25em;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 3px;
+}
+.prose-description pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em;
+  padding: 0.5em 0.75em;
+  margin: 0.5em 0;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.prose-description pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 1em;
+}
+.prose-description ul, .prose-description ol {
+  margin: 0.25em 0 0.5em 0;
+  padding-left: 1.25em;
+}
+.prose-description li { margin: 0.1em 0; }
+.prose-description a { color: #4f46e5; text-decoration: underline; }
+.prose-description strong { font-weight: 600; }
