@@ -80,16 +80,25 @@ type WorkflowProvider struct {
 	executor WorkflowExecutor
 	steps    map[string][]WorkflowStep
 	verbose  bool
+	runsDir  string                                     // where run state files are persisted; empty disables persistence
 	OnStep   func(workflowName string, event StepEvent) // optional callback for real-time step updates
 }
 
-// NewWorkflowProvider creates a workflow provider.
+// NewWorkflowProvider creates a workflow provider. Call SetRunsDir
+// to enable per-run state persistence.
 func NewWorkflowProvider(exec WorkflowExecutor, verbose bool) *WorkflowProvider {
 	return &WorkflowProvider{
 		executor: exec,
 		steps:    make(map[string][]WorkflowStep),
 		verbose:  verbose,
 	}
+}
+
+// SetRunsDir enables persistence of run state to the given directory
+// (typically <project>/.factorly/runs). When empty, runs are not
+// persisted to disk.
+func (p *WorkflowProvider) SetRunsDir(dir string) {
+	p.runsDir = dir
 }
 
 // RegisterWorkflow adds a workflow's steps.
@@ -404,8 +413,10 @@ func truncateForState(s string) string {
 }
 
 func (p *WorkflowProvider) saveState(state *WorkflowState) {
-	dir := filepath.Join(".factorly", "workflows")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if p.runsDir == "" {
+		return
+	}
+	if err := os.MkdirAll(p.runsDir, 0o755); err != nil {
 		return
 	}
 
@@ -414,8 +425,8 @@ func (p *WorkflowProvider) saveState(state *WorkflowState) {
 		return
 	}
 
-	tmp := filepath.Join(dir, state.RunID+".json.tmp")
-	path := filepath.Join(dir, state.RunID+".json")
+	tmp := filepath.Join(p.runsDir, state.RunID+".json.tmp")
+	path := filepath.Join(p.runsDir, state.RunID+".json")
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return
 	}

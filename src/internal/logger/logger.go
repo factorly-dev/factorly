@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/factorly-dev/factorly/internal/projectpath"
 )
 
 // ZeroHash is the prev_hash for the first entry in a chain.
@@ -141,27 +143,7 @@ func DefaultLogPath() string {
 // audit history travels with the repo. Anything else falls back to
 // DefaultLogPath. Empty cfgPath also yields the global default.
 func ProjectLogPath(cfgPath string) string {
-	if cfgPath == "" {
-		return DefaultLogPath()
-	}
-	abs, err := filepath.Abs(cfgPath)
-	if err != nil {
-		return DefaultLogPath()
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		globalDir, err := filepath.Abs(filepath.Join(home, ".config", "factorly"))
-		if err == nil {
-			rel, err := filepath.Rel(globalDir, abs)
-			if err == nil && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel) {
-				return DefaultLogPath()
-			}
-		}
-	}
-	dir := filepath.Dir(abs)
-	if filepath.Base(dir) == ".factorly" {
-		return filepath.Join(dir, "audit.jsonl")
-	}
-	return filepath.Join(dir, ".factorly", "audit.jsonl")
+	return projectpath.Resolve(cfgPath, "audit.jsonl", DefaultLogPath())
 }
 
 // ComputeHash returns the hex-encoded SHA-256 of prevHash + payload.

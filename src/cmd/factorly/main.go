@@ -24,6 +24,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/oauth"
 	"github.com/factorly-dev/factorly/internal/openapi"
 	"github.com/factorly-dev/factorly/internal/output"
+	"github.com/factorly-dev/factorly/internal/projectpath"
 	"github.com/factorly-dev/factorly/internal/provider"
 	codeprov "github.com/factorly-dev/factorly/internal/provider/code"
 	"github.com/factorly-dev/factorly/internal/proxy"
@@ -394,6 +395,13 @@ var initCmd = &cobra.Command{
 		}
 
 		fmt.Printf("\nCreated %s\n", outPath)
+
+		// Offer to ignore runtime state in an existing .gitignore. We only
+		// prompt when a .gitignore is already present — we're not the
+		// gitignore manager and creating one on the user's behalf would be
+		// presumptuous.
+		maybeOfferGitignore(scanner, filepath.Dir(outPath))
+
 		fmt.Println("\nTip: install a bundled blueprint (gmail, linear, github, ...) with:")
 		fmt.Println("  factorly blueprint install <name>")
 		fmt.Println("Or browse the catalog at /blueprints/browse when running 'factorly ui'.")
@@ -412,6 +420,82 @@ var initCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+// maybeOfferGitignore looks for a .gitignore at the project root and,
+// if found and missing the relevant entries, asks the user whether
+// to append them. configDir is the directory containing the config
+// file we just wrote (either "." or ".factorly").
+func maybeOfferGitignore(scanner *bufio.Scanner, configDir string) {
+	// Repo root is one level above .factorly/, or the current directory
+	// when the config sits at the top level.
+	repoRoot := "."
+	if filepath.Base(configDir) == ".factorly" {
+		repoRoot = filepath.Dir(configDir)
+		if repoRoot == "" {
+			repoRoot = "."
+		}
+	}
+	giPath := filepath.Join(repoRoot, ".gitignore")
+
+	existing, err := os.ReadFile(giPath)
+	if err != nil {
+		// No .gitignore — skip silently. We're not the gitignore manager.
+		return
+	}
+	body := string(existing)
+	entries := []string{
+		".factorly/audit.jsonl",
+		".factorly/ratelimit.json",
+		".factorly/runs/",
+	}
+	needed := []string{}
+	for _, e := range entries {
+		if !gitignoreContains(body, e) {
+			needed = append(needed, e)
+		}
+	}
+	if len(needed) == 0 {
+		return
+	}
+
+	answer := prompt(scanner, "Append runtime state files to .gitignore? (audit.jsonl, ratelimit.json, runs/) (y/n)", "y")
+	if !strings.HasPrefix(strings.ToLower(answer), "y") {
+		return
+	}
+
+	var b strings.Builder
+	b.WriteString(body)
+	if !strings.HasSuffix(body, "\n") && len(body) > 0 {
+		b.WriteString("\n")
+	}
+	b.WriteString("\n# Factorly runtime state — see https://factorly.dev\n")
+	for _, e := range needed {
+		b.WriteString(e)
+		b.WriteString("\n")
+	}
+	if err := os.WriteFile(giPath, []byte(b.String()), 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to update .gitignore: %v\n", err)
+		return
+	}
+	fmt.Printf("Updated %s\n", giPath)
+}
+
+// gitignoreContains checks if a non-empty, non-comment line in body
+// equals the given pattern. Permissive — doesn't try to evaluate
+// gitignore syntax (negations, globs); a literal match is enough to
+// avoid duplicate entries.
+func gitignoreContains(body, pattern string) bool {
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if line == pattern {
+			return true
+		}
+	}
+	return false
 }
 
 func prompt(scanner *bufio.Scanner, label string, defaultVal string) string {
@@ -887,6 +971,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	// Wire workflow provider after proxy creation (needs proxy reference for step execution)
 	if len(workflowDefs) > 0 {
 		wp := provider.NewWorkflowProvider(p, verbose)
+		wp.SetRunsDir(projectpath.Resolve(configPath, "runs", ""))
 		for name, steps := range workflowDefs {
 			wp.RegisterWorkflow(name, steps)
 		}

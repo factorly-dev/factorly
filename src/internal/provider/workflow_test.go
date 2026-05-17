@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -302,8 +301,10 @@ func TestWorkflowMultipleWorkflows(t *testing.T) {
 }
 
 func TestWorkflowStatePersisted(t *testing.T) {
+	runsDir := t.TempDir()
 	exec := &mockWorkflowExecutor{}
 	wp := NewWorkflowProvider(exec, false)
+	wp.SetRunsDir(runsDir)
 	wp.RegisterWorkflow("test.persist", []WorkflowStep{
 		{Tool: "step1"},
 	})
@@ -313,7 +314,6 @@ func TestWorkflowStatePersisted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Parse the output to get run ID
 	var state struct {
 		Status string `json:"status"`
 	}
@@ -324,13 +324,23 @@ func TestWorkflowStatePersisted(t *testing.T) {
 		t.Errorf("expected completed, got %s", state.Status)
 	}
 
-	// State file should exist in .factorly/workflows/
-	// (uses current directory, so check it exists)
-	matches, _ := filepath.Glob(filepath.Join(".factorly", "workflows", "*.json"))
-	// Clean up any state files we created
-	for _, m := range matches {
-		os.Remove(m)
+	matches, _ := filepath.Glob(filepath.Join(runsDir, "*.json"))
+	if len(matches) == 0 {
+		t.Errorf("expected a run state file under %s, found none", runsDir)
 	}
+}
+
+func TestWorkflowStateNotPersistedWhenRunsDirEmpty(t *testing.T) {
+	exec := &mockWorkflowExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("test.nopersist", []WorkflowStep{
+		{Tool: "step1"},
+	})
+	if _, err := wp.Execute("test.nopersist", nil); err != nil {
+		t.Fatal(err)
+	}
+	// No assertion needed beyond reaching this point without a panic
+	// or scribbling into cwd — SetRunsDir was never called.
 }
 
 func TestWorkflowFirstStepFails(t *testing.T) {

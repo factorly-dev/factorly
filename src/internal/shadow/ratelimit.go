@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
+
+	"github.com/factorly-dev/factorly/internal/projectpath"
 )
 
 // rateEntry is the token bucket state persisted to disk.
@@ -50,27 +51,7 @@ func DefaultRateStorePath() string {
 // from the next; the global config falls back to DefaultRateStorePath.
 // Mirrors logger.ProjectLogPath.
 func ProjectRateStorePath(cfgPath string) string {
-	if cfgPath == "" {
-		return DefaultRateStorePath()
-	}
-	abs, err := filepath.Abs(cfgPath)
-	if err != nil {
-		return DefaultRateStorePath()
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		globalDir, err := filepath.Abs(filepath.Join(home, ".config", "factorly"))
-		if err == nil {
-			rel, err := filepath.Rel(globalDir, abs)
-			if err == nil && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel) {
-				return DefaultRateStorePath()
-			}
-		}
-	}
-	dir := filepath.Dir(abs)
-	if filepath.Base(dir) == ".factorly" {
-		return filepath.Join(dir, "ratelimit.json")
-	}
-	return filepath.Join(dir, ".factorly", "ratelimit.json")
+	return projectpath.Resolve(cfgPath, "ratelimit.json", DefaultRateStorePath())
 }
 
 // Check tests whether a tool call is within the rate limit.

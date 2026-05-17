@@ -17,6 +17,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/oauth"
 	"github.com/factorly-dev/factorly/internal/output"
+	"github.com/factorly-dev/factorly/internal/projectpath"
 	"github.com/factorly-dev/factorly/internal/provider"
 	codeprov "github.com/factorly-dev/factorly/internal/provider/code"
 	"github.com/factorly-dev/factorly/internal/proxy"
@@ -461,6 +462,7 @@ func (s *Server) registerWorkflowProvider(name string, tc config.ToolConfig) {
 		// First workflow added in this UI session — bring up the provider.
 		// The proxy itself is the WorkflowExecutor (steps call back through it).
 		wp := provider.NewWorkflowProvider(s.proxy, false)
+		wp.SetRunsDir(projectpath.Resolve(s.cfgPath, "runs", ""))
 		s.proxy.RegisterProvider("workflow", wp)
 		prov = wp
 	}

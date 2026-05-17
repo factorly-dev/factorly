@@ -1691,6 +1691,117 @@ func TestInitNoExample(t *testing.T) {
 	}
 }
 
+// TestInitNoGitignoreSkipsPrompt: when no .gitignore exists, init must
+// not create one and must not prompt about it. We're not the gitignore
+// manager — only opt in to managing it when the user already has one.
+func TestInitNoGitignoreSkipsPrompt(t *testing.T) {
+	dir := t.TempDir()
+	// stdin answers example=y, openapi=n, sync=n. No gitignore prompt
+	// expected, but a trailing "y" is harmless if I'm wrong.
+	stdin := "y\nn\nn\ny\n"
+	stdout, _, code := runWithStdin(t, dir, stdin, "init")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if strings.Contains(stdout, "Append runtime state files to .gitignore") {
+		t.Error("did not expect gitignore prompt when no .gitignore is present")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); !os.IsNotExist(err) {
+		t.Errorf("did not expect init to create a .gitignore (stat err: %v)", err)
+	}
+}
+
+// TestInitGitignoreAppendsEntries: existing .gitignore + user accepts
+// → three runtime-state entries appended; pre-existing rules preserved.
+func TestInitGitignoreAppendsEntries(t *testing.T) {
+	dir := t.TempDir()
+	giPath := filepath.Join(dir, ".gitignore")
+	if err := os.WriteFile(giPath, []byte("*.log\nnode_modules/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// example=y, openapi=n, gitignore=y, sync=n
+	stdin := "y\nn\ny\nn\n"
+	stdout, _, code := runWithStdin(t, dir, stdin, "init")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "Append runtime state files to .gitignore") {
+		t.Error("expected gitignore prompt in output")
+	}
+
+	data, err := os.ReadFile(giPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+	for _, want := range []string{
+		"*.log",                    // pre-existing preserved
+		"node_modules/",            // pre-existing preserved
+		".factorly/audit.jsonl",    // appended
+		".factorly/ratelimit.json", // appended
+		".factorly/runs/",          // appended
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %q in .gitignore after append, got:\n%s", want, body)
+		}
+	}
+}
+
+// TestInitGitignoreDeclineLeavesUntouched: user answers no → file
+// stays byte-for-byte identical to what they had before.
+func TestInitGitignoreDeclineLeavesUntouched(t *testing.T) {
+	dir := t.TempDir()
+	giPath := filepath.Join(dir, ".gitignore")
+	original := "*.log\nnode_modules/\n"
+	if err := os.WriteFile(giPath, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// example=y, openapi=n, gitignore=n, sync=n
+	stdin := "y\nn\nn\nn\n"
+	if _, _, code := runWithStdin(t, dir, stdin, "init"); code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+
+	data, err := os.ReadFile(giPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != original {
+		t.Errorf("expected .gitignore unchanged; got:\n%s\nwant:\n%s", data, original)
+	}
+}
+
+// TestInitGitignoreSkipsWhenAlreadyPresent: pre-existing entries
+// already cover all three state files → no prompt fires, no append.
+func TestInitGitignoreSkipsWhenAlreadyPresent(t *testing.T) {
+	dir := t.TempDir()
+	giPath := filepath.Join(dir, ".gitignore")
+	original := ".factorly/audit.jsonl\n.factorly/ratelimit.json\n.factorly/runs/\n"
+	if err := os.WriteFile(giPath, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// example=y, openapi=n, sync=n. Trailing buffer doesn't matter.
+	stdin := "y\nn\nn\ny\n"
+	stdout, _, code := runWithStdin(t, dir, stdin, "init")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if strings.Contains(stdout, "Append runtime state files to .gitignore") {
+		t.Error("did not expect gitignore prompt when entries are already present")
+	}
+
+	data, err := os.ReadFile(giPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != original {
+		t.Errorf("expected .gitignore unchanged; got:\n%s", data)
+	}
+}
+
 // --- .factorly/ project directory ---
 
 func TestProjectDirLoading(t *testing.T) {
