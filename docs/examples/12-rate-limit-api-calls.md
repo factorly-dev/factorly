@@ -58,7 +58,7 @@ factorly call openai.completion --model gpt-4 --messages '[{"role":"user","conte
 3. The bucket starts full, so initial bursts are allowed up to the limit.
 4. Unlike fixed-window counters, there are no boundary bursts — you can't get 200 calls by timing requests at the window edge.
 5. When the bucket is empty, the call is rejected with a clear error showing how long until the next token is available.
-6. Rate limit state is stored at `~/.config/factorly/ratelimit.json` and persists across invocations. Delete that file to reset.
+6. Rate limit state persists across invocations. Project configs store buckets at `<project>/.factorly/ratelimit.json`; the global config falls back to `~/.config/factorly/ratelimit.json`. Delete that file to reset.
 
 ---
 

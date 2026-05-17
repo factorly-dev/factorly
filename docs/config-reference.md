@@ -4,7 +4,11 @@
 
 ```yaml
 # factorly.yaml or .factorly/factorly.yaml
-tools_dir: ./tools               # optional, scan directory for tool files
+tools_dir: ./tools               # optional, scan a custom directory for tool files
+                                 # (the loader already auto-discovers
+                                 # .factorly/tools/ when the config lives in
+                                 # .factorly/, so this line is only needed for
+                                 # non-standard layouts)
 disabled_commands: [vault, exec] # optional, block specific CLI commands
 disable_builtins: true           # optional, disable all factorly.* built-in tools
 disabled_builtins:               # optional, disable specific built-in tools
@@ -545,7 +549,7 @@ shadow:
   rate_limit: 5/sec       # 5 calls per second
 ```
 
-Rate limit state persists across `factorly call` invocations (stored at `~/.config/factorly/ratelimit.json`). Reset by deleting that file.
+Rate limit state persists across `factorly call` invocations. Project configs store buckets at `<project>/.factorly/ratelimit.json`; the global config falls back to `~/.config/factorly/ratelimit.json`. Reset by deleting that file.
 
 ### Loop detection
 

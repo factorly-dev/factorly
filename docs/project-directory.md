@@ -21,7 +21,7 @@ my-project/
 3. Loose YAML files in `.factorly/` directory
 4. `.factorly/tools/` directory — always scanned if it exists
 5. `.factorly/blueprints/` directory — always scanned if it exists (this is where `factorly blueprint install` writes to)
-6. `tools_dir` if specified in config
+6. `tools_dir:` if explicitly specified in config (only needed for non-standard layouts — `.factorly/tools/` is already auto-discovered above)
 7. `~/.config/factorly/factorly.yaml` (user-level fallback)
 
 ## Tool files
@@ -47,11 +47,13 @@ slack.post:
 
 ## tools_dir
 
-Use `tools_dir` in your config to point to a tools directory:
+The standard `.factorly/tools/` directory is auto-discovered — most users don't need to set `tools_dir:` at all. `factorly init` creates the directory but doesn't add a `tools_dir:` line to the YAML.
+
+Use `tools_dir:` only when you want to load tools from a non-standard location:
 
 ```yaml
-# .factorly/factorly.yaml
-tools_dir: ./tools
+# factorly.yaml (top-level, not in .factorly/)
+tools_dir: ./vendor/factorly-tools
 tools:
   web.fetch:
     type: cli
