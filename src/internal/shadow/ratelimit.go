@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -28,14 +29,48 @@ type RateStore struct {
 // If path is empty, uses ~/.config/factorly/ratelimit.json.
 func NewRateStore(path string) *RateStore {
 	if path == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			path = "ratelimit.json"
-		} else {
-			path = filepath.Join(home, ".config", "factorly", "ratelimit.json")
-		}
+		path = DefaultRateStorePath()
 	}
 	return &RateStore{path: path}
+}
+
+// DefaultRateStorePath returns the global fallback location used when
+// no project config is active.
+func DefaultRateStorePath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "ratelimit.json"
+	}
+	return filepath.Join(home, ".config", "factorly", "ratelimit.json")
+}
+
+// ProjectRateStorePath returns the rate-limit state file that pairs
+// with the given config path. Project configs get their state under
+// the project's .factorly/ dir so each project's buckets are isolated
+// from the next; the global config falls back to DefaultRateStorePath.
+// Mirrors logger.ProjectLogPath.
+func ProjectRateStorePath(cfgPath string) string {
+	if cfgPath == "" {
+		return DefaultRateStorePath()
+	}
+	abs, err := filepath.Abs(cfgPath)
+	if err != nil {
+		return DefaultRateStorePath()
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		globalDir, err := filepath.Abs(filepath.Join(home, ".config", "factorly"))
+		if err == nil {
+			rel, err := filepath.Rel(globalDir, abs)
+			if err == nil && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel) {
+				return DefaultRateStorePath()
+			}
+		}
+	}
+	dir := filepath.Dir(abs)
+	if filepath.Base(dir) == ".factorly" {
+		return filepath.Join(dir, "ratelimit.json")
+	}
+	return filepath.Join(dir, ".factorly", "ratelimit.json")
 }
 
 // Check tests whether a tool call is within the rate limit.

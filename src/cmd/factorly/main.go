@@ -207,7 +207,7 @@ func runToolsList(cmd *cobra.Command, args []string) error {
 	mergeDisabledToolsFromEnv(rules)
 	var shadowPolicy *shadow.Policy
 	if len(rules) > 0 {
-		shadowPolicy = shadow.New(rules, nil, "")
+		shadowPolicy = shadow.New(rules, nil, shadow.ProjectRateStorePath(configPath))
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -331,19 +331,12 @@ var initCmd = &cobra.Command{
 		fmt.Println("Setting up a new Factorly config.")
 		fmt.Println()
 
-		// Tools directory
-		useToolsDir := prompt(scanner, "Use a tools directory for modular configs? (y/n)", "n")
-		toolsDir := ""
-		if strings.HasPrefix(strings.ToLower(useToolsDir), "y") {
-			toolsDir = prompt(scanner, "Tools directory path", "./tools")
-			// Resolve tools dir relative to the config file location
-			absToolsDir := toolsDir
-			if !filepath.IsAbs(absToolsDir) {
-				absToolsDir = filepath.Join(filepath.Dir(outPath), absToolsDir)
-			}
-			if err := os.MkdirAll(absToolsDir, 0o755); err != nil {
-				return fmt.Errorf("creating tools directory: %w", err)
-			}
+		// Standard setup: tools live in .factorly/tools/ next to the
+		// config. The loader auto-discovers them, so no tools_dir line
+		// is needed in YAML.
+		toolsDir := filepath.Join(filepath.Dir(outPath), "tools")
+		if err := os.MkdirAll(toolsDir, 0o755); err != nil {
+			return fmt.Errorf("creating tools directory: %w", err)
 		}
 
 		// Example tool
@@ -351,12 +344,10 @@ var initCmd = &cobra.Command{
 
 		// Build config
 		type yamlConfig struct {
-			ToolsDir string                       `yaml:"tools_dir,omitempty"`
-			Tools    map[string]config.ToolConfig `yaml:"tools"`
+			Tools map[string]config.ToolConfig `yaml:"tools"`
 		}
 		cfg := yamlConfig{
-			ToolsDir: toolsDir,
-			Tools:    make(map[string]config.ToolConfig),
+			Tools: make(map[string]config.ToolConfig),
 		}
 
 		if strings.HasPrefix(strings.ToLower(addExample), "y") {
@@ -377,15 +368,10 @@ var initCmd = &cobra.Command{
 				tools, err := openapi.Generate(specPath, openapi.GenerateOpts{Prefix: prefix})
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to import OpenAPI spec: %v\n", err)
-				} else if toolsDir != "" {
-					// Write to tools dir (resolved relative to config)
+				} else {
 					specName := filepath.Base(specPath)
 					specName = strings.TrimSuffix(specName, filepath.Ext(specName))
-					resolvedToolsDir := toolsDir
-					if !filepath.IsAbs(resolvedToolsDir) {
-						resolvedToolsDir = filepath.Join(filepath.Dir(outPath), resolvedToolsDir)
-					}
-					outFile := filepath.Join(resolvedToolsDir, specName+".yaml")
+					outFile := filepath.Join(toolsDir, specName+".yaml")
 					data, err := yaml.Marshal(tools)
 					if err == nil {
 						if err := os.WriteFile(outFile, data, 0o644); err != nil {
@@ -394,12 +380,6 @@ var initCmd = &cobra.Command{
 							fmt.Fprintf(os.Stderr, "Wrote %d tools to %s\n", len(tools), outFile)
 						}
 					}
-				} else {
-					// Merge into main config
-					for name, tool := range tools {
-						cfg.Tools[name] = tool
-					}
-					fmt.Fprintf(os.Stderr, "Added %d tools from spec\n", len(tools))
 				}
 			}
 		}
@@ -893,7 +873,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 				return false
 			}
 		}
-		policy := shadow.New(shadowRules, cf, "")
+		policy := shadow.New(shadowRules, cf, shadow.ProjectRateStorePath(configPath))
 		proxyOpts = append(proxyOpts, proxy.WithShadow(policy))
 		vlog("shadow policy active (%d rules)", len(shadowRules))
 	}

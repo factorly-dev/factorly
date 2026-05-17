@@ -1610,8 +1610,8 @@ func runWithStdin(t *testing.T, dir string, stdin string, args ...string) (strin
 func TestInitDefaults(t *testing.T) {
 	dir := t.TempDir()
 
-	// Accept all defaults: no tools dir, yes example, no openapi, skip template, no sync
-	stdin := "n\ny\nn\nskip\nn\n"
+	// Standard setup: yes example, no openapi, skip template, no sync
+	stdin := "y\nn\nskip\nn\n"
 	stdout, _, code := runWithStdin(t, dir, stdin, "init")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
@@ -1632,29 +1632,14 @@ func TestInitDefaults(t *testing.T) {
 	if !strings.Contains(content, "curl") {
 		t.Error("expected curl command in config")
 	}
-}
 
-func TestInitWithToolsDir(t *testing.T) {
-	dir := t.TempDir()
-
-	// Yes tools dir, default path, yes example, no openapi, skip template, no sync
-	stdin := "y\n\ny\nn\nskip\nn\n"
-	_, _, code := runWithStdin(t, dir, stdin, "init")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d", code)
-	}
-
-	// Verify tools directory was created inside .factorly/
+	// Tools dir should always be created at .factorly/tools/ (auto-discovered
+	// by the loader; we don't write a tools_dir line in YAML).
 	if _, err := os.Stat(filepath.Join(dir, ".factorly", "tools")); os.IsNotExist(err) {
 		t.Error("expected .factorly/tools directory to be created")
 	}
-
-	data, err := os.ReadFile(filepath.Join(dir, ".factorly", "factorly.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), "tools_dir") {
-		t.Error("expected tools_dir in config")
+	if strings.Contains(content, "tools_dir") {
+		t.Error("standard setup should not emit tools_dir; .factorly/tools/ is auto-discovered")
 	}
 }
 
@@ -1673,7 +1658,7 @@ func TestInitAlreadyExists(t *testing.T) {
 func TestInitWithOutFlag(t *testing.T) {
 	dir := t.TempDir()
 
-	stdin := "n\ny\nn\nskip\nn\n"
+	stdin := "y\nn\nskip\nn\n"
 	_, _, code := runWithStdin(t, dir, stdin, "init", "--out", "factorly.yaml")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
@@ -1691,7 +1676,7 @@ func TestInitWithOutFlag(t *testing.T) {
 func TestInitNoExample(t *testing.T) {
 	dir := t.TempDir()
 
-	stdin := "n\nn\nn\nskip\nn\n"
+	stdin := "n\nn\nskip\nn\n"
 	_, _, code := runWithStdin(t, dir, stdin, "init")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
