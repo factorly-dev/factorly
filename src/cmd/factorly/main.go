@@ -1148,57 +1148,79 @@ func extractGlobalFlags(args []string) []string {
 	return remaining
 }
 
-// initResolver checks if any config values contain vault references
-// and opens the vault if needed. Returns an error if vault refs exist
-// but the vault cannot be opened — never silently degrades.
+// initResolver builds the process-wide resolver attached to the proxy.
+// It's used to resolve {{backend:KEY}} placeholders in tool *parameter
+// values* at call time (vs. config values, which resolveBackendRefs
+// handles at load time). Two backends are wired:
+//
+//   - "env" — always registered. Uses EnvBackendWithOverrides when a
+//     workspace is active so {{env:NAME}} in a param resolves to the
+//     workspace's vars before falling back to os.Getenv.
+//   - "vault" + external backends — registered when the config contains
+//     vault refs (so we don't prompt for a vault password on tools
+//     that don't need one).
+//
+// Returns an error if vault refs exist but the vault cannot be opened —
+// never silently degrades.
 func initResolver(cfg *config.Config) (*vault.Resolver, error) {
-	hasRefs := false
+	hasVaultRefs := false
 	for _, tool := range cfg.Tools {
 		if tool.Auth != nil {
 			if vault.HasVaultRefs(tool.Auth.Token) || vault.HasVaultRefs(tool.Auth.Value) {
-				hasRefs = true
+				hasVaultRefs = true
 				break
 			}
 		}
 		for _, v := range tool.Env {
 			if vault.HasVaultRefs(v) {
-				hasRefs = true
+				hasVaultRefs = true
 				break
 			}
 		}
 		for _, v := range tool.Headers {
 			if vault.HasVaultRefs(v) {
-				hasRefs = true
+				hasVaultRefs = true
 				break
 			}
 		}
 		if vault.HasVaultRefs(tool.BaseURL) {
-			hasRefs = true
+			hasVaultRefs = true
 		}
 		for _, arg := range tool.Args {
 			if vault.HasVaultRefs(arg) {
-				hasRefs = true
+				hasVaultRefs = true
 				break
 			}
 		}
 		if vault.HasVaultRefs(tool.Stdin) {
-			hasRefs = true
+			hasVaultRefs = true
 		}
 		if vault.HasVaultRefs(tool.Command) {
-			hasRefs = true
+			hasVaultRefs = true
 		}
-		if hasRefs {
+		if hasVaultRefs {
 			break
 		}
 	}
 
-	if !hasRefs {
-		return nil, nil
+	resolver := vault.NewResolver()
+
+	// Always register an env backend. Parameter values can reference
+	// {{env:NAME}} at runtime — workspace vars, --env overrides, and
+	// fall-through to os.Getenv all flow through here.
+	if vars := loadActiveWorkspaceVars(cfg); len(vars) > 0 {
+		resolver.Register("env", vault.EnvBackendWithOverrides{Overrides: vars})
+	} else {
+		resolver.Register("env", vault.EnvBackend{})
+	}
+
+	if !hasVaultRefs {
+		// No vault refs in config — skip the password prompt, but still
+		// return the resolver so the proxy can resolve env refs in params.
+		return resolver, nil
 	}
 
 	vlog("vault references detected, opening vault")
-
-	resolver := vault.NewResolver()
 
 	// Register external vault backends first (they don't need local vault)
 	for name, backendCfg := range cfg.VaultBackends {
@@ -1221,6 +1243,26 @@ func initResolver(cfg *config.Config) (*vault.Resolver, error) {
 	}
 
 	return resolver, nil
+}
+
+// loadActiveWorkspaceVars returns the vars map for the active workspace
+// (resolved from --workspace / FACTORLY_WORKSPACE / default auto-load),
+// or nil when none is active or its load fails. Errors are swallowed —
+// initResolver still needs to return a usable resolver even if the
+// workspace file is missing.
+func loadActiveWorkspaceVars(_ *config.Config) map[string]string {
+	if workspaceName == "" {
+		return nil
+	}
+	cfgPath := configPath
+	if cfgPath == "" {
+		cfgPath = config.FindConfig()
+	}
+	ws, err := workspace.Load(cfgPath, workspaceName)
+	if err != nil || ws == nil {
+		return nil
+	}
+	return ws.Vars
 }
 
 func resolveVaultRef(resolver *vault.Resolver, s string) string {

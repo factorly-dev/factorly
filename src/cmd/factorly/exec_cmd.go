@@ -11,6 +11,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/factorly-dev/factorly/internal/vault"
+	"github.com/factorly-dev/factorly/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -125,9 +126,18 @@ func runExec(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Build resolver with env + optional vault backends
+	// Build resolver with env + optional vault backends. When --workspace
+	// (or FACTORLY_WORKSPACE) is active, seed the env backend with the
+	// workspace's vars so {{env:NAME}} references resolve to workspace
+	// values before falling back to os.Getenv — same overlay semantics
+	// as `factorly call` uses via config.WithWorkspace.
 	resolver := vault.NewResolver()
-	resolver.Register("env", vault.EnvBackend{})
+	workspaceVars := loadExecWorkspaceVars()
+	if len(workspaceVars) > 0 {
+		resolver.Register("env", vault.EnvBackendWithOverrides{Overrides: workspaceVars})
+	} else {
+		resolver.Register("env", vault.EnvBackend{})
+	}
 	if hasVaultRefs {
 		backend, err := getCachedLocalVault()
 		if err != nil {
@@ -142,9 +152,17 @@ func runExec(cmd *cobra.Command, args []string) error {
 	}
 
 	// Phase 2: rebuild resolver with resolved --env values as overrides
-	// so args can reference them via {{env:KEY}}
-	if len(toolCfg.Env) > 0 {
-		resolver.Register("env", vault.EnvBackendWithOverrides{Overrides: toolCfg.Env})
+	// so args can reference them via {{env:KEY}}. --env wins over
+	// workspace vars (more specific intent), workspace wins over os env.
+	if len(toolCfg.Env) > 0 || len(workspaceVars) > 0 {
+		merged := make(map[string]string, len(workspaceVars)+len(toolCfg.Env))
+		for k, v := range workspaceVars {
+			merged[k] = v
+		}
+		for k, v := range toolCfg.Env {
+			merged[k] = v
+		}
+		resolver.Register("env", vault.EnvBackendWithOverrides{Overrides: merged})
 	}
 
 	// Phase 3: resolve command and args
@@ -176,6 +194,33 @@ func runExec(cmd *cobra.Command, args []string) error {
 		os.Exit(result.ExitCode)
 	}
 	return nil
+}
+
+// loadExecWorkspaceVars returns the vars map for the active workspace
+// (resolved from --workspace flag or FACTORLY_WORKSPACE env), or nil
+// when no workspace is active or the project has none. exec uses its
+// own resolver setup (not config.Load), so the workspace overlay has
+// to be wired here explicitly. Errors are swallowed — exec should
+// still run even if the workspace file is missing; missing var refs
+// will surface as unresolved-placeholder errors downstream which is
+// the right signal.
+func loadExecWorkspaceVars() map[string]string {
+	name := workspaceName
+	if name == "" {
+		name = os.Getenv("FACTORLY_WORKSPACE")
+	}
+	if name == "" {
+		return nil
+	}
+	cfgPath := configPath
+	if cfgPath == "" {
+		cfgPath = config.FindConfig()
+	}
+	ws, err := workspace.Load(cfgPath, name)
+	if err != nil || ws == nil {
+		return nil
+	}
+	return ws.Vars
 }
 
 func init() {

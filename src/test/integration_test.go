@@ -5010,6 +5010,106 @@ func TestWorkspacesCreateRejectsBadName(t *testing.T) {
 	}
 }
 
+// TestExecHonorsWorkspace: `factorly exec --workspace X -- ... {{env:VAR}} ...`
+// resolves VAR from the workspace's vars. Without this, exec's resolver
+// would only see os.Getenv. Also verifies precedence: --env wins over
+// workspace var; workspace var wins over os env.
+func TestExecHonorsWorkspace(t *testing.T) {
+	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{
+		"default": "vars: {GREETING: hi-from-default}\n",
+		"staging": "vars: {GREETING: hi-from-staging}\n",
+	})
+
+	out, _, code := run(t, dir, "exec", "--workspace", "staging", "--", "echo", "{{env:GREETING}}")
+	if code != 0 {
+		t.Fatalf("staging exec: exit %d, out=%q", code, out)
+	}
+	if !strings.Contains(out, "hi-from-staging") {
+		t.Errorf("expected staging greeting, got %q", out)
+	}
+
+	out, _, code = run(t, dir, "exec", "-w", "default", "--", "echo", "{{env:GREETING}}")
+	if code != 0 {
+		t.Fatalf("default exec: exit %d, out=%q", code, out)
+	}
+	if !strings.Contains(out, "hi-from-default") {
+		t.Errorf("expected default greeting, got %q", out)
+	}
+
+	// --env overrides workspace var
+	out, _, code = run(t, dir, "exec", "-w", "default", "--env", "GREETING=from-cli", "--", "echo", "{{env:GREETING}}")
+	if code != 0 {
+		t.Fatalf("--env override exec: exit %d", code)
+	}
+	if !strings.Contains(out, "from-cli") {
+		t.Errorf("--env should win over workspace, got %q", out)
+	}
+}
+
+// TestParamEnvRefResolvesAgainstWorkspace: an {{env:NAME}} reference
+// inside a *parameter value* (not just a config value) resolves against
+// the active workspace before falling through to os.Getenv. The
+// regression scenario was passing a {{env:VAR}} as the `command`
+// parameter to factorly.shell — the proxy's runtime resolver had no
+// env backend registered, so the placeholder reached the shell
+// verbatim. Use a plain CLI tool to keep the test hermetic (no
+// confirm prompts on factorly.shell).
+func TestParamEnvRefResolvesAgainstWorkspace(t *testing.T) {
+	dir := setupWorkspaceProject(t, `tools:
+  passthrough:
+    type: cli
+    command: echo
+    args: ["{{value}}"]
+    parameters:
+      - name: value
+        required: true
+`, map[string]string{
+		"default": "vars: {GREETING: hi-from-default}\n",
+		"staging": "vars: {GREETING: hi-from-staging}\n",
+	})
+
+	out, _, code := run(t, dir, "call", "passthrough", "--value", "{{env:GREETING}}", "--workspace", "staging")
+	if code != 0 {
+		t.Fatalf("staging call: exit %d, out=%q", code, out)
+	}
+	if !strings.Contains(out, "hi-from-staging") {
+		t.Errorf("expected staging value resolved in param, got %q", out)
+	}
+
+	out, _, code = run(t, dir, "call", "passthrough", "--value", "{{env:GREETING}}", "-w", "default")
+	if code != 0 {
+		t.Fatalf("default call: exit %d, out=%q", code, out)
+	}
+	if !strings.Contains(out, "hi-from-default") {
+		t.Errorf("expected default value resolved in param, got %q", out)
+	}
+
+	// Embedded ref with surrounding literal text.
+	out, _, code = run(t, dir, "call", "passthrough", "--value", "say {{env:GREETING}}!", "-w", "staging")
+	if code != 0 {
+		t.Fatalf("embedded call: exit %d", code)
+	}
+	if !strings.Contains(out, "say hi-from-staging!") {
+		t.Errorf("expected 'say hi-from-staging!', got %q", out)
+	}
+}
+
+// TestExecEnvRefsEmbeddedInArgs: exec's resolver handles {{env:VAR}}
+// embedded in surrounding text — including multiple refs in one arg.
+func TestExecEnvRefsEmbeddedInArgs(t *testing.T) {
+	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{
+		"default": "vars: {FIRST: alice, SECOND: bob}\n",
+	})
+
+	out, _, code := run(t, dir, "exec", "--workspace", "default", "--", "echo", "from {{env:FIRST}} to {{env:SECOND}}")
+	if code != 0 {
+		t.Fatalf("exec: exit %d", code)
+	}
+	if !strings.Contains(out, "from alice to bob") {
+		t.Errorf("expected both refs resolved, got %q", out)
+	}
+}
+
 // TestWorkspaceVaultSelection: a {{vault:KEY}} reference resolves
 // against the workspace vault first, falling through to the project
 // vault when not present.
