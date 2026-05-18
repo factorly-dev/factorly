@@ -49,6 +49,7 @@
 | [Blueprints](blueprints.md) | Sharable tool/workflow bundles — 40+ bundled for popular services, plus install-from-GitHub/URL/file |
 | [Workflows](workflows.md) | Sequential tool pipelines with variable passing, state persistence, and per-step oversight |
 | [Code Tools](code-tools.md) | Run sandboxed Go scripts as tools — power-user authoring (`type: code`) and agent-authored (`factorly.code`) |
+| [Workspaces](workspaces.md) | Named variable + vault overlays for swapping environments (`--workspace staging`, `--workspace prod`) |
 | [Expressions](expressions.md) | Condition language for workflow `if:` and `switch:` — comparisons, boolean logic, jsonpath |
 
 ## Examples

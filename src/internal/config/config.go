@@ -13,6 +13,7 @@ import (
 
 	"github.com/factorly-dev/factorly/internal/output"
 	"github.com/factorly-dev/factorly/internal/vault"
+	"github.com/factorly-dev/factorly/internal/workspace"
 	"gopkg.in/yaml.v3"
 )
 
@@ -187,7 +188,27 @@ func (sc *ShadowConfig) ConfirmList() (list []string, all bool) {
 
 var placeholderPattern = regexp.MustCompile(`\{\{([A-Za-z_][A-Za-z0-9_-]*)\}\}`)
 
-func Load(path string) (*Config, error) {
+// LoadOption configures optional Load behaviour. Used for the few
+// load-time knobs (workspace overlay, etc.) that don't belong in the
+// config file itself.
+type LoadOption func(*loadOpts)
+
+type loadOpts struct {
+	workspace string
+}
+
+// WithWorkspace selects a named workspace whose vars overlay the env
+// backend's lookups during {{env:NAME}} resolution. Empty name (the
+// default) means no overlay; existing behaviour is byte-identical.
+func WithWorkspace(name string) LoadOption {
+	return func(o *loadOpts) { o.workspace = name }
+}
+
+func Load(path string, opts ...LoadOption) (*Config, error) {
+	var lo loadOpts
+	for _, o := range opts {
+		o(&lo)
+	}
 	if path == "" {
 		path = "factorly.yaml"
 	}
@@ -294,7 +315,18 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
-	resolveBackendRefs(&cfg)
+	var workspaceVars map[string]string
+	if lo.workspace != "" {
+		ws, err := workspace.Load(path, lo.workspace)
+		if err != nil {
+			return nil, err
+		}
+		if ws != nil {
+			workspaceVars = ws.Vars
+		}
+	}
+
+	resolveBackendRefs(&cfg, workspaceVars)
 	inferParameters(&cfg)
 
 	if err := validate(&cfg); err != nil {
@@ -311,7 +343,7 @@ func LoadDir(dirPath string) (*Config, error) {
 		return nil, err
 	}
 
-	resolveBackendRefs(cfg)
+	resolveBackendRefs(cfg, nil)
 	inferParameters(cfg)
 
 	if err := validate(cfg); err != nil {
@@ -548,9 +580,15 @@ func mergeProjectDir(cfg *Config, baseDir string) error {
 
 // resolveBackendRefs resolves {{env:VAR}} references in config using the env backend.
 // Other backends (vault, 1password, etc.) are resolved later in bootstrapProviders.
-func resolveBackendRefs(cfg *Config) {
+// workspaceVars, when non-nil, overlay os.Getenv lookups — a {{env:KEY}} reference
+// returns the workspace value if present, otherwise falls back to the process env.
+func resolveBackendRefs(cfg *Config, workspaceVars map[string]string) {
 	r := vault.NewResolver()
-	r.Register("env", vault.EnvBackend{})
+	if len(workspaceVars) > 0 {
+		r.Register("env", vault.EnvBackendWithOverrides{Overrides: workspaceVars})
+	} else {
+		r.Register("env", vault.EnvBackend{})
+	}
 
 	resolve := func(s string) string {
 		resolved, _ := r.Resolve(s)

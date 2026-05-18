@@ -83,6 +83,12 @@ Practical, copy-paste examples for every Factorly feature. Each is self-containe
 | 36 | [Cross-tool Composition](36-cross-tool-composition.md) | Call multiple sibling tools, parse each, merge into one summary |
 | 37 | [factorly.code Builtin](37-factorly-code-builtin.md) | Same engine, agent-supplied source at call time |
 
+## Workspaces
+
+| # | Example | Description |
+|---|---------|-------------|
+| 38 | [Workspaces](38-workspaces.md) | Switch between staging and prod with `--workspace`; optional per-workspace vault for env-specific secrets |
+
 ## Compliance
 
 | # | Example | Description |

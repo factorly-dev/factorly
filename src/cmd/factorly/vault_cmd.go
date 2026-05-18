@@ -210,7 +210,12 @@ var vaultDeleteCmd = &cobra.Command{
 
 // resolveVaultPath determines which vault file to use.
 // Priority: --vault-path flag → --global flag → FACTORLY_VAULT_PATH env →
-// project vault (.factorly/vault.enc if .factorly/ exists) → global vault.
+// --workspace (.factorly/vaults/<name>.enc) → project vault → global vault.
+//
+// Workspace ranks below explicit --vault-path / --global / env override so
+// power users can always pin a single target, but above the project vault
+// default so `factorly vault set --workspace staging KEY value` writes
+// to the workspace vault without further ceremony.
 func resolveVaultPath() string {
 	if vaultPath != "" {
 		return vaultPath
@@ -220,6 +225,10 @@ func resolveVaultPath() string {
 	}
 	if p := os.Getenv("FACTORLY_VAULT_PATH"); p != "" {
 		return p
+	}
+	if workspaceName != "" {
+		// .factorly/vaults/<name>.enc — created on first Set if it doesn't yet exist.
+		return workspaceVaultPath(workspaceName)
 	}
 	// Default: project vault if .factorly/ directory exists
 	if info, err := os.Stat(".factorly"); err == nil && info.IsDir() {
@@ -232,8 +241,24 @@ func projectVaultPath() string {
 	return filepath.Join(".factorly", "vault.enc")
 }
 
+// workspaceVaultPath returns the path to the encrypted vault file for
+// the given workspace. Empty name yields an empty path — the caller
+// treats that as "no workspace, no workspace vault."
+func workspaceVaultPath(name string) string {
+	if name == "" {
+		return ""
+	}
+	return filepath.Join(".factorly", "vaults", name+".enc")
+}
+
 func isProjectVault(path string) bool {
 	return filepath.Base(filepath.Dir(path)) == ".factorly"
+}
+
+// isWorkspaceVault reports whether path looks like .factorly/vaults/<name>.enc.
+func isWorkspaceVault(path string) bool {
+	return filepath.Base(filepath.Dir(path)) == "vaults" &&
+		filepath.Base(filepath.Dir(filepath.Dir(path))) == ".factorly"
 }
 
 // openVault opens the vault at the resolved path.
@@ -256,6 +281,30 @@ func openSmartVault() (vault.Backend, error) {
 	// Explicit flag = single vault, no fallback
 	if vaultPath != "" || vaultGlobal {
 		return openVault()
+	}
+	// Workspace-aware: when --workspace is active and the workspace
+	// vault file exists, nest workspace → (project → global). The
+	// workspace vault opens immediately; project/global open lazily on
+	// first miss, exactly like the existing two-tier chain.
+	if workspaceName != "" {
+		wsPath := workspaceVaultPath(workspaceName)
+		if _, err := os.Stat(wsPath); err == nil {
+			wsPw, err := resolveWorkspaceVaultPassword(workspaceName)
+			if err != nil {
+				return nil, fmt.Errorf("workspace vault: %w", err)
+			}
+			wsBackend, err := vault.OpenLocalAt(wsPath, wsPw)
+			if err != nil {
+				return nil, fmt.Errorf("opening workspace vault: %w", err)
+			}
+			return &vault.FallbackBackend{
+				Primary: wsBackend,
+				SecondaryOpen: func() (vault.Backend, error) {
+					vlog("falling back from workspace vault to project/global chain")
+					return openFallbackVault()
+				},
+			}, nil
+		}
 	}
 	return openFallbackVault()
 }
@@ -341,10 +390,52 @@ func openFallbackVault() (vault.Backend, error) {
 // resolveVaultPassword resolves the password for a vault at the given path.
 // Returns []byte so the caller can zero it after use.
 func resolveVaultPassword(path string) ([]byte, error) {
+	if isWorkspaceVault(path) {
+		// .factorly/vaults/<name>.enc — derive workspace name from filename.
+		name := strings.TrimSuffix(filepath.Base(path), ".enc")
+		return resolveWorkspaceVaultPassword(name)
+	}
 	if isProjectVault(path) {
 		return resolveProjectVaultPassword()
 	}
 	return resolveGlobalVaultPassword()
+}
+
+// resolveWorkspaceVaultPassword mirrors resolveProjectVaultPassword
+// but with workspace-scoped sources:
+//
+//  1. FACTORLY_WORKSPACE_VAULT_PASSWORD_<UPPER_NAME> env var
+//  2. shared FACTORLY_VAULT_PASSWORD env var (convenience)
+//  3. .factorly/vaults/<name>.key keyfile
+//  4. interactive prompt
+func resolveWorkspaceVaultPassword(name string) ([]byte, error) {
+	envKey := "FACTORLY_WORKSPACE_VAULT_PASSWORD_" + strings.ToUpper(name)
+	if pw, ok := os.LookupEnv(envKey); ok {
+		if pw == "" {
+			return nil, fmt.Errorf("%s is set but empty", envKey)
+		}
+		vlog("workspace vault password from %s", envKey)
+		return []byte(pw), nil
+	}
+	if pw, ok := os.LookupEnv("FACTORLY_VAULT_PASSWORD"); ok {
+		if pw != "" {
+			vlog("workspace vault password from FACTORLY_VAULT_PASSWORD")
+			return []byte(pw), nil
+		}
+	}
+	keyFile := filepath.Join(".factorly", "vaults", name+".key")
+	if pw, err := readKeyFile(keyFile); err == nil {
+		vlog("workspace vault password from %s", keyFile)
+		return pw, nil
+	}
+	pw, err := promptSecret(fmt.Sprintf("Vault password (workspace %q): ", name))
+	if err != nil {
+		return nil, err
+	}
+	if len(pw) == 0 {
+		return nil, fmt.Errorf("vault password cannot be empty")
+	}
+	return pw, nil
 }
 
 func resolveProjectVaultPassword() ([]byte, error) {

@@ -1325,3 +1325,111 @@ func TestHasStructuredKeysDetectsEachField(t *testing.T) {
 		t.Error("hasStructuredKeys returned true for empty Config")
 	}
 }
+
+// --- Workspace overlay ---
+
+// writeWorkspaceFile writes a workspace file alongside a config at
+// <cfgDir>/.factorly/workspaces/<name>.yaml. cfgPath must be a
+// top-level config (writeTestConfig output), not under .factorly/.
+func writeWorkspaceFile(t *testing.T, cfgPath, name, body string) {
+	t.Helper()
+	dir := filepath.Join(filepath.Dir(cfgPath), ".factorly", "workspaces")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name+".yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWorkspaceOverlayResolvesEnvRefs(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  api:
+    type: cli
+    command: curl
+    args: ["{{env:API_BASE}}"]
+`)
+	writeWorkspaceFile(t, path, "staging", `vars:
+  API_BASE: https://api.staging.example.com
+`)
+	cfg, err := Load(path, WithWorkspace("staging"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.Tools["api"].Args[0]
+	if got != "https://api.staging.example.com" {
+		t.Errorf("expected staging URL, got %q", got)
+	}
+}
+
+func TestWorkspaceVarsOverrideProcessEnv(t *testing.T) {
+	t.Setenv("API_BASE", "https://prod-from-env")
+	path := writeTestConfig(t, `
+tools:
+  api:
+    type: cli
+    command: curl
+    args: ["{{env:API_BASE}}"]
+`)
+	writeWorkspaceFile(t, path, "staging", `vars:
+  API_BASE: https://staging-from-workspace
+`)
+	cfg, err := Load(path, WithWorkspace("staging"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.Tools["api"].Args[0]
+	if got != "https://staging-from-workspace" {
+		t.Errorf("workspace var should win over os env; got %q", got)
+	}
+}
+
+func TestWorkspaceFallsBackToProcessEnv(t *testing.T) {
+	t.Setenv("SHARED", "from-os-env")
+	path := writeTestConfig(t, `
+tools:
+  api:
+    type: cli
+    command: curl
+    args: ["{{env:SHARED}}"]
+`)
+	// Workspace declares unrelated vars; SHARED should fall through.
+	writeWorkspaceFile(t, path, "staging", `vars:
+  OTHER: irrelevant
+`)
+	cfg, err := Load(path, WithWorkspace("staging"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Tools["api"].Args[0]; got != "from-os-env" {
+		t.Errorf("expected os env fallback, got %q", got)
+	}
+}
+
+func TestWorkspaceMissingReturnsError(t *testing.T) {
+	path := writeTestConfig(t, `tools: {}`+"\n")
+	_, err := Load(path, WithWorkspace("ghost"))
+	if err == nil {
+		t.Fatal("expected error for unknown workspace")
+	}
+}
+
+func TestNoWorkspaceLeavesBehaviorUnchanged(t *testing.T) {
+	// Sanity: passing no opts must behave like the pre-LoadOption Load.
+	t.Setenv("API_BASE", "https://from-env")
+	path := writeTestConfig(t, `
+tools:
+  api:
+    type: cli
+    command: curl
+    args: ["{{env:API_BASE}}"]
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Tools["api"].Args[0]; got != "https://from-env" {
+		t.Errorf("no-workspace path regressed: got %q", got)
+	}
+}

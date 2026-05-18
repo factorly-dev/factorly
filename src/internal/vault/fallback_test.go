@@ -151,3 +151,48 @@ func TestFallbackNilSecondary(t *testing.T) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
+
+// TestFallbackNests verifies a three-tier chain: a FallbackBackend
+// nested as the Primary of another FallbackBackend. Used by workspace
+// vaults to chain workspace → project → global.
+func TestFallbackNests(t *testing.T) {
+	workspace := newFBMock(map[string]string{"WS_ONLY": "ws"})
+	project := newFBMock(map[string]string{"SHARED": "proj", "PROJ_ONLY": "p"})
+	global := newFBMock(map[string]string{"GLOBAL_ONLY": "g"})
+
+	// project → global
+	inner := &FallbackBackend{Primary: project, Secondary: global}
+	// workspace → (project → global)
+	outer := &FallbackBackend{Primary: workspace, Secondary: inner}
+
+	cases := []struct {
+		key, want string
+	}{
+		{"WS_ONLY", "ws"},
+		{"SHARED", "proj"},
+		{"PROJ_ONLY", "p"},
+		{"GLOBAL_ONLY", "g"},
+	}
+	for _, c := range cases {
+		got, err := outer.Get(c.key)
+		if err != nil {
+			t.Errorf("Get(%q): unexpected error %v", c.key, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("Get(%q) = %q, want %q", c.key, got, c.want)
+		}
+	}
+
+	// Set targets the outermost Primary (workspace), matching the
+	// "writes go to the explicit tier" contract.
+	if err := outer.Set("NEW", "value"); err != nil {
+		t.Fatal(err)
+	}
+	if workspace.data["NEW"] != "value" {
+		t.Errorf("Set should land in workspace; workspace=%+v project=%+v", workspace.data, project.data)
+	}
+	if _, ok := project.data["NEW"]; ok {
+		t.Errorf("Set should not touch project vault")
+	}
+}

@@ -1641,6 +1641,13 @@ func TestInitDefaults(t *testing.T) {
 	if strings.Contains(content, "tools_dir") {
 		t.Error("standard setup should not emit tools_dir; .factorly/tools/ is auto-discovered")
 	}
+
+	// Default workspace should always be created — it auto-loads
+	// whenever no --workspace flag is set.
+	defaultWs := filepath.Join(dir, ".factorly", "workspaces", "default.yaml")
+	if _, err := os.Stat(defaultWs); os.IsNotExist(err) {
+		t.Errorf("expected default workspace at %s", defaultWs)
+	}
 }
 
 func TestInitAlreadyExists(t *testing.T) {
@@ -4708,5 +4715,497 @@ func TestProjectScopedLogPath(t *testing.T) {
 	globalLog := filepath.Join(fakeHome, ".config", "factorly", "audit.jsonl")
 	if _, err := os.Stat(globalLog); !os.IsNotExist(err) {
 		t.Errorf("global log should not exist at %s (err: %v)", globalLog, err)
+	}
+}
+
+// --- Workspaces ---
+
+// setupWorkspaceProject creates a temp project with a .factorly/
+// config and the given workspaces (name → workspace YAML body).
+func setupWorkspaceProject(t *testing.T, factorlyYaml string, workspaces map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	factDir := filepath.Join(dir, ".factorly")
+	if err := os.MkdirAll(filepath.Join(factDir, "workspaces"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(factDir, "factorly.yaml"), []byte(factorlyYaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range workspaces {
+		path := filepath.Join(factDir, "workspaces", name+".yaml")
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// TestWorkspaceOverlay: --workspace selects which {{env:NAME}} value
+// gets resolved at config-load time.
+func TestWorkspaceOverlay(t *testing.T) {
+	dir := setupWorkspaceProject(t, `tools:
+  echo.test:
+    type: cli
+    command: echo
+    args: ["{{env:GREETING}}"]
+`, map[string]string{
+		"staging": "vars:\n  GREETING: hello-staging\n",
+		"prod":    "vars:\n  GREETING: hello-prod\n",
+	})
+
+	out, _, code := run(t, dir, "call", "echo.test", "--workspace", "staging")
+	if code != 0 {
+		t.Fatalf("staging call: exit %d, out=%q", code, out)
+	}
+	if !strings.Contains(out, "hello-staging") {
+		t.Errorf("expected staging greeting, got %q", out)
+	}
+
+	out, _, code = run(t, dir, "call", "echo.test", "-w", "prod")
+	if code != 0 {
+		t.Fatalf("prod call: exit %d", code)
+	}
+	if !strings.Contains(out, "hello-prod") {
+		t.Errorf("expected prod greeting, got %q", out)
+	}
+}
+
+// TestWorkspaceFromEnvVar: FACTORLY_WORKSPACE is the env-var fallback
+// for the --workspace flag, identical effect.
+func TestWorkspaceFromEnvVar(t *testing.T) {
+	dir := setupWorkspaceProject(t, `tools:
+  echo.test:
+    type: cli
+    command: echo
+    args: ["{{env:GREETING}}"]
+`, map[string]string{
+		"staging": "vars:\n  GREETING: from-env-var\n",
+	})
+
+	cmd := exec.Command(binary, "call", "echo.test")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_NO_UPDATE_CHECK=1",
+		"FACTORLY_WORKSPACE=staging",
+	)
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("call: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "from-env-var") {
+		t.Errorf("expected from-env-var, got %q", stdout.String())
+	}
+}
+
+// TestWorkspaceUnknown: --workspace name that doesn't match any file
+// returns a helpful error listing available workspaces.
+func TestWorkspaceUnknown(t *testing.T) {
+	dir := setupWorkspaceProject(t, `tools:
+  echo.test:
+    type: cli
+    command: echo
+    args: ["hi"]
+`, map[string]string{
+		"staging": "vars: {}\n",
+		"prod":    "vars: {}\n",
+	})
+
+	_, stderr, code := run(t, dir, "call", "echo.test", "--workspace", "ghost")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for unknown workspace")
+	}
+	if !strings.Contains(stderr, "ghost") {
+		t.Errorf("error should name the missing workspace: %s", stderr)
+	}
+	if !strings.Contains(stderr, "staging") || !strings.Contains(stderr, "prod") {
+		t.Errorf("error should list available workspaces: %s", stderr)
+	}
+}
+
+// TestWorkspaceStampedInAuditLog: every entry made under --workspace
+// X carries workspace:"X" in the JSONL; calls without the flag don't.
+func TestWorkspaceStampedInAuditLog(t *testing.T) {
+	dir := setupWorkspaceProject(t, `tools:
+  echo.test:
+    type: cli
+    command: echo
+    args: ["hi"]
+`, map[string]string{
+		"staging": "vars: {}\n",
+	})
+
+	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
+	runWithLog := func(args ...string) {
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"FACTORLY_LOG_PATH="+logPath,
+			"FACTORLY_NO_UPDATE_CHECK=1",
+		)
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("run %v: %v\nstderr: %s", args, err, stderr.String())
+		}
+	}
+
+	runWithLog("call", "echo.test", "--workspace", "staging")
+	runWithLog("call", "echo.test")
+
+	f, err := os.Open(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	type entry struct {
+		Tool      string `json:"tool"`
+		Workspace string `json:"workspace,omitempty"`
+	}
+	var entries []entry
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		var e entry
+		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		if e.Tool == "echo.test" {
+			entries = append(entries, e)
+		}
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 echo.test entries, got %d", len(entries))
+	}
+	if entries[0].Workspace != "staging" {
+		t.Errorf("first entry: workspace=%q, want staging", entries[0].Workspace)
+	}
+	if entries[1].Workspace != "" {
+		t.Errorf("second entry: workspace=%q, want empty", entries[1].Workspace)
+	}
+}
+
+// TestWorkspacesListCLI: `factorly workspaces list` enumerates files;
+// `show <name>` masks secret-looking values.
+func TestWorkspacesListCLI(t *testing.T) {
+	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{
+		"staging": "description: Staging\nvars:\n  API_BASE: https://staging\n  GITHUB_TOKEN: ghp_super_secret\n",
+		"prod":    "description: Prod\nvars: {}\n",
+	})
+
+	out, _, code := run(t, dir, "workspaces", "list")
+	if code != 0 {
+		t.Fatalf("list: exit %d", code)
+	}
+	for _, want := range []string{"staging", "prod", "Staging", "Prod"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("list output missing %q:\n%s", want, out)
+		}
+	}
+
+	out, _, code = run(t, dir, "workspaces", "show", "staging")
+	if code != 0 {
+		t.Fatalf("show: exit %d", code)
+	}
+	if !strings.Contains(out, "https://staging") {
+		t.Errorf("show should print API_BASE: %s", out)
+	}
+	if strings.Contains(out, "ghp_super_secret") {
+		t.Errorf("show must mask GITHUB_TOKEN value, got: %s", out)
+	}
+	if !strings.Contains(out, "****") {
+		t.Errorf("show should display masked placeholder: %s", out)
+	}
+}
+
+// TestWorkspaceVaultSelection: a {{vault:KEY}} reference resolves
+// against the workspace vault first, falling through to the project
+// vault when not present.
+func TestWorkspaceVaultSelection(t *testing.T) {
+	dir := setupWorkspaceProject(t, `tools:
+  show.token:
+    type: cli
+    command: echo
+    args: ["{{vault:GITHUB_TOKEN}}"]
+`, map[string]string{
+		"staging": "vars: {}\n",
+	})
+
+	// Populate vaults.
+	vaultEnv := []string{"FACTORLY_VAULT_PASSWORD=test123"}
+	for _, args := range [][]string{
+		{"vault", "set", "--workspace", "staging", "GITHUB_TOKEN", "tok-staging"},
+		{"vault", "set", "GITHUB_TOKEN", "tok-project"},
+	} {
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+		var errb strings.Builder
+		cmd.Stderr = &errb
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("vault set %v: %v\nstderr: %s", args, err, errb.String())
+		}
+	}
+
+	runVault := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+		var out, errb strings.Builder
+		cmd.Stdout = &out
+		cmd.Stderr = &errb
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("run %v: %v\nstderr: %s", args, err, errb.String())
+		}
+		return out.String()
+	}
+
+	if got := strings.TrimSpace(runVault("call", "show.token", "--workspace", "staging")); got != "tok-staging" {
+		t.Errorf("workspace call: got %q, want tok-staging", got)
+	}
+	if got := strings.TrimSpace(runVault("call", "show.token")); got != "tok-project" {
+		t.Errorf("project call: got %q, want tok-project", got)
+	}
+}
+
+// TestWorkspaceVaultFallback: workspace vault returns its own keys but
+// falls through to project vault for keys only present there.
+func TestWorkspaceVaultFallback(t *testing.T) {
+	dir := setupWorkspaceProject(t, `tools:
+  show.wsonly:
+    type: cli
+    command: echo
+    args: ["{{vault:WS_ONLY}}"]
+  show.shared:
+    type: cli
+    command: echo
+    args: ["{{vault:SHARED}}"]
+`, map[string]string{
+		"staging": "vars: {}\n",
+	})
+
+	vaultEnv := []string{"FACTORLY_VAULT_PASSWORD=test123"}
+	for _, args := range [][]string{
+		{"vault", "set", "--workspace", "staging", "WS_ONLY", "ws"},
+		{"vault", "set", "SHARED", "proj"},
+	} {
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+		var errb strings.Builder
+		cmd.Stderr = &errb
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("vault set %v: %v\nstderr: %s", args, err, errb.String())
+		}
+	}
+
+	runWithFlag := func(args ...string) string {
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+		var out, errb strings.Builder
+		cmd.Stdout = &out
+		cmd.Stderr = &errb
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("run %v: %v\nstderr: %s", args, err, errb.String())
+		}
+		return strings.TrimSpace(out.String())
+	}
+
+	if got := runWithFlag("call", "show.wsonly", "--workspace", "staging"); got != "ws" {
+		t.Errorf("WS_ONLY: got %q, want ws", got)
+	}
+	if got := runWithFlag("call", "show.shared", "--workspace", "staging"); got != "proj" {
+		t.Errorf("SHARED (via fallback): got %q, want proj", got)
+	}
+}
+
+// TestWorkspaceVaultWriteIsScoped: `vault set --workspace X` writes to
+// <project>/.factorly/vaults/X.enc and does NOT modify the project vault.
+func TestWorkspaceVaultWriteIsScoped(t *testing.T) {
+	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{
+		"staging": "vars: {}\n",
+	})
+
+	vaultEnv := []string{"FACTORLY_VAULT_PASSWORD=test123"}
+
+	// Seed project vault first so we can verify it's left alone.
+	cmd := exec.Command(binary, "vault", "set", "PROJECT_KEY", "proj-value")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("seed project vault: %v", err)
+	}
+
+	// Now write to workspace vault.
+	cmd = exec.Command(binary, "vault", "set", "--workspace", "staging", "WS_KEY", "ws-value")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("workspace vault set: %v", err)
+	}
+
+	wsVault := filepath.Join(dir, ".factorly", "vaults", "staging.enc")
+	if _, err := os.Stat(wsVault); err != nil {
+		t.Errorf("expected workspace vault file at %s: %v", wsVault, err)
+	}
+
+	// Project vault should not contain WS_KEY. List its keys.
+	cmd = exec.Command(binary, "vault", "list")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+	var out, errb strings.Builder
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("vault list: %v\nstderr: %s", err, errb.String())
+	}
+	keys := out.String()
+	if !strings.Contains(keys, "PROJECT_KEY") {
+		t.Errorf("project vault missing PROJECT_KEY: %s", keys)
+	}
+	if strings.Contains(keys, "WS_KEY") {
+		t.Errorf("project vault should NOT contain WS_KEY: %s", keys)
+	}
+}
+
+// --- Default-workspace auto-select ---
+
+// TestDefaultWorkspaceAutoLoadsWhenNoFlag: .factorly/workspaces/default.yaml
+// is implicitly active when no --workspace flag and no FACTORLY_WORKSPACE
+// env var are set.
+func TestDefaultWorkspaceAutoLoadsWhenNoFlag(t *testing.T) {
+	dir := setupWorkspaceProject(t, `tools:
+  show:
+    type: cli
+    command: echo
+    args: ["{{env:GREETING}}"]
+`, map[string]string{
+		"default": "vars:\n  GREETING: hi-from-default\n",
+	})
+
+	out, _, code := run(t, dir, "call", "show")
+	if code != 0 {
+		t.Fatalf("call: exit %d, out=%q", code, out)
+	}
+	if !strings.Contains(out, "hi-from-default") {
+		t.Errorf("expected default vars to apply with no flag, got %q", out)
+	}
+}
+
+// TestDefaultWorkspaceOverriddenByExplicitFlag: --workspace staging
+// wins over an existing default workspace.
+func TestDefaultWorkspaceOverriddenByExplicitFlag(t *testing.T) {
+	dir := setupWorkspaceProject(t, `tools:
+  show:
+    type: cli
+    command: echo
+    args: ["{{env:GREETING}}"]
+`, map[string]string{
+		"default": "vars:\n  GREETING: hi-from-default\n",
+		"staging": "vars:\n  GREETING: hi-from-staging\n",
+	})
+
+	out, _, code := run(t, dir, "call", "show", "--workspace", "staging")
+	if code != 0 {
+		t.Fatalf("call: exit %d, out=%q", code, out)
+	}
+	if !strings.Contains(out, "hi-from-staging") {
+		t.Errorf("expected staging vars (explicit flag), got %q", out)
+	}
+}
+
+// TestNoDefaultPreservesProcessEnvFallthrough: when no default.yaml
+// exists and no workspace flag is set, {{env:NAME}} falls through to
+// os.Getenv — the pre-workspaces behavior is preserved.
+func TestNoDefaultPreservesProcessEnvFallthrough(t *testing.T) {
+	// Project has NO workspaces dir at all.
+	dir := t.TempDir()
+	factDir := filepath.Join(dir, ".factorly")
+	if err := os.MkdirAll(factDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(factDir, "factorly.yaml"), []byte(`tools:
+  show:
+    type: cli
+    command: echo
+    args: ["{{env:GREETING}}"]
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(binary, "call", "show")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_NO_UPDATE_CHECK=1",
+		"GREETING=via-os-env",
+	)
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("call: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "via-os-env") {
+		t.Errorf("expected os env fallthrough, got %q", stdout.String())
+	}
+}
+
+// TestDefaultWorkspaceStampedInAuditLog: audit entries from
+// auto-selected default workspace carry workspace:"default".
+func TestDefaultWorkspaceStampedInAuditLog(t *testing.T) {
+	dir := setupWorkspaceProject(t, `tools:
+  show:
+    type: cli
+    command: echo
+    args: ["hi"]
+`, map[string]string{
+		"default": "vars: {}\n",
+	})
+
+	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
+	cmd := exec.Command(binary, "call", "show")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_LOG_PATH="+logPath,
+		"FACTORLY_NO_UPDATE_CHECK=1",
+	)
+	var errb strings.Builder
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("call: %v\nstderr: %s", err, errb.String())
+	}
+
+	f, err := os.Open(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	type entry struct {
+		Tool      string `json:"tool"`
+		Workspace string `json:"workspace,omitempty"`
+	}
+	var found *entry
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		var e entry
+		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		if e.Tool == "show" {
+			found = &e
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("no show entry in audit log")
+	}
+	if found.Workspace != "default" {
+		t.Errorf("workspace=%q, want default", found.Workspace)
 	}
 }

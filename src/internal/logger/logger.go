@@ -46,11 +46,40 @@ type Entry struct {
 	// Lets the audit log identify "what code actually ran" without
 	// inlining the source itself.
 	SourceSHA string `json:"source_sha,omitempty"`
+	// Workspace is the name of the active workspace overlay (if any).
+	// Empty when the call ran outside a workspace context.
+	Workspace string `json:"workspace,omitempty"`
 }
 
 type Logger interface {
 	Log(entry *Entry) error
 	Close() error
+}
+
+// WithWorkspace wraps a Logger so every entry it logs carries the
+// given workspace name on its Workspace field. Empty name returns
+// the inner logger unchanged.
+func WithWorkspace(inner Logger, workspace string) Logger {
+	if workspace == "" {
+		return inner
+	}
+	return &workspaceLogger{inner: inner, workspace: workspace}
+}
+
+type workspaceLogger struct {
+	inner     Logger
+	workspace string
+}
+
+func (w *workspaceLogger) Log(e *Entry) error {
+	if e != nil && e.Workspace == "" {
+		e.Workspace = w.workspace
+	}
+	return w.inner.Log(e)
+}
+
+func (w *workspaceLogger) Close() error {
+	return w.inner.Close()
 }
 
 type JSONLLogger struct {

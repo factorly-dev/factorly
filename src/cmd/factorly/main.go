@@ -32,11 +32,13 @@ import (
 	"github.com/factorly-dev/factorly/internal/shadow"
 	"github.com/factorly-dev/factorly/internal/update"
 	"github.com/factorly-dev/factorly/internal/vault"
+	"github.com/factorly-dev/factorly/internal/workspace"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
 var configPath string
+var workspaceName string
 var configDir string
 var verbose bool
 var wrapMode bool
@@ -360,6 +362,27 @@ var initCmd = &cobra.Command{
 			}
 		}
 
+		// Always create a "default" workspace. It auto-loads whenever
+		// no --workspace flag is set, so {{env:NAME}} references in
+		// factorly.yaml can be overlaid from one place. Users add
+		// staging/prod as siblings when they need them.
+		wsDir := filepath.Join(filepath.Dir(outPath), "workspaces")
+		if err := os.MkdirAll(wsDir, 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to create workspaces dir: %v\n", err)
+		} else {
+			defaultPath := filepath.Join(wsDir, "default.yaml")
+			defaultBody := `description: Default workspace (auto-loaded when no --workspace is set)
+vars:
+  # Add overrides like API_BASE: http://localhost:3000 here, then
+  # reference them from factorly.yaml via {{env:API_BASE}}.
+  # Add sibling files (staging.yaml, prod.yaml) and switch with
+  # 'factorly call ... --workspace staging'.
+`
+			if err := os.WriteFile(defaultPath, []byte(defaultBody), 0o644); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: failed to write %s: %v\n", defaultPath, err)
+			}
+		}
+
 		// OpenAPI import
 		addOpenAPI := prompt(scanner, "Import tools from an OpenAPI spec? (y/n)", "n")
 		if strings.HasPrefix(strings.ToLower(addOpenAPI), "y") {
@@ -553,6 +576,7 @@ var importOpenAPICmd = &cobra.Command{
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "path to factorly.yaml")
 	rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "", "path to directory of tool definition files")
+	rootCmd.PersistentFlags().StringVarP(&workspaceName, "workspace", "w", "", "named workspace overlay (defaults to FACTORLY_WORKSPACE)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "print detailed progress to stderr")
 
 	initCmd.Flags().StringVarP(&initOut, "out", "o", "", "output file path (default: .factorly/factorly.yaml)")
@@ -563,7 +587,7 @@ func init() {
 
 	toolsCmd.AddCommand(toolsListCmd, toolsShowCmd, addCmd, removeCmd, importCmd, recordCmd, statusCmd)
 	utilsCmd.AddCommand(autocompleteCmd)
-	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, authCmd, serveCmd, wrapCmd, execCmd, logsCmd, utilsCmd, uiCmd, blueprintCmd)
+	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, workspacesCmd, authCmd, serveCmd, wrapCmd, execCmd, logsCmd, utilsCmd, uiCmd, blueprintCmd)
 }
 
 // loadConfig loads config and builds a registry. Does not open the vault
@@ -591,7 +615,23 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 		} else {
 			vlog("using config: %s", cfgPath)
 		}
-		cfg, err = config.Load(cfgPath)
+		// --workspace wins; FACTORLY_WORKSPACE is the fallback so users
+		// can set it once per shell. If neither is set and a "default"
+		// workspace exists, auto-select it — that's the Postman-style
+		// "always have an environment active" default. Persist back
+		// into workspaceName so downstream code (audit log, vault) sees
+		// the resolved value.
+		if workspaceName == "" {
+			workspaceName = os.Getenv("FACTORLY_WORKSPACE")
+		}
+		if workspaceName == "" && workspace.Exists(cfgPath, "default") {
+			workspaceName = "default"
+			vlog("auto-selected default workspace")
+		}
+		if workspaceName != "" {
+			vlog("using workspace: %s", workspaceName)
+		}
+		cfg, err = config.Load(cfgPath, config.WithWorkspace(workspaceName))
 	}
 	if err != nil {
 		return nil, nil, err
@@ -936,7 +976,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 			logIface = log
 		}
 	}
-	sharedLogger = logIface
+	sharedLogger = logger.WithWorkspace(logIface, workspaceName)
 
 	// Build shadow policy from config
 	var proxyOpts []proxy.Option
@@ -966,7 +1006,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 		proxyOpts = append(proxyOpts, proxy.WithResolver(resolver))
 	}
 
-	p := proxy.New(reg, providers, logIface, proxyOpts...)
+	p := proxy.New(reg, providers, sharedLogger, proxyOpts...)
 
 	// Wire workflow provider after proxy creation (needs proxy reference for step execution)
 	if len(workflowDefs) > 0 {
@@ -1069,26 +1109,40 @@ func requireArgs(n int, usage string) cobra.PositionalArgs {
 	}
 }
 
-// extractGlobalFlags pulls out global flags (-v, --verbose, -c, --config)
-// from args since DisableFlagParsing prevents cobra from handling them.
+// extractGlobalFlags pulls out global flags (-v/--verbose, -c/--config,
+// --config-dir, -w/--workspace) from args since DisableFlagParsing
+// prevents cobra from handling them. Supports both space-separated
+// (--flag value) and equals (--flag=value) forms.
 func extractGlobalFlags(args []string) []string {
 	var remaining []string
 	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-v", "--verbose":
+		a := args[i]
+		switch {
+		case a == "-v" || a == "--verbose":
 			verbose = true
-		case "-c", "--config":
+		case a == "-c" || a == "--config":
 			if i+1 < len(args) {
 				configPath = args[i+1]
 				i++
 			}
-		case "--config-dir":
+		case strings.HasPrefix(a, "--config="):
+			configPath = strings.TrimPrefix(a, "--config=")
+		case a == "--config-dir":
 			if i+1 < len(args) {
 				configDir = args[i+1]
 				i++
 			}
+		case strings.HasPrefix(a, "--config-dir="):
+			configDir = strings.TrimPrefix(a, "--config-dir=")
+		case a == "-w" || a == "--workspace":
+			if i+1 < len(args) {
+				workspaceName = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--workspace="):
+			workspaceName = strings.TrimPrefix(a, "--workspace=")
 		default:
-			remaining = append(remaining, args[i])
+			remaining = append(remaining, a)
 		}
 	}
 	return remaining
