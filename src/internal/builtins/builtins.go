@@ -121,7 +121,7 @@ func Register(cfg *config.Config, opts Options) {
 // reference docs and the agent-facing string stay in sync.
 const factorlyCodeDescription = `Execute a Go script that can call other registered factorly tools.
 
-The script runs in a sandboxed yaegi interpreter. It must declare:
+The script runs in a sandboxed go interpreter. It must declare:
 
     package main
     import "factorly"  // host SDK; see below

@@ -5209,3 +5209,162 @@ func TestDefaultWorkspaceStampedInAuditLog(t *testing.T) {
 		t.Errorf("workspace=%q, want default", found.Workspace)
 	}
 }
+
+// TestWorkspaceOAuthTokenIsolation: OAuth tokens are stored in the
+// vault under a deterministic key (e.g., github_oauth), so per-workspace
+// vaults give per-workspace tokens for free. The same {{vault:KEY}}
+// reference (and the same OAuth provider config) resolves to different
+// bundles depending on --workspace. We don't drive the browser flow
+// here — we seed bundle JSON via `vault set`, which is exactly what
+// `auth login` stores. Then verify `auth status` reads back the right
+// bundle per workspace.
+func TestWorkspaceOAuthTokenIsolation(t *testing.T) {
+	dir := setupWorkspaceProject(t, `tools:
+  github.me:
+    type: rest
+    base_url: https://api.github.com
+    method: GET
+    path: /user
+    auth:
+      type: oauth
+      provider: github
+oauth_providers:
+  github:
+    auth_url: https://github.com/login/oauth/authorize
+    token_url: https://github.com/login/oauth/access_token
+    client_id: stub
+    client_secret: stub
+`, map[string]string{
+		"staging": "vars: {}\n",
+		"prod":    "vars: {}\n",
+	})
+
+	// Realistic OAuth bundle shape — matches what auth login writes.
+	stagingBundle := `{"access_token":"tok-staging","refresh_token":"rt-staging","expiry":"2099-01-01T00:00:00Z"}`
+	prodBundle := `{"access_token":"tok-prod","refresh_token":"rt-prod","expiry":"2099-01-01T00:00:00Z"}`
+
+	vaultEnv := []string{
+		"FACTORLY_VAULT_PASSWORD=test123",
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_NO_UPDATE_CHECK=1",
+	}
+	runVault := func(args ...string) (string, string) {
+		t.Helper()
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), vaultEnv...)
+		var out, errb strings.Builder
+		cmd.Stdout = &out
+		cmd.Stderr = &errb
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("run %v: %v\nstderr: %s", args, err, errb.String())
+		}
+		return out.String(), errb.String()
+	}
+
+	// Seed bundles in each workspace vault — mimics two separate
+	// `factorly auth login github --workspace X` flows.
+	runVault("vault", "set", "--workspace", "staging", "github_oauth", stagingBundle)
+	runVault("vault", "set", "--workspace", "prod", "github_oauth", prodBundle)
+
+	// `auth status` lists the configured token key and reports valid.
+	// Most useful assertion: each workspace has its own state file.
+	stagingVault := filepath.Join(dir, ".factorly", "vaults", "staging.enc")
+	prodVault := filepath.Join(dir, ".factorly", "vaults", "prod.enc")
+	for _, p := range []string{stagingVault, prodVault} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("expected vault file %s: %v", p, err)
+		}
+	}
+
+	// `auth status` under each workspace should report the token as valid.
+	out, _ := runVault("auth", "status", "github", "--workspace", "staging")
+	if !strings.Contains(out, "github_oauth") || !strings.Contains(out, "valid") {
+		t.Errorf("staging auth status: expected valid github_oauth, got: %s", out)
+	}
+
+	out, _ = runVault("auth", "status", "github", "--workspace", "prod")
+	if !strings.Contains(out, "github_oauth") || !strings.Contains(out, "valid") {
+		t.Errorf("prod auth status: expected valid github_oauth, got: %s", out)
+	}
+
+	// Without a workspace, no token exists (the project vault was never
+	// written to). auth status should report not-authenticated.
+	out, _ = runVault("auth", "status", "github")
+	if !strings.Contains(out, "not authenticated") {
+		t.Errorf("project auth status: expected not authenticated, got: %s", out)
+	}
+
+	// Read back the staging token directly to confirm it's the staging
+	// bundle (not the prod one). We use `vault get` against the workspace
+	// vault — which goes through the same chain auth refresh uses.
+	got, _ := runVault("vault", "get", "--workspace", "staging", "github_oauth")
+	if !strings.Contains(got, "tok-staging") {
+		t.Errorf("staging vault should hold staging bundle, got: %s", got)
+	}
+	if strings.Contains(got, "tok-prod") {
+		t.Errorf("staging vault must not contain prod bundle: %s", got)
+	}
+}
+
+// TestWorkspaceOAuthFallsBackToProjectVault: an OAuth bundle stored in
+// the project vault is visible from a workspace that doesn't have its
+// own copy (the fallback chain at work). Documents the "shared token"
+// pattern — common login, both workspaces use it.
+func TestWorkspaceOAuthFallsBackToProjectVault(t *testing.T) {
+	dir := setupWorkspaceProject(t, `tools:
+  github.me:
+    type: rest
+    base_url: https://api.github.com
+    method: GET
+    path: /user
+    auth:
+      type: oauth
+      provider: github
+oauth_providers:
+  github:
+    auth_url: https://github.com/login/oauth/authorize
+    token_url: https://github.com/login/oauth/access_token
+    client_id: stub
+    client_secret: stub
+`, map[string]string{
+		"staging": "vars: {}\n",
+	})
+
+	bundle := `{"access_token":"shared-tok","refresh_token":"shared-rt","expiry":"2099-01-01T00:00:00Z"}`
+
+	vaultEnv := []string{
+		"FACTORLY_VAULT_PASSWORD=test123",
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_NO_UPDATE_CHECK=1",
+	}
+	runFactorly := func(args ...string) (string, string) {
+		t.Helper()
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), vaultEnv...)
+		var out, errb strings.Builder
+		cmd.Stdout = &out
+		cmd.Stderr = &errb
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("run %v: %v\nstderr: %s", args, err, errb.String())
+		}
+		return out.String(), errb.String()
+	}
+
+	// Token lives only in the project vault.
+	runFactorly("vault", "set", "github_oauth", bundle)
+
+	// Workspace has no vault file yet.
+	wsVault := filepath.Join(dir, ".factorly", "vaults", "staging.enc")
+	if _, err := os.Stat(wsVault); !os.IsNotExist(err) {
+		t.Fatalf("workspace vault should not exist yet, stat=%v", err)
+	}
+
+	// auth status under --workspace staging should see the project
+	// token via the fallback chain.
+	out, _ := runFactorly("auth", "status", "github", "--workspace", "staging")
+	if !strings.Contains(out, "valid") {
+		t.Errorf("expected valid status via fallback to project vault, got: %s", out)
+	}
+}

@@ -87,6 +87,27 @@ factorly call github.api.list_repos --workspace staging
 
 **Writes target a single tier.** `vault set --workspace staging KEY value` writes to `vaults/staging.enc` only. Without `--workspace`, writes target the project vault. Writes never fall through.
 
+## OAuth tokens
+
+OAuth bundles are stored in the vault under a deterministic key (e.g. `github_oauth`), so per-workspace vaults give per-workspace OAuth tokens for free:
+
+```bash
+factorly auth login github --workspace staging   # token → vaults/staging.enc
+factorly auth login github --workspace prod      # token → vaults/prod.enc
+factorly call github.list_repos --workspace staging  # uses staging token
+```
+
+Same OAuth provider, two separate logins, no overlap.
+
+**Refresh promotes a token to the active vault.** If a token lives only in the project vault (`factorly auth login github` with no workspace), then later you call a tool under `--workspace staging` and the token expires, the refreshed bundle is written to `vaults/staging.enc` — the active "Primary" tier. Subsequent refreshes stay local to the workspace.
+
+If you want a single OAuth login shared across workspaces, log in *without* `--workspace` so the bundle lands in the project vault, and don't authenticate per-workspace. The chain will fall through transparently — until a refresh under an active workspace promotes the token.
+
+To avoid the surprise, prefer one of:
+
+  - **Per-workspace logins.** `factorly auth login <provider> --workspace <name>` for each environment. Most common.
+  - **`factorly auth logout <provider> --workspace <name>`** removes a workspace's token without touching the project vault.
+
 ## Precedence
 
 For `{{env:NAME}}` resolution:
