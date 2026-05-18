@@ -45,9 +45,20 @@
       <a href="/history" class="text-sm {{if eq .Nav "history"}}text-indigo-600 font-medium{{else}}text-gray-600 hover:text-gray-900{{end}}">History</a>
     </div>
     <!-- Right-aligned controls -->
-    <div class="flex items-center gap-1">
+    <div class="flex items-center gap-2 relative">
+    <!-- Workspace pill -->
+    <div class="relative">
+      <button type="button" onclick="toggleWsDropdown(event)"
+              class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              title="Active workspace">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16h.01"/><path d="M16 16h.01"/><path d="M3 19a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5a.5.5 0 0 0-.769-.422l-4.462 2.844A.5.5 0 0 1 15 10.5v-2a.5.5 0 0 0-.769-.422L9.77 10.922A.5.5 0 0 1 9 10.5V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/><path d="M8 16h.01"/></svg>
+        <span>{{if .ActiveWorkspace}}{{.ActiveWorkspace}}{{else}}Set workspace...{{end}}</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div id="ws-dropdown-anchor"></div>
+    </div>
     <button hx-post="/reload" hx-target="#reload-status" hx-swap="innerHTML"
-            class="px-2 py-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors" title="Reload config from disk">
+            class="px-2.5 py-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors" title="Reload config from disk">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
     </button>
     <span id="reload-status"></span>
@@ -214,6 +225,24 @@
     div.textContent = s;
     return div.innerHTML;
   }
+  function toggleWsDropdown(event) {
+    event.stopPropagation();
+    const anchor = document.getElementById('ws-dropdown-anchor');
+    const existing = document.getElementById('ws-dropdown');
+    if (existing) {
+      existing.remove();
+      return;
+    }
+    htmx.ajax('GET', '/workspaces/switcher', { target: '#ws-dropdown-anchor', swap: 'innerHTML' });
+  }
+  // Close ws-dropdown when clicking outside.
+  document.addEventListener('click', function(e) {
+    const dd = document.getElementById('ws-dropdown');
+    if (!dd) return;
+    if (dd.contains(e.target)) return;
+    if (e.target.closest('button[onclick*="toggleWsDropdown"]')) return;
+    dd.remove();
+  });
   </script>
   <script src="/static/activity.js"></script>
   <script src="/static/confirm.js"></script>

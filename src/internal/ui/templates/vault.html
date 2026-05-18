@@ -4,7 +4,16 @@
 -->
 
 {{define "content"}}
-<h1 class="text-2xl font-bold mb-6">Vault</h1>
+<h1 class="text-2xl font-bold mb-2">Vault</h1>
+{{if .ActiveWorkspace}}
+<div class="mb-6 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded text-xs text-indigo-700">
+  Active workspace: <span class="font-mono font-semibold">{{.ActiveWorkspace}}</span> —
+  reads go through <code class="font-mono">vaults/{{.ActiveWorkspace}}.enc</code> first, then fall through to the project vault, then global.
+  Writes target whichever tier you select in the "Store in" dropdown.
+</div>
+{{else}}
+<div class="mb-6"></div>
+{{end}}
 
 {{if not .Sections}}
 <div class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">

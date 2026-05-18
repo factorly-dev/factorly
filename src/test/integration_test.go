@@ -4720,6 +4720,26 @@ func TestProjectScopedLogPath(t *testing.T) {
 
 // --- Workspaces ---
 
+// envWithoutHome returns the process env with HOME, FACTORLY_VAULT_PATH,
+// FACTORLY_LOG_PATH, and FACTORLY_NO_LOG stripped. Use this when a test
+// needs to inject those values for isolation — appending to
+// os.Environ() doesn't override existing entries on Linux (glibc
+// returns the first occurrence of a key from execve's environ array),
+// so the existing entry must be removed first.
+func envWithoutHome() []string {
+	stripped := []string{}
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(kv, "HOME=") ||
+			strings.HasPrefix(kv, "FACTORLY_VAULT_PATH=") ||
+			strings.HasPrefix(kv, "FACTORLY_LOG_PATH=") ||
+			strings.HasPrefix(kv, "FACTORLY_NO_LOG=") {
+			continue
+		}
+		stripped = append(stripped, kv)
+	}
+	return stripped
+}
+
 // setupWorkspaceProject creates a temp project with a .factorly/
 // config and the given workspaces (name → workspace YAML body).
 func setupWorkspaceProject(t *testing.T, factorlyYaml string, workspaces map[string]string) string {
@@ -4921,6 +4941,75 @@ func TestWorkspacesListCLI(t *testing.T) {
 	}
 }
 
+// TestWorkspacesCreateAndDelete: round-trip a workspace through the
+// CLI create + delete commands. Asserts the file is materialized and
+// then removed, that a duplicate create errors, and that --force
+// skips the confirmation prompt.
+func TestWorkspacesCreateAndDelete(t *testing.T) {
+	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{})
+
+	wsFile := filepath.Join(dir, ".factorly", "workspaces", "qa.yaml")
+
+	// Create
+	_, stderr, code := run(t, dir, "workspaces", "create", "qa", "--description", "QA tier")
+	if code != 0 {
+		t.Fatalf("create: exit %d, stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stderr, "Created workspace") {
+		t.Errorf("expected creation message, got: %s", stderr)
+	}
+	data, err := os.ReadFile(wsFile)
+	if err != nil {
+		t.Fatalf("workspace file not created: %v", err)
+	}
+	if !strings.Contains(string(data), "QA tier") {
+		t.Errorf("description not persisted: %s", data)
+	}
+
+	// Duplicate create
+	_, stderr, code = run(t, dir, "workspaces", "create", "qa")
+	if code == 0 {
+		t.Error("expected non-zero exit on duplicate create")
+	}
+	if !strings.Contains(stderr, "already exists") {
+		t.Errorf("expected 'already exists' error, got: %s", stderr)
+	}
+
+	// Delete --force skips prompt
+	_, stderr, code = run(t, dir, "workspaces", "delete", "qa", "--force")
+	if code != 0 {
+		t.Fatalf("delete: exit %d, stderr=%s", code, stderr)
+	}
+	if _, err := os.Stat(wsFile); !os.IsNotExist(err) {
+		t.Errorf("workspace file not removed: %v", err)
+	}
+
+	// Delete missing
+	_, stderr, code = run(t, dir, "workspaces", "delete", "ghost", "--force")
+	if code == 0 {
+		t.Error("expected non-zero exit on delete of missing workspace")
+	}
+	if !strings.Contains(stderr, "not found") {
+		t.Errorf("expected 'not found' error, got: %s", stderr)
+	}
+}
+
+// TestWorkspacesCreateRejectsBadName: path traversal characters in
+// the workspace name return an error rather than write the file.
+func TestWorkspacesCreateRejectsBadName(t *testing.T) {
+	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{})
+
+	for _, bad := range []string{"foo/bar", "a.b", `back\slash`} {
+		_, stderr, code := run(t, dir, "workspaces", "create", bad)
+		if code == 0 {
+			t.Errorf("expected non-zero exit for name %q", bad)
+		}
+		if !strings.Contains(stderr, "must not contain") {
+			t.Errorf("name %q: expected helpful error, got: %s", bad, stderr)
+		}
+	}
+}
+
 // TestWorkspaceVaultSelection: a {{vault:KEY}} reference resolves
 // against the workspace vault first, falling through to the project
 // vault when not present.
@@ -4934,15 +5023,23 @@ func TestWorkspaceVaultSelection(t *testing.T) {
 		"staging": "vars: {}\n",
 	})
 
-	// Populate vaults.
-	vaultEnv := []string{"FACTORLY_VAULT_PASSWORD=test123"}
+	// Populate vaults. Isolate HOME so the test doesn't inherit a real
+	// ~/.config/factorly/vault.enc with a different password (would
+	// poison the no-workspace fallback path on machines where one
+	// exists). FACTORLY_VAULT_PATH overrides workspace selection and
+	// can't be used here.
+	fakeHome := t.TempDir()
+	vaultEnv := []string{
+		"FACTORLY_VAULT_PASSWORD=test123",
+		"HOME=" + fakeHome,
+	}
 	for _, args := range [][]string{
 		{"vault", "set", "--workspace", "staging", "GITHUB_TOKEN", "tok-staging"},
 		{"vault", "set", "GITHUB_TOKEN", "tok-project"},
 	} {
 		cmd := exec.Command(binary, args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+		cmd.Env = append(envWithoutHome(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
 		var errb strings.Builder
 		cmd.Stderr = &errb
 		if err := cmd.Run(); err != nil {
@@ -4954,7 +5051,7 @@ func TestWorkspaceVaultSelection(t *testing.T) {
 		t.Helper()
 		cmd := exec.Command(binary, args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+		cmd.Env = append(envWithoutHome(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
 		var out, errb strings.Builder
 		cmd.Stdout = &out
 		cmd.Stderr = &errb
@@ -4988,14 +5085,18 @@ func TestWorkspaceVaultFallback(t *testing.T) {
 		"staging": "vars: {}\n",
 	})
 
-	vaultEnv := []string{"FACTORLY_VAULT_PASSWORD=test123"}
+	fakeHome := t.TempDir()
+	vaultEnv := []string{
+		"FACTORLY_VAULT_PASSWORD=test123",
+		"HOME=" + fakeHome,
+	}
 	for _, args := range [][]string{
 		{"vault", "set", "--workspace", "staging", "WS_ONLY", "ws"},
 		{"vault", "set", "SHARED", "proj"},
 	} {
 		cmd := exec.Command(binary, args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+		cmd.Env = append(envWithoutHome(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
 		var errb strings.Builder
 		cmd.Stderr = &errb
 		if err := cmd.Run(); err != nil {
@@ -5006,7 +5107,7 @@ func TestWorkspaceVaultFallback(t *testing.T) {
 	runWithFlag := func(args ...string) string {
 		cmd := exec.Command(binary, args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+		cmd.Env = append(envWithoutHome(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
 		var out, errb strings.Builder
 		cmd.Stdout = &out
 		cmd.Stderr = &errb
@@ -5031,12 +5132,16 @@ func TestWorkspaceVaultWriteIsScoped(t *testing.T) {
 		"staging": "vars: {}\n",
 	})
 
-	vaultEnv := []string{"FACTORLY_VAULT_PASSWORD=test123"}
+	fakeHome := t.TempDir()
+	vaultEnv := []string{
+		"FACTORLY_VAULT_PASSWORD=test123",
+		"HOME=" + fakeHome,
+	}
 
 	// Seed project vault first so we can verify it's left alone.
 	cmd := exec.Command(binary, "vault", "set", "PROJECT_KEY", "proj-value")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+	cmd.Env = append(envWithoutHome(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("seed project vault: %v", err)
 	}
@@ -5044,7 +5149,7 @@ func TestWorkspaceVaultWriteIsScoped(t *testing.T) {
 	// Now write to workspace vault.
 	cmd = exec.Command(binary, "vault", "set", "--workspace", "staging", "WS_KEY", "ws-value")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+	cmd.Env = append(envWithoutHome(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("workspace vault set: %v", err)
 	}
@@ -5057,7 +5162,7 @@ func TestWorkspaceVaultWriteIsScoped(t *testing.T) {
 	// Project vault should not contain WS_KEY. List its keys.
 	cmd = exec.Command(binary, "vault", "list")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
+	cmd.Env = append(envWithoutHome(), append(vaultEnv, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")...)
 	var out, errb strings.Builder
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
@@ -5243,8 +5348,13 @@ oauth_providers:
 	stagingBundle := `{"access_token":"tok-staging","refresh_token":"rt-staging","expiry":"2099-01-01T00:00:00Z"}`
 	prodBundle := `{"access_token":"tok-prod","refresh_token":"rt-prod","expiry":"2099-01-01T00:00:00Z"}`
 
+	// Isolate HOME so the test doesn't inherit any real
+	// ~/.config/factorly/vault.enc with a different password (would
+	// trip the no-workspace fallback path).
+	fakeHome := t.TempDir()
 	vaultEnv := []string{
 		"FACTORLY_VAULT_PASSWORD=test123",
+		"HOME=" + fakeHome,
 		"FACTORLY_NO_LOG=1",
 		"FACTORLY_NO_UPDATE_CHECK=1",
 	}
@@ -5252,7 +5362,7 @@ oauth_providers:
 		t.Helper()
 		cmd := exec.Command(binary, args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), vaultEnv...)
+		cmd.Env = append(envWithoutHome(), vaultEnv...)
 		var out, errb strings.Builder
 		cmd.Stdout = &out
 		cmd.Stderr = &errb
@@ -5333,8 +5443,11 @@ oauth_providers:
 
 	bundle := `{"access_token":"shared-tok","refresh_token":"shared-rt","expiry":"2099-01-01T00:00:00Z"}`
 
+	// Isolate HOME — see TestWorkspaceOAuthTokenIsolation.
+	fakeHome := t.TempDir()
 	vaultEnv := []string{
 		"FACTORLY_VAULT_PASSWORD=test123",
+		"HOME=" + fakeHome,
 		"FACTORLY_NO_LOG=1",
 		"FACTORLY_NO_UPDATE_CHECK=1",
 	}
@@ -5342,7 +5455,7 @@ oauth_providers:
 		t.Helper()
 		cmd := exec.Command(binary, args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), vaultEnv...)
+		cmd.Env = append(envWithoutHome(), vaultEnv...)
 		var out, errb strings.Builder
 		cmd.Stdout = &out
 		cmd.Stderr = &errb

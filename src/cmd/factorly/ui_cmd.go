@@ -147,20 +147,33 @@ func runUI(cmd *cobra.Command, args []string) error {
 	})
 
 	srv, err := ui.New(ui.Options{
-		Config:        cfg,
-		CfgPath:       configPath,
-		ToolsDir:      resolveToolsDir(configPath, cfg.ToolsDir),
-		Registry:      reg,
-		Proxy:         p,
-		Vault:         vaultBackend,
-		Resolver:      getCachedResolver(),
-		ProjectVault:  projectVault,
-		GlobalVault:   globalVault,
-		Activity:      activity,
-		ConfirmBroker: confirmBroker,
+		Config:                  cfg,
+		CfgPath:                 configPath,
+		ToolsDir:                resolveToolsDir(configPath, cfg.ToolsDir),
+		Registry:                reg,
+		Proxy:                   p,
+		Vault:                   vaultBackend,
+		Resolver:                getCachedResolver(),
+		ProjectVault:            projectVault,
+		GlobalVault:             globalVault,
+		Activity:                activity,
+		ConfirmBroker:           confirmBroker,
+		ActiveWorkspace:         workspaceName,
+		WorkspaceVaultOpener:    OpenWorkspaceChain,
+		WorkspacePasswordOpener: OpenWorkspaceVaultWithPassword,
 	})
 	if err != nil {
 		return err
+	}
+
+	// Make OAuth token refreshes follow the active UI workspace. The
+	// proxy was built with a token store pinned to the startup vault;
+	// swap its backend resolver so reads/writes always hit
+	// vaults/<active>.enc when a workspace is active.
+	if restProv, ok := p.Provider("rest").(*provider.RESTProvider); ok && restProv.TokenStore() != nil {
+		if vts, ok := restProv.TokenStore().(*vaultTokenStore); ok {
+			vts.SetGetBackend(srv.ActiveVault)
+		}
 	}
 
 	// Generate per-run nonce token

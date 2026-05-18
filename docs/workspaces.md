@@ -65,7 +65,7 @@ Set `FACTORLY_WORKSPACE` in your shell profile if you want a non-default workspa
 │   └── vault.enc                     # project vault (shared across workspaces)
 ```
 
-Workspace files are plain YAML. Edit them in any text editor — there's no `factorly workspaces create` command.
+Workspace files are plain YAML. Create them via `factorly workspaces create <name>`, the web UI, or by hand in your editor.
 
 ## Vault selection
 
@@ -127,9 +127,11 @@ For `{{vault:KEY}}` resolution (workspace active):
 ## Commands
 
 ```bash
-factorly workspaces           # list available workspaces
-factorly workspaces list      # same
-factorly workspaces show <n>  # print a workspace's vars (secret-looking values masked)
+factorly workspaces                       # list available workspaces
+factorly workspaces list                  # same
+factorly workspaces show <n>              # print a workspace's vars (secret-looking values masked)
+factorly workspaces create <n> [-d ...]   # create an empty workspace YAML
+factorly workspaces delete <n> [--force]  # remove workspace YAML (vault file is left alone)
 
 factorly call <tool> --workspace <n>             # one-shot
 factorly call <tool> -w <n>                      # short flag
@@ -139,6 +141,22 @@ FACTORLY_WORKSPACE=<n> factorly call <tool>      # shell-wide
 factorly vault set --workspace <n> KEY value     # write to workspace vault
 factorly vault list --workspace <n>              # list (workspace + fallback chain)
 ```
+
+`factorly workspaces delete` only removes the workspace YAML. The workspace's encrypted vault file (`.factorly/vaults/<name>.enc`, if one exists) is intentionally left in place — deleting both is destructive and irreversible. If you want to scrub the vault too, remove the file by hand.
+
+## Web UI
+
+`factorly ui` exposes workspaces in three places:
+
+- **Top-nav pill.** Far-right of every page, shows the active workspace name. Click it to open a dropdown with all available workspaces — pick one to switch. Switching reloads the proxy + the vault chain for the rest of the session. The choice is persisted in a cookie so it survives page reloads.
+- **`/workspaces` page.** List/create/edit/delete workspaces via web forms. Variables are key/value rows with the same UX as tool parameters. Description is a textarea.
+- **Banners.** The Vault page and Auth page show a small indigo banner when a workspace is active, calling out which vault file reads/writes target and reminding the user that switching is one click away in the top-nav pill.
+
+When you switch to a workspace whose vault file exists but no password has been resolved yet (no env var, no key file), the dropdown becomes an inline password prompt. Enter the password to unlock; the opened backend is cached for the rest of the session so toggling back and forth doesn't re-prompt.
+
+Audit log entries from UI-initiated calls carry the active workspace's `workspace` field, same as CLI calls. The History page lets you filter by workspace and shows the name as a pill next to each entry's tool name.
+
+Multi-tab note: workspace state is server-side, so opening two tabs and switching in one will leave the other showing stale state until you refresh.
 
 ## Passwords
 

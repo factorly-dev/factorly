@@ -27,16 +27,33 @@ type historyEntry struct {
 	Error        string
 	Params       map[string]string
 	AgentID      string
+	Workspace    string
 }
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	toolFilter := r.URL.Query().Get("tool")
 	statusFilter := r.URL.Query().Get("status")
+	workspaceFilter := r.URL.Query().Get("workspace")
 
 	entries := readRecentLogs(s.cfgPath, 100)
 
+	// Collect distinct workspaces present in the (unfiltered) log so the
+	// dropdown shows everything the user has run, not just what matches
+	// the current filter.
+	workspacesSeen := map[string]bool{}
+	for _, e := range entries {
+		if e.Workspace != "" {
+			workspacesSeen[e.Workspace] = true
+		}
+	}
+	workspaceOptions := make([]string, 0, len(workspacesSeen))
+	for k := range workspacesSeen {
+		workspaceOptions = append(workspaceOptions, k)
+	}
+	sortStringsAsc(workspaceOptions)
+
 	// Apply filters
-	if toolFilter != "" || statusFilter != "" {
+	if toolFilter != "" || statusFilter != "" || workspaceFilter != "" {
 		var filtered []historyEntry
 		for _, e := range entries {
 			if toolFilter != "" && !strings.Contains(e.Tool, toolFilter) {
@@ -45,17 +62,22 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 			if statusFilter != "" && e.Status != statusFilter {
 				continue
 			}
+			if workspaceFilter != "" && e.Workspace != workspaceFilter {
+				continue
+			}
 			filtered = append(filtered, e)
 		}
 		entries = filtered
 	}
 
 	s.render(w, "history.html", map[string]any{
-		"Title":        "History",
-		"Nav":          "history",
-		"Entries":      entries,
-		"ToolFilter":   toolFilter,
-		"StatusFilter": statusFilter,
+		"Title":            "History",
+		"Nav":              "history",
+		"Entries":          entries,
+		"ToolFilter":       toolFilter,
+		"StatusFilter":     statusFilter,
+		"WorkspaceFilter":  workspaceFilter,
+		"WorkspaceOptions": workspaceOptions,
 	})
 }
 
@@ -111,6 +133,7 @@ func readLogsFromPath(path string, max int) []historyEntry {
 			Error:        raw.Error,
 			Params:       raw.Params,
 			AgentID:      raw.AgentID,
+			Workspace:    raw.Workspace,
 		})
 	}
 

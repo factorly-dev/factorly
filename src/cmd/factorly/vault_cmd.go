@@ -282,31 +282,99 @@ func openSmartVault() (vault.Backend, error) {
 	if vaultPath != "" || vaultGlobal {
 		return openVault()
 	}
-	// Workspace-aware: when --workspace is active and the workspace
-	// vault file exists, nest workspace → (project → global). The
-	// workspace vault opens immediately; project/global open lazily on
-	// first miss, exactly like the existing two-tier chain.
 	if workspaceName != "" {
-		wsPath := workspaceVaultPath(workspaceName)
-		if _, err := os.Stat(wsPath); err == nil {
-			wsPw, err := resolveWorkspaceVaultPassword(workspaceName)
-			if err != nil {
-				return nil, fmt.Errorf("workspace vault: %w", err)
-			}
-			wsBackend, err := vault.OpenLocalAt(wsPath, wsPw)
-			if err != nil {
-				return nil, fmt.Errorf("opening workspace vault: %w", err)
-			}
-			return &vault.FallbackBackend{
-				Primary: wsBackend,
-				SecondaryOpen: func() (vault.Backend, error) {
-					vlog("falling back from workspace vault to project/global chain")
-					return openFallbackVault()
-				},
-			}, nil
+		if b, err := openWorkspaceChainOrNil(workspaceName, true); err != nil {
+			return nil, err
+		} else if b != nil {
+			return b, nil
 		}
 	}
 	return openFallbackVault()
+}
+
+// openWorkspaceChainOrNil opens the workspace-vault tier and nests it on
+// top of the existing project→global chain. Returns (nil, nil) if the
+// workspace has no vault file (caller falls through to the no-workspace
+// chain). Returns an error when the vault file exists but cannot be
+// opened (wrong password, etc.).
+//
+// Shared by openSmartVault and the UI runtime-switch flow.
+//
+// If prompt is false, this never blocks on user input — when no
+// non-interactive password source is available, returns
+// errWorkspaceVaultLocked so the caller can surface an unlock dialog
+// instead of hanging on stdin.
+func openWorkspaceChainOrNil(name string, prompt bool) (vault.Backend, error) {
+	wsPath := workspaceVaultPath(name)
+	if _, err := os.Stat(wsPath); err != nil {
+		return nil, nil
+	}
+	var (
+		wsPw []byte
+		err  error
+	)
+	if prompt {
+		wsPw, err = resolveWorkspaceVaultPassword(name)
+	} else {
+		wsPw, err = tryResolveWorkspaceVaultPassword(name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	wsBackend, err := vault.OpenLocalAt(wsPath, wsPw)
+	if err != nil {
+		return nil, fmt.Errorf("opening workspace vault: %w", err)
+	}
+	return &vault.FallbackBackend{
+		Primary: wsBackend,
+		SecondaryOpen: func() (vault.Backend, error) {
+			vlog("falling back from workspace vault to project/global chain")
+			return openFallbackVault()
+		},
+	}, nil
+}
+
+// OpenWorkspaceVaultWithPassword opens the workspace vault file at
+// .factorly/vaults/<name>.enc using the supplied password and chains it
+// to the project→global fallback. Used by the UI when the user enters
+// a password through the unlock dialog (bypassing env-var/keyfile/prompt
+// resolution).
+func OpenWorkspaceVaultWithPassword(name string, password []byte) (vault.Backend, error) {
+	if name == "" {
+		return nil, fmt.Errorf("workspace name is required")
+	}
+	wsPath := workspaceVaultPath(name)
+	wsBackend, err := vault.OpenLocalAt(wsPath, password)
+	if err != nil {
+		return nil, err
+	}
+	return &vault.FallbackBackend{
+		Primary: wsBackend,
+		SecondaryOpen: func() (vault.Backend, error) {
+			return openFallbackVault()
+		},
+	}, nil
+}
+
+// OpenWorkspaceChain is the UI-facing entry point for opening the
+// vault chain associated with a named workspace. Empty name returns
+// the no-workspace chain (cached project → global, set up at server
+// startup). Never blocks on stdin — when a workspace vault exists
+// but no non-interactive password source is available, returns
+// errWorkspaceVaultLocked so the UI surfaces its unlock dialog.
+func OpenWorkspaceChain(name string) (vault.Backend, error) {
+	if name == "" {
+		// Reuse the process-wide vault opened at startup so the UI
+		// never re-prompts for the project/global vault password.
+		return getCachedVault()
+	}
+	if b, err := openWorkspaceChainOrNil(name, false); err != nil {
+		return nil, err
+	} else if b != nil {
+		return b, nil
+	}
+	// Workspace has no vault file — reuse the cached project/global chain.
+	return getCachedVault()
 }
 
 // openFallbackVault opens the project vault (if it exists) and lazily
@@ -401,6 +469,12 @@ func resolveVaultPassword(path string) ([]byte, error) {
 	return resolveGlobalVaultPassword()
 }
 
+// errWorkspaceVaultLocked signals that no automatic password source
+// was usable for a workspace vault and the caller should ask the user
+// (via the UI unlock dialog, or fall through to a prompt). The UI's
+// isVaultLocked() unwraps this to detect the case.
+var errWorkspaceVaultLocked = fmt.Errorf("workspace vault locked: password required")
+
 // resolveWorkspaceVaultPassword mirrors resolveProjectVaultPassword
 // but with workspace-scoped sources:
 //
@@ -409,6 +483,26 @@ func resolveVaultPassword(path string) ([]byte, error) {
 //  3. .factorly/vaults/<name>.key keyfile
 //  4. interactive prompt
 func resolveWorkspaceVaultPassword(name string) ([]byte, error) {
+	if pw, err := tryResolveWorkspaceVaultPassword(name); err == nil {
+		return pw, nil
+	} else if err != errWorkspaceVaultLocked {
+		return nil, err
+	}
+	pw, err := promptSecret(fmt.Sprintf("Vault password (workspace %q): ", name))
+	if err != nil {
+		return nil, err
+	}
+	if len(pw) == 0 {
+		return nil, fmt.Errorf("vault password cannot be empty")
+	}
+	return pw, nil
+}
+
+// tryResolveWorkspaceVaultPassword tries the non-interactive password
+// sources only (env var, shared env var, keyfile). Returns
+// errWorkspaceVaultLocked when none are available — the caller decides
+// whether to prompt (CLI) or surface an unlock dialog (UI).
+func tryResolveWorkspaceVaultPassword(name string) ([]byte, error) {
 	envKey := "FACTORLY_WORKSPACE_VAULT_PASSWORD_" + strings.ToUpper(name)
 	if pw, ok := os.LookupEnv(envKey); ok {
 		if pw == "" {
@@ -428,14 +522,7 @@ func resolveWorkspaceVaultPassword(name string) ([]byte, error) {
 		vlog("workspace vault password from %s", keyFile)
 		return pw, nil
 	}
-	pw, err := promptSecret(fmt.Sprintf("Vault password (workspace %q): ", name))
-	if err != nil {
-		return nil, err
-	}
-	if len(pw) == 0 {
-		return nil, fmt.Errorf("vault password cannot be empty")
-	}
-	return pw, nil
+	return nil, errWorkspaceVaultLocked
 }
 
 func resolveProjectVaultPassword() ([]byte, error) {

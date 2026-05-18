@@ -127,6 +127,67 @@ func List(cfgPath string) ([]*Workspace, error) {
 	return out, nil
 }
 
+// Save writes the workspace to .factorly/workspaces/<name>.yaml.
+// The Name field is the source of truth for the filename; Description
+// and Vars round-trip. Path traversal in Name is rejected.
+func Save(cfgPath string, ws *Workspace) error {
+	if ws == nil {
+		return fmt.Errorf("workspace is nil")
+	}
+	if ws.Name == "" {
+		return fmt.Errorf("workspace name is required")
+	}
+	if strings.ContainsAny(ws.Name, "/\\.") {
+		return fmt.Errorf("workspace name %q must not contain path separators or dots", ws.Name)
+	}
+	dir := workspaceDir(cfgPath)
+	if dir == "" {
+		return fmt.Errorf("save workspace %q: no project directory", ws.Name)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+	// Stable output: marshal a struct without the unexported Name field.
+	type onDisk struct {
+		Description string            `yaml:"description,omitempty"`
+		Vars        map[string]string `yaml:"vars,omitempty"`
+	}
+	data, err := yaml.Marshal(onDisk{Description: ws.Description, Vars: ws.Vars})
+	if err != nil {
+		return fmt.Errorf("marshal workspace %q: %w", ws.Name, err)
+	}
+	path := filepath.Join(dir, ws.Name+".yaml")
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
+	}
+	return nil
+}
+
+// Delete removes the workspace YAML file. The workspace's vault file
+// (if any) is intentionally left alone — deleting both would be
+// destructive and irreversible. Returns nil if the file didn't exist.
+func Delete(cfgPath, name string) error {
+	if name == "" {
+		return fmt.Errorf("workspace name is required")
+	}
+	if strings.ContainsAny(name, "/\\.") {
+		return fmt.Errorf("workspace name %q must not contain path separators or dots", name)
+	}
+	dir := workspaceDir(cfgPath)
+	if dir == "" {
+		return fmt.Errorf("delete workspace %q: no project directory", name)
+	}
+	path := filepath.Join(dir, name+".yaml")
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove %s: %w", path, err)
+	}
+	return nil
+}
+
 // workspaceDir returns the absolute path to .factorly/workspaces/ for
 // the given config, or "" when the config is global (no project to
 // scope workspaces to).

@@ -37,6 +37,10 @@ factorly vault set <key> [value]    # store a secret (prompts if no value)
 factorly vault get <key>            # retrieve a secret (raw value to stdout)
 factorly vault list                 # list secret names
 factorly vault delete <key>         # remove a secret
+factorly workspaces                       # list available workspaces
+factorly workspaces show <name>           # print a workspace's vars (secrets masked)
+factorly workspaces create <name> [-d ...] # create a new workspace YAML
+factorly workspaces delete <name> [--force] # remove workspace YAML (vault file untouched)
 factorly logs                       # view recent audit log entries
 factorly logs -n 50                 # show last 50 entries
 factorly logs --tool github         # filter by tool name
@@ -60,6 +64,7 @@ factorly version --check            # force version check (bypass cache)
 -v, --verbose          # print debug info to stderr
 -c, --config <path>    # path to factorly.yaml
     --config-dir       # load tools from a directory (no config file needed)
+-w, --workspace <name> # activate a named workspace overlay (see workspaces.md)
 ```
 
 ## Vault flags
@@ -74,7 +79,9 @@ factorly version --check            # force version check (bypass cache)
 ```bash
 FACTORLY_VAULT_PASSWORD           # global vault password (also shared fallback for project vault)
 FACTORLY_PROJECT_VAULT_PASSWORD   # project vault password (.factorly/vault.enc)
+FACTORLY_WORKSPACE_VAULT_PASSWORD_<UPPER_NAME>  # per-workspace vault password
 FACTORLY_VAULT_PATH               # vault file path override
+FACTORLY_WORKSPACE        # active workspace overlay (fallback for --workspace)
 FACTORLY_HTTP_TOKEN       # HTTP server auth token (fallback for --http-token)
 FACTORLY_NO_LOG           # disable call logging when set
 FACTORLY_MAX_OUTPUT       # global max output bytes (fallback for per-tool max_output)

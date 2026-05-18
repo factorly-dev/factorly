@@ -11,6 +11,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/factorly-dev/factorly/internal/builtins"
@@ -45,6 +46,26 @@ type Server struct {
 	// OnReload is invoked at the end of reloadConfig on success. Lets
 	// callers (e.g., the MCP server bridge) react to config changes.
 	OnReload func()
+
+	// workspaceMu guards activeWorkspace + vaultBackends. Switching
+	// workspace mid-session reloads config and reopens the vault chain;
+	// vaultBackends caches each workspace's opened chain so toggling
+	// back and forth doesn't re-prompt for passwords.
+	workspaceMu     sync.Mutex
+	activeWorkspace string
+	vaultBackends   map[string]vault.Backend
+	// WorkspaceVaultOpener opens the vault chain for the given workspace
+	// name. Empty name → the no-workspace chain (project → global). The
+	// caller (cmd/factorly/ui_cmd.go) injects this closure so the UI
+	// package doesn't have to know about vault password resolution.
+	// Returns (nil, nil) when the workspace has no vault file and no
+	// chain should be cached.
+	WorkspaceVaultOpener func(name string) (vault.Backend, error)
+	// WorkspacePasswordOpener opens a workspace vault using an explicit
+	// password (bypassing env-var/keyfile/prompt). Used by the inline
+	// unlock dialog when WorkspaceVaultOpener failed due to a missing
+	// or wrong password.
+	WorkspacePasswordOpener func(name string, password []byte) (vault.Backend, error)
 }
 
 // Config returns the currently-loaded config. Pointer is shared with the
@@ -54,6 +75,68 @@ func (s *Server) Config() *config.Config { return s.cfg }
 // CfgPath returns the path to the loaded config file (or the canonical
 // path the server writes back to).
 func (s *Server) CfgPath() string { return s.cfgPath }
+
+// workspaceCookieName is the cookie that persists the user's chosen
+// workspace across page loads. Plain HTTP cookie (no encryption needed
+// — the name is not a secret; the workspace's vault is what holds
+// secrets).
+const workspaceCookieName = "factorly_workspace"
+
+// requestWorkspace returns the workspace name for this request:
+// cookie > server-startup workspace. Empty string when neither is set.
+func (s *Server) requestWorkspace(r *http.Request) string {
+	if c, err := r.Cookie(workspaceCookieName); err == nil && c.Value != "" {
+		return c.Value
+	}
+	return s.requestWorkspaceFromState()
+}
+
+// requestWorkspaceFromState returns the server-side active workspace,
+// for callers without an *http.Request (e.g., reloadConfig invoked
+// from a pack install handler that didn't carry the cookie through).
+func (s *Server) requestWorkspaceFromState() string {
+	s.workspaceMu.Lock()
+	defer s.workspaceMu.Unlock()
+	return s.activeWorkspace
+}
+
+// setActiveWorkspace updates the server-side active workspace. Called
+// from the switch endpoint after a successful reload.
+func (s *Server) setActiveWorkspace(name string) {
+	s.workspaceMu.Lock()
+	defer s.workspaceMu.Unlock()
+	s.activeWorkspace = name
+}
+
+// cachedWorkspaceVault returns a previously-opened vault chain for the
+// given workspace, or nil if not cached.
+func (s *Server) cachedWorkspaceVault(name string) vault.Backend {
+	s.workspaceMu.Lock()
+	defer s.workspaceMu.Unlock()
+	return s.vaultBackends[name]
+}
+
+// cacheWorkspaceVault stashes an opened vault chain so subsequent
+// switches back to the same workspace don't re-prompt.
+func (s *Server) cacheWorkspaceVault(name string, b vault.Backend) {
+	s.workspaceMu.Lock()
+	defer s.workspaceMu.Unlock()
+	s.vaultBackends[name] = b
+}
+
+// ActiveVault returns the vault chain bound to the currently-active
+// workspace (whichever was last cached during a switch). Falls back to
+// the startup vault when no workspace is active. Used by the OAuth
+// token store so refreshes always target the correct tier.
+func (s *Server) ActiveVault() vault.Backend {
+	s.workspaceMu.Lock()
+	defer s.workspaceMu.Unlock()
+	if b, ok := s.vaultBackends[s.activeWorkspace]; ok && b != nil {
+		return b
+	}
+	// Empty-workspace key was seeded with the startup vault in New().
+	return s.vaultBackends[""]
+}
 
 // Options configures the UI server.
 type Options struct {
@@ -68,6 +151,17 @@ type Options struct {
 	GlobalVault   vault.Backend
 	Activity      *ActivityBroadcaster
 	ConfirmBroker *ConfirmBroker
+	// ActiveWorkspace is the workspace the server was started with
+	// (whatever --workspace or FACTORLY_WORKSPACE or default auto-load
+	// resolved to). The factorly_workspace cookie overrides it per
+	// request once the user switches via the UI.
+	ActiveWorkspace string
+	// WorkspaceVaultOpener opens the vault chain for a named workspace.
+	// See Server.WorkspaceVaultOpener for semantics.
+	WorkspaceVaultOpener func(name string) (vault.Backend, error)
+	// WorkspacePasswordOpener opens a named workspace vault with an
+	// explicit password. See Server.WorkspacePasswordOpener.
+	WorkspacePasswordOpener func(name string, password []byte) (vault.Backend, error)
 }
 
 // New creates a UI server.
@@ -89,6 +183,9 @@ func New(opts Options) (*Server, error) {
 		"templates/blueprints_browse.html",
 		"templates/blueprint_browse_detail.html",
 		"templates/yaml_view.html",
+		"templates/workspaces.html",
+		"templates/workspace_new.html",
+		"templates/workspace_edit.html",
 	}
 	tmpls := make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
@@ -104,19 +201,29 @@ func New(opts Options) (*Server, error) {
 	}
 
 	s := &Server{
-		cfg:           opts.Config,
-		cfgPath:       opts.CfgPath,
-		toolsDir:      opts.ToolsDir,
-		registry:      opts.Registry,
-		proxy:         opts.Proxy,
-		vault:         opts.Vault,
-		resolver:      opts.Resolver,
-		projectVault:  opts.ProjectVault,
-		globalVault:   opts.GlobalVault,
-		activity:      opts.Activity,
-		confirmBroker: opts.ConfirmBroker,
-		tmpls:         tmpls,
-		mux:           http.NewServeMux(),
+		cfg:                     opts.Config,
+		cfgPath:                 opts.CfgPath,
+		toolsDir:                opts.ToolsDir,
+		registry:                opts.Registry,
+		proxy:                   opts.Proxy,
+		vault:                   opts.Vault,
+		resolver:                opts.Resolver,
+		projectVault:            opts.ProjectVault,
+		globalVault:             opts.GlobalVault,
+		activity:                opts.Activity,
+		confirmBroker:           opts.ConfirmBroker,
+		tmpls:                   tmpls,
+		mux:                     http.NewServeMux(),
+		activeWorkspace:         opts.ActiveWorkspace,
+		vaultBackends:           make(map[string]vault.Backend),
+		WorkspaceVaultOpener:    opts.WorkspaceVaultOpener,
+		WorkspacePasswordOpener: opts.WorkspacePasswordOpener,
+	}
+	// Seed the cache with the startup workspace's already-opened vault so
+	// the user doesn't get re-prompted when they explicitly "switch" to
+	// the active workspace (e.g., back-and-forth toggling).
+	if opts.Vault != nil {
+		s.vaultBackends[opts.ActiveWorkspace] = opts.Vault
 	}
 
 	s.routes()
@@ -195,6 +302,17 @@ func (s *Server) routes() {
 
 	// Reload
 	s.mux.HandleFunc("POST /reload", s.handleReload)
+
+	// Workspaces (CRUD + switching)
+	s.mux.HandleFunc("GET /workspaces", s.handleWorkspacesList)
+	s.mux.HandleFunc("GET /workspaces/new", s.handleWorkspaceNew)
+	s.mux.HandleFunc("POST /workspaces/_new", s.handleWorkspaceCreate)
+	s.mux.HandleFunc("GET /workspaces/switcher", s.handleWorkspaceSwitcher)
+	s.mux.HandleFunc("POST /workspaces/switch", s.handleWorkspaceSwitch)
+	s.mux.HandleFunc("POST /workspaces/unlock", s.handleWorkspaceUnlock)
+	s.mux.HandleFunc("GET /workspaces/{name}", s.handleWorkspaceEdit)
+	s.mux.HandleFunc("POST /workspaces/{name}", s.handleWorkspaceSave)
+	s.mux.HandleFunc("DELETE /workspaces/{name}", s.handleWorkspaceDelete)
 
 	// Blueprints
 	s.mux.HandleFunc("GET /blueprints", s.handleBlueprintsList)
@@ -585,9 +703,17 @@ type ReloadStats struct {
 
 // reloadConfig re-reads config from disk and applies deltas to the live
 // registry without restarting. Both handleReload and the pack install/uninstall
-// handlers call this so changes go live immediately.
+// handlers call this so changes go live immediately. Reloads always run
+// under the currently-active workspace.
 func (s *Server) reloadConfig() (ReloadStats, error) {
-	newCfg, err := config.Load(s.cfgPath)
+	return s.reloadConfigWithWorkspace(s.requestWorkspaceFromState())
+}
+
+// reloadConfigWithWorkspace is the workspace-aware reload. Callers that
+// know which workspace should be active (e.g., the switch endpoint)
+// pass it explicitly; everyone else uses reloadConfig.
+func (s *Server) reloadConfigWithWorkspace(workspaceName string) (ReloadStats, error) {
+	newCfg, err := config.Load(s.cfgPath, config.WithWorkspace(workspaceName))
 	if err != nil {
 		return ReloadStats{}, err
 	}

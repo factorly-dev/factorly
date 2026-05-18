@@ -4,9 +4,12 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/factorly-dev/factorly/internal/config"
@@ -129,6 +132,78 @@ func sortStrings(ss []string) {
 	}
 }
 
+var workspacesCreateDescription string
+
+var workspacesCreateCmd = &cobra.Command{
+	Use:   "create <name>",
+	Short: "Create a new workspace at .factorly/workspaces/<name>.yaml",
+	Args:  requireArgs(1, "factorly workspaces create <name>"),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		name := args[0]
+		cfgPath := configPath
+		if cfgPath == "" {
+			cfgPath = config.FindConfig()
+		}
+		if workspace.Exists(cfgPath, name) {
+			return fmt.Errorf("workspace %q already exists", name)
+		}
+		ws := &workspace.Workspace{
+			Name:        name,
+			Description: workspacesCreateDescription,
+			Vars:        map[string]string{},
+		}
+		if err := workspace.Save(cfgPath, ws); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Created workspace %q at .factorly/workspaces/%s.yaml\n", name, name)
+		fmt.Fprintln(os.Stderr, "Add variables by editing the file or via the web UI (`factorly ui`).")
+		return nil
+	},
+}
+
+var workspacesDeleteForce bool
+
+var workspacesDeleteCmd = &cobra.Command{
+	Use:   "delete <name>",
+	Short: "Remove a workspace (does NOT delete its vault file)",
+	Args:  requireArgs(1, "factorly workspaces delete <name>"),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		name := args[0]
+		cfgPath := configPath
+		if cfgPath == "" {
+			cfgPath = config.FindConfig()
+		}
+		if !workspace.Exists(cfgPath, name) {
+			return fmt.Errorf("workspace %q not found", name)
+		}
+		if !workspacesDeleteForce {
+			fmt.Fprintf(os.Stderr, "Delete workspace %q? Its vault file (if any) is left untouched. (y/N): ", name)
+			scanner := bufio.NewScanner(os.Stdin)
+			if !scanner.Scan() {
+				return fmt.Errorf("cancelled")
+			}
+			ans := strings.TrimSpace(scanner.Text())
+			if !strings.HasPrefix(strings.ToLower(ans), "y") {
+				fmt.Fprintln(os.Stderr, "cancelled")
+				return nil
+			}
+		}
+		if err := workspace.Delete(cfgPath, name); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Deleted workspace %q.\n", name)
+		// Surface the vault-file caveat only when one exists, so the
+		// user knows to clean it up if they meant to scrub everything.
+		vaultPath := filepath.Join(".factorly", "vaults", name+".enc")
+		if _, err := os.Stat(vaultPath); err == nil {
+			fmt.Fprintf(os.Stderr, "Note: %s still contains the workspace's secrets. Remove it manually if you don't need it.\n", vaultPath)
+		}
+		return nil
+	},
+}
+
 func init() {
-	workspacesCmd.AddCommand(workspacesListCmd, workspacesShowCmd)
+	workspacesCreateCmd.Flags().StringVarP(&workspacesCreateDescription, "description", "d", "", "human-readable description for the workspace")
+	workspacesDeleteCmd.Flags().BoolVar(&workspacesDeleteForce, "force", false, "skip the confirmation prompt")
+	workspacesCmd.AddCommand(workspacesListCmd, workspacesShowCmd, workspacesCreateCmd, workspacesDeleteCmd)
 }

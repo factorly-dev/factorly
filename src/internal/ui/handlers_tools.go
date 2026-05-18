@@ -744,6 +744,11 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 		if _, has := m["ActivePrefix"]; !has {
 			m["ActivePrefix"] = ""
 		}
+		// Inject the active workspace name so layout.html can render
+		// the pill on every page.
+		if _, has := m["ActiveWorkspace"]; !has {
+			m["ActiveWorkspace"] = s.requestWorkspaceFromState()
+		}
 		// Inject sidebar tools for tools-related pages
 		if m["Nav"] == "tools" {
 			if _, has := m["SidebarToolGroups"]; !has {

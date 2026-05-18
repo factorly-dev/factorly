@@ -19,11 +19,22 @@
             hx-get="/history"
             hx-target="body"
             hx-trigger="change"
-            hx-include="[name='tool']">
+            hx-include="[name='tool'],[name='workspace']">
       <option value="">All statuses</option>
       <option value="success" {{if eq .StatusFilter "success"}}selected{{end}}>success</option>
       <option value="error" {{if eq .StatusFilter "error"}}selected{{end}}>error</option>
       <option value="blocked" {{if eq .StatusFilter "blocked"}}selected{{end}}>blocked</option>
+    </select>
+    <select name="workspace"
+            class="px-3 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-200"
+            hx-get="/history"
+            hx-target="body"
+            hx-trigger="change"
+            hx-include="[name='tool'],[name='status']">
+      <option value="">All workspaces</option>
+      {{range .WorkspaceOptions}}
+      <option value="{{.}}" {{if eq $.WorkspaceFilter .}}selected{{end}}>{{.}}</option>
+      {{end}}
     </select>
   </div>
 </div>
@@ -44,6 +55,9 @@
           {{if eq .Status "success"}}✓{{else if eq .Status "blocked"}}✗{{else}}!{{end}}
         </span>
         <span class="font-mono text-sm">{{.Tool}}</span>
+        {{if .Workspace}}
+        <span class="px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-700 font-mono">{{.Workspace}}</span>
+        {{end}}
         {{if .ShadowAction}}
         <span class="px-1.5 py-0.5 text-[10px] rounded bg-amber-50 text-amber-700">{{.ShadowAction}}</span>
         {{end}}
@@ -59,6 +73,7 @@
         <div><dt class="text-gray-400">Interface</dt><dd class="font-mono">{{.Interface}}</dd></div>
         <div><dt class="text-gray-400">Status</dt><dd class="font-mono">{{.Status}}</dd></div>
         <div><dt class="text-gray-400">Duration</dt><dd class="font-mono">{{.DurationMs}}ms</dd></div>
+        {{if .Workspace}}<div><dt class="text-gray-400">Workspace</dt><dd class="font-mono">{{.Workspace}}</dd></div>{{end}}
         {{if .AgentID}}<div><dt class="text-gray-400">Agent</dt><dd class="font-mono">{{.AgentID}}</dd></div>{{end}}
         {{if .ShadowAction}}<div><dt class="text-gray-400">Shadow</dt><dd class="font-mono">{{.ShadowAction}}</dd></div>{{end}}
       </dl>

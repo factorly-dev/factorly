@@ -901,7 +901,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 		var tokenStore provider.TokenStore
 		if hasOAuth && resolver != nil {
 			if backend := resolver.Backend("vault"); backend != nil {
-				tokenStore = &vaultTokenStore{backend: backend}
+				tokenStore = newVaultTokenStore(backend)
 			}
 		}
 		restProvider := provider.NewREST(restTools, tokenStore)
@@ -1272,13 +1272,47 @@ func resolveVaultMap(resolver *vault.Resolver, m map[string]string) map[string]s
 	return resolved
 }
 
-// vaultTokenStore implements provider.TokenStore using the vault backend.
+// vaultTokenStore implements provider.TokenStore by resolving the
+// active vault backend at call time. A static backend would pin OAuth
+// reads/writes to whichever vault was open at provider construction —
+// fine in CLI mode (workspace is fixed) but wrong in UI mode where the
+// user can switch workspaces mid-session. The closure form lets the
+// UI return its workspace-scoped chain on each call, so token
+// refreshes land in vaults/<active>.enc rather than the project vault.
 type vaultTokenStore struct {
-	backend vault.Backend
+	getBackend func() vault.Backend
+}
+
+// newVaultTokenStore wraps a single backend (CLI use case).
+func newVaultTokenStore(b vault.Backend) *vaultTokenStore {
+	return &vaultTokenStore{getBackend: func() vault.Backend { return b }}
+}
+
+// SetGetBackend lets the UI swap in a workspace-aware backend resolver
+// after the proxy has been constructed. Without this, OAuth token
+// refreshes triggered after a UI workspace switch would still write to
+// the project vault (the one open when bootstrapProviders ran).
+func (s *vaultTokenStore) SetGetBackend(fn func() vault.Backend) {
+	s.getBackend = fn
+}
+
+func (s *vaultTokenStore) backend() (vault.Backend, error) {
+	if s.getBackend == nil {
+		return nil, fmt.Errorf("token store: no vault backend configured")
+	}
+	b := s.getBackend()
+	if b == nil {
+		return nil, fmt.Errorf("token store: vault backend unavailable")
+	}
+	return b, nil
 }
 
 func (s *vaultTokenStore) GetTokenBundle(key string) (*oauth.TokenBundle, error) {
-	raw, err := s.backend.Get(key)
+	b, err := s.backend()
+	if err != nil {
+		return nil, err
+	}
+	raw, err := b.Get(key)
 	if err != nil {
 		return nil, err
 	}
@@ -1290,11 +1324,15 @@ func (s *vaultTokenStore) GetTokenBundle(key string) (*oauth.TokenBundle, error)
 }
 
 func (s *vaultTokenStore) SetTokenBundle(key string, bundle *oauth.TokenBundle) error {
+	b, err := s.backend()
+	if err != nil {
+		return err
+	}
 	data, err := json.Marshal(bundle)
 	if err != nil {
 		return err
 	}
-	return s.backend.Set(key, string(data))
+	return b.Set(key, string(data))
 }
 
 func validateNoVaultRefs(restTools map[string]provider.RESTToolDef) error {

@@ -70,6 +70,13 @@ func NewREST(tools map[string]RESTToolDef, tokenStore TokenStore) *RESTProvider 
 	return &RESTProvider{tools: tools, tokenStore: tokenStore}
 }
 
+// TokenStore returns the current token store, or nil if OAuth wasn't
+// configured. Callers (UI workspace switching) use this to swap in a
+// workspace-aware backend resolver.
+func (p *RESTProvider) TokenStore() TokenStore {
+	return p.tokenStore
+}
+
 func (p *RESTProvider) Setup() error {
 	p.client = &http.Client{}
 	return nil
