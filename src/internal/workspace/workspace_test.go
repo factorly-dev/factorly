@@ -118,7 +118,7 @@ func TestLoadMalformedYAML(t *testing.T) {
 
 func TestLoadRejectsPathTraversal(t *testing.T) {
 	cfg := setup(t)
-	for _, bad := range []string{"../etc", "a/b", "..", "name.with.dot"} {
+	for _, bad := range []string{"../etc", "a/b", "..", "..hidden"} {
 		if _, err := Load(cfg, bad); err == nil {
 			t.Errorf("expected error for %q", bad)
 		}
@@ -129,18 +129,28 @@ func TestLoadRejectsPathTraversal(t *testing.T) {
 // every workspace path-builder now routes through. Callers outside
 // this package (e.g. cmd/factorly) can use it to give the same error
 // message everywhere a user-supplied workspace name lands.
+//
+// Single interior dots are *allowed* — names like `staging.v2` and
+// `team.alpha` are common version-suffix patterns and there's no
+// safety reason to reject them. Rejected patterns are limited to
+// path separators, the literal `..` traversal sequence, and
+// leading/trailing dots (which would produce hidden or trailing-dot
+// files that some filesystems treat surprisingly).
 func TestValidateName(t *testing.T) {
-	good := []string{"staging", "prod", "dev-1", "team_a", "my-workspace"}
+	good := []string{
+		"staging", "prod", "dev-1", "team_a", "my-workspace",
+		"staging.v2", "team.alpha", "v1.0.0", // single interior dots OK
+	}
 	bad := []struct {
 		name, why string
 	}{
 		{"", "empty"},
-		{"..", "traversal"},
+		{"..", "bare traversal"},
 		{"../etc", "explicit traversal"},
+		{"a..b", "embedded traversal"},
 		{"a/b", "forward slash"},
 		{"a\\b", "backslash"},
 		{".hidden", "leading dot"},
-		{"name.with.dot", "interior dot"},
 		{"trailing.", "trailing dot"},
 	}
 	for _, n := range good {
@@ -237,7 +247,7 @@ func TestExistsReturnsFalseForMissingFile(t *testing.T) {
 
 func TestExistsRejectsPathTraversal(t *testing.T) {
 	cfg := setup(t)
-	for _, bad := range []string{"", "../etc", "a/b", "name.with.dot"} {
+	for _, bad := range []string{"", "../etc", "a/b", "a..b", ".hidden"} {
 		if Exists(cfg, bad) {
 			t.Errorf("Exists(%q) should return false", bad)
 		}

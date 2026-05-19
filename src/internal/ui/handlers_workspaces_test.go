@@ -95,7 +95,7 @@ func TestHandleWorkspaceCreateRoundTrip(t *testing.T) {
 
 func TestHandleWorkspaceCreateRejectsInvalidName(t *testing.T) {
 	srv, _ := testServerWithProxy(t, nil)
-	for _, bad := range []string{"foo/bar", "a.b", `back\slash`, ""} {
+	for _, bad := range []string{"foo/bar", "a..b", `back\slash`, "", ".hidden"} {
 		form := url.Values{}
 		form.Set("name", bad)
 		req := httptest.NewRequest(http.MethodPost, "/workspaces/_new", strings.NewReader(form.Encode()))

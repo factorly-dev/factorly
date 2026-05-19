@@ -5002,12 +5002,12 @@ func TestWorkspacesCreateAndDelete(t *testing.T) {
 func TestWorkspacesCreateRejectsBadName(t *testing.T) {
 	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{})
 
-	for _, bad := range []string{"foo/bar", "a.b", `back\slash`} {
+	for _, bad := range []string{"foo/bar", "a..b", `back\slash`, ".hidden"} {
 		_, stderr, code := run(t, dir, "workspaces", "create", bad)
 		if code == 0 {
 			t.Errorf("expected non-zero exit for name %q", bad)
 		}
-		if !strings.Contains(stderr, "must not contain") {
+		if !strings.Contains(stderr, "must not") {
 			t.Errorf("name %q: expected helpful error, got: %s", bad, stderr)
 		}
 	}
@@ -5028,7 +5028,7 @@ func TestWorkspacesCreateRejectsBadName(t *testing.T) {
 func TestVaultSetRejectsBadWorkspaceName(t *testing.T) {
 	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{})
 
-	for _, bad := range []string{"../escape", "foo/bar", "a.b", `back\slash`, "."} {
+	for _, bad := range []string{"../escape", "foo/bar", "a..b", `back\slash`, ".hidden"} {
 		cmd := exec.Command(binary, "vault", "set", "--workspace", bad, "KEY", "value")
 		cmd.Dir = dir
 		// envWithoutHome strips HOME and FACTORLY_VAULT_PATH so the

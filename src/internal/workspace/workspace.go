@@ -30,17 +30,31 @@ type Workspace struct {
 }
 
 // ValidateName rejects workspace names that would let an attacker
-// escape the .factorly/ tree or create surprising filenames. Empty
-// names, path separators (`/` `\`), and dots (`.` covers both `..`
-// traversal and hidden-file names) are all rejected. Callers that
-// treat empty as "no workspace selected" should branch before
-// calling this.
+// escape the .factorly/ tree. Rejected:
+//
+//   - empty
+//   - path separators (`/` `\`)
+//   - the traversal sequence `..` anywhere in the name
+//   - leading or trailing `.` (would produce hidden / weird files)
+//
+// Single interior dots are allowed: `staging.v2` and `team.alpha`
+// are legal workspace names. This matches the pattern used by
+// `internal/configyaml/render.go` for similar filename safety checks.
+//
+// Callers that treat empty as "no workspace selected" should branch
+// before calling this.
 func ValidateName(name string) error {
 	if name == "" {
 		return fmt.Errorf("workspace name is required")
 	}
-	if strings.ContainsAny(name, "/\\.") {
-		return fmt.Errorf("workspace name %q must not contain path separators or dots", name)
+	if strings.ContainsAny(name, "/\\") {
+		return fmt.Errorf("workspace name %q must not contain path separators", name)
+	}
+	if strings.Contains(name, "..") {
+		return fmt.Errorf("workspace name %q must not contain `..`", name)
+	}
+	if strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
+		return fmt.Errorf("workspace name %q must not start or end with `.`", name)
 	}
 	return nil
 }
