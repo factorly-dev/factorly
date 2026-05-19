@@ -49,3 +49,18 @@
 .prose-description li { margin: 0.1em 0; }
 .prose-description a { color: #4f46e5; text-decoration: underline; }
 .prose-description strong { font-weight: 600; }
+
+/* Lead paragraph inside a <details> summary stays inline so the
+   "Show more" link sits on the same line. The wrapping <p>
+   produced by goldmark would otherwise force a line break. */
+details.description-collapse > summary > .inline > p {
+  display: inline;
+  margin: 0;
+}
+
+/* Show more / Show less labels toggle on the parent <details> open
+   state. Avoids depending on Tailwind's group-open: variant (which
+   the CDN build may not generate). */
+details.description-collapse .show-less-label { display: none; }
+details.description-collapse[open] .show-more-label { display: none; }
+details.description-collapse[open] .show-less-label { display: inline; }

@@ -13,7 +13,7 @@
     <h1 class="text-2xl font-bold font-mono">{{.Workspace.Name}}
       {{if eq .Workspace.Name .Active}}<span class="ml-2 inline-block px-2 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-medium rounded">active</span>{{end}}
     </h1>
-    {{if .Workspace.Description}}<p class="text-sm text-gray-500 mt-1">{{.Workspace.Description}}</p>{{end}}
+    {{template "description_block" .Workspace.Description}}
   </div>
   {{if ne .Workspace.Name .Active}}
   <form hx-post="/workspaces/switch" hx-include="this">

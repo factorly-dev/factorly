@@ -1,0 +1,32 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+{{/*
+description_block renders a long markdown description with the first
+paragraph shown by default and the rest hidden behind a "Show more"
+disclosure. Pass the raw description string as the data value.
+
+Usage:
+  {{template "description_block" .Tool.Description}}
+*/}}
+{{define "description_block"}}
+{{$d := markdownLead .}}
+{{if $d.Lead}}
+{{if $d.Rest}}
+<details class="prose-description text-sm text-gray-500 mt-1 description-collapse">
+  <summary class="cursor-pointer list-none">
+    <div class="inline">{{$d.Lead}}</div>
+    <span class="text-xs text-indigo-600 hover:text-indigo-800 ml-1 align-baseline select-none">
+      <span class="show-more-label">Show more</span>
+      <span class="show-less-label">Show less</span>
+    </span>
+  </summary>
+  <div class="mt-2">{{$d.Rest}}</div>
+</details>
+{{else}}
+<div class="prose-description text-sm text-gray-500 mt-1">{{$d.Lead}}</div>
+{{end}}
+{{end}}
+{{end}}

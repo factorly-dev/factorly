@@ -29,7 +29,7 @@
         </button>
         {{end}}
       </div>
-      {{if .Tool.Description}}<div class="prose-description text-sm text-gray-500 mt-1">{{markdown .Tool.Description}}</div>{{end}}
+      {{template "description_block" .Tool.Description}}
     </div>
     <!-- Edit form (hidden by default) -->
     <form id="tool-header-edit" class="hidden"

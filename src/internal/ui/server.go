@@ -787,8 +787,9 @@ func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
 
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"inc":      func(i int) int { return i + 1 },
-		"markdown": renderMarkdown,
+		"inc":          func(i int) int { return i + 1 },
+		"markdown":     renderMarkdown,
+		"markdownLead": markdownLead,
 		"joinList": func(items []string) string {
 			return strings.Join(items, ", ")
 		},

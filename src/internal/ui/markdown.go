@@ -51,3 +51,52 @@ func renderMarkdown(src string) template.HTML {
 	}
 	return template.HTML(buf.String())
 }
+
+// MarkdownLead splits a description into the first paragraph
+// (everything up to the first blank line) and the remainder. Used by
+// header description blocks so a long description like
+// factorly.code's ~250-word reference collapses to a one-line lead
+// with a "Show more" disclosure for the rest.
+//
+// When the input has no blank-line break, Lead is the whole string
+// and Rest is empty — callers should render only Lead in that case.
+type MarkdownLead struct {
+	Lead template.HTML
+	Rest template.HTML
+}
+
+// markdownLead splits the source on the first blank line and renders
+// each half independently. Trimming preserves intentional blank lines
+// inside the rest (e.g., paragraph breaks within the SDK reference).
+func markdownLead(src string) MarkdownLead {
+	if strings.TrimSpace(src) == "" {
+		return MarkdownLead{}
+	}
+	lead, rest, _ := splitOnBlankLine(src)
+	out := MarkdownLead{Lead: renderMarkdown(lead)}
+	if strings.TrimSpace(rest) != "" {
+		out.Rest = renderMarkdown(rest)
+	}
+	return out
+}
+
+// splitOnBlankLine returns (before, after, found) where `before` is
+// everything up to the first blank line and `after` is everything
+// after it. A blank line is a \n followed by \n (with optional
+// whitespace between).
+func splitOnBlankLine(s string) (string, string, bool) {
+	// Normalize CRLF so we can match LF-only.
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		if i == 0 {
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			before := strings.Join(lines[:i], "\n")
+			after := strings.Join(lines[i+1:], "\n")
+			return before, after, true
+		}
+	}
+	return s, "", false
+}

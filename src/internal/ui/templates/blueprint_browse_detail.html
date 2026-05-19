@@ -17,9 +17,7 @@
   <span class="px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700 border border-green-200">Installed</span>
   {{end}}
 </div>
-{{if .BP.Header.Description}}
-<div class="prose-description text-gray-600 mb-6">{{markdown .BP.Header.Description}}</div>
-{{end}}
+{{template "description_block" .BP.Header.Description}}
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
   <!-- Tools included -->
