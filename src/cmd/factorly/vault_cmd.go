@@ -66,7 +66,7 @@ func vaultChainOpener(scope string) (vault.Backend, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer zeroBytes(pw)
+		defer pw.Zero()
 		return t.Open(pw)
 	case scope == "global":
 		t := globalTier()
@@ -74,7 +74,7 @@ func vaultChainOpener(scope string) (vault.Backend, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer zeroBytes(pw)
+		defer pw.Zero()
 		return t.Open(pw)
 	case strings.HasPrefix(scope, "workspace:"):
 		name := strings.TrimPrefix(scope, "workspace:")
@@ -94,8 +94,9 @@ func vaultChainOpener(scope string) (vault.Backend, error) {
 }
 
 // vaultPasswordOpener opens a tier with an explicit password (UI
-// unlock dialog). Scope dispatch mirrors vaultChainOpener.
-func vaultPasswordOpener(scope string, password []byte) (vault.Backend, error) {
+// unlock dialog). Scope dispatch mirrors vaultChainOpener. Caller
+// owns password and is responsible for zeroing it after this returns.
+func vaultPasswordOpener(scope string, password vault.Secret) (vault.Backend, error) {
 	switch {
 	case scope == "project":
 		return projectTier().Open(password)
@@ -215,8 +216,8 @@ var vaultSetCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			value = string(v)
-			zeroBytes(v)
+			value = string(v.Bytes())
+			v.Zero()
 		}
 
 		if backend.Has(key) {
@@ -365,6 +366,7 @@ func openVault() (*vault.LocalBackend, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer pw.Zero()
 	return vault.OpenLocalAt(t.Path, pw)
 }
 
@@ -420,15 +422,16 @@ func openWorkspaceChainOrNil(name string, prompt bool) (vault.Backend, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Copy before Open zeroes the password buffer — the copy is used
-	// downstream by the fallback chain to attempt the same password
-	// against project + global vaults.
-	pwForFallback := make([]byte, len(wsPw))
-	copy(pwForFallback, wsPw)
+	defer wsPw.Zero()
+
+	// Clone for the fallback chain — that closure captures the Secret
+	// and may use it after this function returns; an independent
+	// lifetime is what Clone is for.
+	pwForFallback := wsPw.Clone()
 
 	wsBackend, err := t.Open(wsPw)
 	if err != nil {
-		zeroBytes(pwForFallback)
+		pwForFallback.Zero()
 		return nil, fmt.Errorf("opening workspace vault: %w", err)
 	}
 	return &vault.FallbackBackend{
@@ -444,18 +447,20 @@ func openWorkspaceChainOrNil(name string, prompt bool) (vault.Backend, error) {
 // opens the global vault on first fallback. Only prompts for the global
 // password when a key isn't found in the project vault.
 func openFallbackVault() (vault.Backend, error) {
-	return openFallbackVaultWithCandidate(nil)
+	return openFallbackVaultWithCandidate(vault.Secret{})
 }
 
 // openFallbackVaultWithCandidate is the same as openFallbackVault but
-// tries `candidate` (a copy of a password the caller already used on
-// another vault tier) before re-resolving / prompting. Lets the
+// tries `candidate` (a Secret the caller already used on another
+// vault tier) before re-resolving / prompting. Lets the
 // project↔global chain inherit the workspace password — common case
 // is one password protecting every local vault.
 //
-// The candidate is consumed (zeroed) inside this function or its
-// returned closures; callers should not reuse it after the call.
-func openFallbackVaultWithCandidate(candidate []byte) (vault.Backend, error) {
+// Candidate ownership: the caller hands off the Secret. This function
+// zeros it once the chain composition is settled. Closures captured
+// in the returned FallbackBackend may hold a cloned Secret for lazy
+// reuse; those clones are zeroed inside the closures.
+func openFallbackVaultWithCandidate(candidate vault.Secret) (vault.Backend, error) {
 	proj := projectTier()
 	// Global tier honors FACTORLY_VAULT_PATH transparently: when the
 	// env var is set the user is pinning that location, so the chain
@@ -470,26 +475,26 @@ func openFallbackVaultWithCandidate(candidate []byte) (vault.Backend, error) {
 
 	// Neither exists — create at the active tier.
 	if !projectExists && !globalExists {
+		defer candidate.Zero()
 		t := activeTier(currentSelector())
-		if pw, ok := tryCandidate(candidate, t); ok {
-			return t.Open(pw)
+		if !candidate.Empty() && t.Exists() {
+			return t.Open(candidate)
 		}
 		pw, err := t.ResolvePassword(true)
 		if err != nil {
-			zeroBytes(candidate)
 			return nil, err
 		}
-		zeroBytes(candidate)
+		defer pw.Zero()
 		return t.Open(pw)
 	}
 
 	// Only global exists
 	if !projectExists {
-		b, used, err := openWithCandidateOrPrompt(glob, candidate, "Global vault opened with shared password.")
+		defer candidate.Zero()
+		b, _, err := openWithCandidateOrPrompt(glob, candidate, "Global vault opened with shared password.")
 		if err != nil {
 			return nil, fmt.Errorf("global vault: %w", err)
 		}
-		zeroBytes(used)
 		return b, nil
 	}
 
@@ -502,7 +507,7 @@ func openFallbackVaultWithCandidate(candidate []byte) (vault.Backend, error) {
 
 	// Only project exists
 	if !globalExists {
-		zeroBytes(projectPw)
+		projectPw.Zero()
 		return project, nil
 	}
 
@@ -514,24 +519,14 @@ func openFallbackVaultWithCandidate(candidate []byte) (vault.Backend, error) {
 		Primary: project,
 		SecondaryOpen: func() (vault.Backend, error) {
 			vlog("falling back to global vault")
-			b, used, err := openWithCandidateOrPrompt(glob, projectPw, "Global vault opened with shared password.")
+			defer projectPw.Zero()
+			b, _, err := openWithCandidateOrPrompt(glob, projectPw, "Global vault opened with shared password.")
 			if err != nil {
 				return nil, err
 			}
-			zeroBytes(used)
 			return b, nil
 		},
 	}, nil
-}
-
-// tryCandidate checks whether candidate is non-empty and points at a
-// tier the caller is about to open. Returns the candidate (caller
-// uses it) and true when usable; false otherwise.
-func tryCandidate(candidate []byte, t vaultTier) ([]byte, bool) {
-	if len(candidate) == 0 {
-		return nil, false
-	}
-	return candidate, t.Exists()
 }
 
 // openWithCandidateOrPrompt tries the candidate password against the
@@ -539,48 +534,44 @@ func tryCandidate(candidate []byte, t vaultTier) ([]byte, bool) {
 // through to the tier's full ResolvePassword chain (which prompts on
 // a TTY). Logs successMsg via vlog when the candidate succeeds.
 //
-// The second return value is a copy of whatever password unlocked
-// the vault — the caller can pass it as the candidate to the next
-// tier in the chain so a user who typed their password once doesn't
-// get re-prompted for downstream tiers that share it. Caller owns
-// the returned slice and should zero it when done.
+// Returns the backend AND the Secret that unlocked it (a clone of the
+// candidate or a freshly-resolved Secret). The caller can pass that
+// Secret as the candidate to the next tier so a user who typed their
+// password once doesn't get re-prompted for downstream tiers that
+// share it. Caller owns the returned Secret and must Zero() it.
+//
+// The input `candidate` is consumed: this function zeros it before
+// returning (either after a successful copy or after a failed try).
 //
 // Taking a vaultTier (not a bare path) means the password-source
 // chain is the *tier's* chain — there is no path inspection or
 // classification step that could pick the wrong env-var table for an
 // absolute path that happens to look like a project vault.
-func openWithCandidateOrPrompt(t vaultTier, candidate []byte, successMsg string) (vault.Backend, []byte, error) {
-	if len(candidate) > 0 {
-		// Make a working copy — Open zeroes its password buffer.
-		try := make([]byte, len(candidate))
-		copy(try, candidate)
-		b, err := t.Open(try)
+func openWithCandidateOrPrompt(t vaultTier, candidate vault.Secret, successMsg string) (vault.Backend, vault.Secret, error) {
+	if !candidate.Empty() {
+		b, err := t.Open(candidate)
 		if err == nil {
 			if successMsg != "" {
 				vlog(successMsg)
 			}
-			used := make([]byte, len(candidate))
-			copy(used, candidate)
-			zeroBytes(candidate)
+			used := candidate.Clone()
+			candidate.Zero()
 			return b, used, nil
 		}
 		vlog("shared password didn't unlock %s; prompting", t.Path)
-		// candidate didn't decrypt — fall through to full resolution.
-		zeroBytes(candidate)
+		candidate.Zero()
 	}
 	pw, err := t.ResolvePassword(true)
 	if err != nil {
-		return nil, nil, err
+		return nil, vault.Secret{}, err
 	}
-	// Snapshot before Open zeroes pw.
-	used := make([]byte, len(pw))
-	copy(used, pw)
 	b, err := t.Open(pw)
 	if err != nil {
-		zeroBytes(used)
-		return nil, nil, err
+		pw.Zero()
+		return nil, vault.Secret{}, err
 	}
-	return b, used, nil
+	// pw becomes the returned Secret — caller owns it now.
+	return b, pw, nil
 }
 
 // errWorkspaceVaultLocked signals that no automatic password source
@@ -616,24 +607,24 @@ func tierForPath(path string) vaultTier {
 	return globalTier()
 }
 
-func readKeyFile(path string) ([]byte, error) {
+func readKeyFile(path string) (vault.Secret, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, err
+		return vault.Secret{}, err
 	}
 	perm := info.Mode().Perm()
 	if perm != 0o600 {
-		return nil, fmt.Errorf("vault key file %s has insecure permissions %04o (must be 0600)", path, perm)
+		return vault.Secret{}, fmt.Errorf("vault key file %s has insecure permissions %04o (must be 0600)", path, perm)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading vault key file: %w", err)
+		return vault.Secret{}, fmt.Errorf("reading vault key file: %w", err)
 	}
 	pw := bytes.TrimSpace(data)
 	if len(pw) == 0 {
-		return nil, fmt.Errorf("vault key file %s is empty", path)
+		return vault.Secret{}, fmt.Errorf("vault key file %s is empty", path)
 	}
-	return pw, nil
+	return vault.NewSecret(pw), nil
 }
 
 // stdinScanner is the shared scanner for piped-stdin password reads.
@@ -652,7 +643,7 @@ func getStdinScanner() *bufio.Scanner {
 	return stdinScanner
 }
 
-func promptSecret(label string) ([]byte, error) {
+func promptSecret(label string) (vault.Secret, error) {
 	fmt.Fprint(os.Stderr, label)
 
 	// Try to read without echo from terminal
@@ -661,9 +652,9 @@ func promptSecret(label string) ([]byte, error) {
 		pw, err := term.ReadPassword(fd)
 		fmt.Fprintln(os.Stderr) // newline after hidden input
 		if err != nil {
-			return nil, fmt.Errorf("reading password: %w", err)
+			return vault.Secret{}, fmt.Errorf("reading password: %w", err)
 		}
-		return pw, nil
+		return vault.NewSecret(pw), nil
 	}
 
 	// Fallback: read from stdin (piped input). Use a process-wide
@@ -671,15 +662,9 @@ func promptSecret(label string) ([]byte, error) {
 	// rest of stdin into a discarded buffer.
 	scanner := getStdinScanner()
 	if scanner.Scan() {
-		return []byte(strings.TrimSpace(scanner.Text())), nil
+		return vault.NewSecret([]byte(strings.TrimSpace(scanner.Text()))), nil
 	}
-	return nil, fmt.Errorf("no input received")
-}
-
-func zeroBytes(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
+	return vault.Secret{}, fmt.Errorf("no input received")
 }
 
 func getFromExternalBackend(name, key string) error {

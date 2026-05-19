@@ -37,7 +37,7 @@ type Manager struct {
 	mu             sync.Mutex
 	cache          map[string]Backend
 	chainOpener    func(scope string) (Backend, error)
-	passwordOpener func(scope string, password []byte) (Backend, error)
+	passwordOpener func(scope string, password Secret) (Backend, error)
 }
 
 // NewManager constructs a Manager with the supplied openers. Either
@@ -46,7 +46,7 @@ type Manager struct {
 // configured" error. In practice both are set in the CLI bootstrap.
 func NewManager(
 	chainOpener func(scope string) (Backend, error),
-	passwordOpener func(scope string, password []byte) (Backend, error),
+	passwordOpener func(scope string, password Secret) (Backend, error),
 ) *Manager {
 	return &Manager{
 		cache:          make(map[string]Backend),
@@ -113,7 +113,11 @@ func (m *Manager) GetOrOpen(scope string) (Backend, error) {
 // resolution chain). Does NOT cache automatically — the caller decides
 // whether to Put() the result, since a failed-but-non-erroring open
 // shouldn't be remembered.
-func (m *Manager) OpenWithPassword(scope string, password []byte) (Backend, error) {
+//
+// The caller owns password and is responsible for zeroing it. The
+// opener may pass it to vault.OpenLocalAt which also doesn't zero;
+// `defer password.Zero()` at the call site is the canonical pattern.
+func (m *Manager) OpenWithPassword(scope string, password Secret) (Backend, error) {
 	m.mu.Lock()
 	opener := m.passwordOpener
 	m.mu.Unlock()

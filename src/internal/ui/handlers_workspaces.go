@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/factorly-dev/factorly/internal/workspace"
 )
 
@@ -240,7 +241,9 @@ func (s *Server) handleWorkspaceUnlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	backend, err := s.vaultMgr.OpenWithPassword("workspace:"+name, []byte(password))
+	pw := vault.SecretFromString(password)
+	defer pw.Zero()
+	backend, err := s.vaultMgr.OpenWithPassword("workspace:"+name, pw)
 	if err != nil {
 		s.renderUnlockPartial(w, name, "incorrect password")
 		return

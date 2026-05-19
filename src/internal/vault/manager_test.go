@@ -119,13 +119,13 @@ func TestManagerOpenWithPasswordDelegates(t *testing.T) {
 		password string
 	}{}
 	expected := newFBMock(map[string]string{"K": "v"})
-	m := NewManager(nil, func(scope string, pw []byte) (Backend, error) {
+	m := NewManager(nil, func(scope string, pw Secret) (Backend, error) {
 		got.scope = scope
-		got.password = string(pw)
+		got.password = string(pw.Bytes())
 		return expected, nil
 	})
 
-	b, err := m.OpenWithPassword("workspace:staging", []byte("secret"))
+	b, err := m.OpenWithPassword("workspace:staging", SecretFromString("secret"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,10 +142,10 @@ func TestManagerOpenWithPasswordDelegates(t *testing.T) {
 
 func TestManagerOpenWithPasswordDoesNotCache(t *testing.T) {
 	expected := newFBMock(map[string]string{"K": "v"})
-	m := NewManager(nil, func(scope string, pw []byte) (Backend, error) {
+	m := NewManager(nil, func(scope string, pw Secret) (Backend, error) {
 		return expected, nil
 	})
-	if _, err := m.OpenWithPassword("project", []byte("pw")); err != nil {
+	if _, err := m.OpenWithPassword("project", SecretFromString("pw")); err != nil {
 		t.Fatal(err)
 	}
 	if got := m.Cached("project"); got != nil {

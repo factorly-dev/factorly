@@ -286,7 +286,9 @@ func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	backend, err := s.vaultMgr.OpenWithPassword(scope, []byte(password))
+	pw := vault.SecretFromString(password)
+	defer pw.Zero()
+	backend, err := s.vaultMgr.OpenWithPassword(scope, pw)
 	if err != nil {
 		s.renderVaultUnlockPartial(w, vaultUnlockData{
 			Scope: scope, Op: op, Key: key, Value: value,
@@ -455,7 +457,8 @@ func (s *Server) handleVaultUnlockAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var results []tierResult
-	pw := []byte(password)
+	pw := vault.SecretFromString(password)
+	defer pw.Zero()
 	for _, t := range s.lockedTiers(r) {
 		backend, err := s.vaultMgr.OpenWithPassword(t.Scope, pw)
 		if err != nil {

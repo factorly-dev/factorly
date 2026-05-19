@@ -16,7 +16,7 @@ import (
 
 func TestLocalNewVault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("password123"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("password123")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestLocalNewVault(t *testing.T) {
 
 func TestLocalSetAndGet(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("password123"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("password123")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestLocalSetAndGet(t *testing.T) {
 	b.Close()
 
 	// Re-open with same password — should decrypt and find the secret
-	b2, err := OpenLocalAt(path, []byte("password123"))
+	b2, err := OpenLocalAt(path, NewSecret([]byte("password123")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestLocalSetAndGet(t *testing.T) {
 
 func TestLocalGetNotFound(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("password123"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("password123")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestLocalGetNotFound(t *testing.T) {
 
 func TestLocalDelete(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("password123"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("password123")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestLocalDelete(t *testing.T) {
 
 func TestLocalDeleteNotFound(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("password123"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("password123")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestLocalDeleteNotFound(t *testing.T) {
 
 func TestLocalList(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("password123"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("password123")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestLocalList(t *testing.T) {
 
 func TestLocalMultipleSecrets(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("pw"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestLocalMultipleSecrets(t *testing.T) {
 	_ = b.Set("C", "val-c")
 	b.Close()
 
-	b2, err := OpenLocalAt(path, []byte("pw"))
+	b2, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,14 +167,14 @@ func TestLocalMultipleSecrets(t *testing.T) {
 
 func TestLocalWrongPassword(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("correct-password"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("correct-password")))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = b.Set("SECRET", "value")
 	b.Close()
 
-	_, err = OpenLocalAt(path, []byte("wrong-password"))
+	_, err = OpenLocalAt(path, NewSecret([]byte("wrong-password")))
 	if err == nil {
 		t.Fatal("expected error for wrong password")
 	}
@@ -182,7 +182,7 @@ func TestLocalWrongPassword(t *testing.T) {
 
 func TestLocalOverwriteSecret(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("pw"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestLocalOverwriteSecret(t *testing.T) {
 
 func TestLocalFilePermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("pw"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestLocalCorruptFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
 	_ = os.WriteFile(path, []byte("not encrypted data that is long enough to pass size check plus more"), 0o600)
 
-	_, err := OpenLocalAt(path, []byte("password"))
+	_, err := OpenLocalAt(path, NewSecret([]byte("password")))
 	if err == nil {
 		t.Fatal("expected error for corrupt vault file")
 	}
@@ -230,7 +230,7 @@ func TestLocalTooSmallFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
 	_ = os.WriteFile(path, []byte("tiny"), 0o600)
 
-	_, err := OpenLocalAt(path, []byte("password"))
+	_, err := OpenLocalAt(path, NewSecret([]byte("password")))
 	if err == nil {
 		t.Fatal("expected error for too-small vault file")
 	}
@@ -238,7 +238,7 @@ func TestLocalTooSmallFile(t *testing.T) {
 
 func TestLocalCreatesDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "deep", "vault.enc")
-	b, err := OpenLocalAt(path, []byte("pw"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func TestV1Migration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
 	writeV1Vault(t, path, "pw", map[string]string{"TOKEN": "secret123"})
 
-	b, err := OpenLocalAt(path, []byte("pw"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func TestV1MigrationPreservesValues(t *testing.T) {
 	}
 	writeV1Vault(t, path, "pw", secrets)
 
-	b, err := OpenLocalAt(path, []byte("pw"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,14 +345,14 @@ func TestV1MigrationIdempotent(t *testing.T) {
 	writeV1Vault(t, path, "pw", map[string]string{"TOKEN": "secret"})
 
 	// First open triggers migration
-	b, err := OpenLocalAt(path, []byte("pw"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
 	b.Close()
 
 	// Second open should read v2 directly
-	b2, err := OpenLocalAt(path, []byte("pw"))
+	b2, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +374,7 @@ func TestV1MigrationIdempotent(t *testing.T) {
 
 func TestPerEntryUniqueCiphertext(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("pw"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,7 +400,7 @@ func TestPerEntryUniqueCiphertext(t *testing.T) {
 
 func TestOverwriteRegeneratesSalt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("pw"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +420,7 @@ func TestOverwriteRegeneratesSalt(t *testing.T) {
 
 func TestDecryptValueIsolation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("pw"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,7 +521,7 @@ func TestEncryptDecryptRoundTrip(t *testing.T) {
 
 func TestNewVaultIsV2(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("pw"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +529,7 @@ func TestNewVaultIsV2(t *testing.T) {
 	b.Close()
 
 	// Re-open and check version
-	b2, err := OpenLocalAt(path, []byte("pw"))
+	b2, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -565,7 +565,7 @@ func TestUnsupportedVersion(t *testing.T) {
 	out = append(out, ct...)
 	_ = os.WriteFile(path, out, 0o600)
 
-	_, err := OpenLocalAt(path, []byte("pw"))
+	_, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err == nil {
 		t.Fatal("expected error for unsupported version")
 	}
@@ -573,7 +573,7 @@ func TestUnsupportedVersion(t *testing.T) {
 
 func TestConcurrentReadsAllowed(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b1, err := OpenLocalAt(path, []byte("pw"))
+	b1, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -581,11 +581,11 @@ func TestConcurrentReadsAllowed(t *testing.T) {
 	b1.Close()
 
 	// Two concurrent opens should both succeed (shared read lock)
-	b2, err := OpenLocalAt(path, []byte("pw"))
+	b2, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	b3, err := OpenLocalAt(path, []byte("pw"))
+	b3, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -609,7 +609,7 @@ func TestConcurrentReadsAllowed(t *testing.T) {
 
 func TestConcurrentWritesSerialized(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b1, err := OpenLocalAt(path, []byte("pw"))
+	b1, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -643,7 +643,7 @@ func TestConcurrentWritesSerialized(t *testing.T) {
 
 func TestAtomicWrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("pw"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -658,7 +658,7 @@ func TestAtomicWrite(t *testing.T) {
 	}
 
 	// Verify vault is readable
-	b2, err := OpenLocalAt(path, []byte("pw"))
+	b2, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -675,7 +675,7 @@ func TestAtomicWrite(t *testing.T) {
 
 func TestCloseZeroizesKeyAndSalt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.enc")
-	b, err := OpenLocalAt(path, []byte("pw"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("pw")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -715,7 +715,7 @@ func TestCloseZeroizesKeyAndSalt(t *testing.T) {
 func TestLocalBackendPathAccessor(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/myvault.enc"
-	b, err := OpenLocalAt(path, []byte("password123"))
+	b, err := OpenLocalAt(path, NewSecret([]byte("password123")))
 	if err != nil {
 		t.Fatal(err)
 	}

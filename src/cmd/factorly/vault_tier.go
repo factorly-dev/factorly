@@ -126,8 +126,8 @@ func (t vaultTier) Exists() bool {
 // var) silently skip when empty so clearing the shared var doesn't
 // break the tier-specific path.
 //
-// The returned slice is owned by the caller — zero it after use.
-func (t vaultTier) ResolvePassword(allowPrompt bool) ([]byte, error) {
+// The returned Secret is owned by the caller — `defer pw.Zero()`.
+func (t vaultTier) ResolvePassword(allowPrompt bool) (vault.Secret, error) {
 	for _, e := range t.EnvVars {
 		pw, ok := os.LookupEnv(e.Name)
 		if !ok {
@@ -135,12 +135,12 @@ func (t vaultTier) ResolvePassword(allowPrompt bool) ([]byte, error) {
 		}
 		if pw == "" {
 			if e.Strict {
-				return nil, fmt.Errorf("%s is set but empty", e.Name)
+				return vault.Secret{}, fmt.Errorf("%s is set but empty", e.Name)
 			}
 			continue
 		}
 		vlog("%s vault password from %s", t.Name, e.Name)
-		return []byte(pw), nil
+		return vault.SecretFromString(pw), nil
 	}
 	if t.KeyFile != "" {
 		if pw, err := readKeyFile(t.KeyFile); err == nil {
@@ -149,22 +149,24 @@ func (t vaultTier) ResolvePassword(allowPrompt bool) ([]byte, error) {
 		}
 	}
 	if !allowPrompt {
-		return nil, t.LockedErr
+		return vault.Secret{}, t.LockedErr
 	}
 	pw, err := promptSecret(t.PromptLabel)
 	if err != nil {
-		return nil, err
+		return vault.Secret{}, err
 	}
-	if len(pw) == 0 {
-		return nil, fmt.Errorf("vault password cannot be empty")
+	if pw.Empty() {
+		return vault.Secret{}, fmt.Errorf("vault password cannot be empty")
 	}
 	return pw, nil
 }
 
-// Open opens the tier's vault file with the supplied password.
-// vault.OpenLocalAt zeroes the password buffer; callers that need to
-// reuse the password downstream should copy it first.
-func (t vaultTier) Open(pw []byte) (vault.Backend, error) {
+// Open opens the tier's vault file with the supplied password. The
+// caller owns pw and is responsible for zeroing it (typically via
+// `defer pw.Zero()` at the call site). Open does not consume pw —
+// callers can reuse the Secret afterward (e.g. clone it for fan-out
+// to a chain).
+func (t vaultTier) Open(pw vault.Secret) (vault.Backend, error) {
 	if t.Path == "" {
 		return nil, fmt.Errorf("%s tier has no path", t.Name)
 	}
@@ -196,7 +198,7 @@ func (t vaultTier) OpenChain(allowPrompt bool) (vault.Backend, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer zeroBytes(pw)
+		defer pw.Zero()
 		return t.Open(pw)
 	case strings.HasPrefix(t.Name, "workspace:"):
 		// Workspace name lives in t.Name after the prefix.

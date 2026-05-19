@@ -80,15 +80,18 @@ func DefaultVaultPath() string {
 }
 
 // OpenLocal opens or creates an encrypted vault at the default path.
-// The password slice is zeroed after key derivation.
-func OpenLocal(password []byte) (*LocalBackend, error) {
+// Caller owns the Secret and must Zero() it after use (see OpenLocalAt).
+func OpenLocal(password Secret) (*LocalBackend, error) {
 	return OpenLocalAt(DefaultVaultPath(), password)
 }
 
 // OpenLocalAt opens or creates an encrypted vault at the given path.
-// The password slice is zeroed after key derivation.
+// The caller owns the Secret and is responsible for zeroing it
+// (typically via `defer pw.Zero()` at the call site). OpenLocalAt
+// never mutates the caller's Secret bytes — it derives the master
+// key into its own storage and reads no further.
 // Acquires a shared lock to read, releases after loading into memory.
-func OpenLocalAt(path string, password []byte) (*LocalBackend, error) {
+func OpenLocalAt(path string, password Secret) (*LocalBackend, error) {
 	b := &LocalBackend{
 		path:     path,
 		lockPath: path + ".lock",
@@ -96,35 +99,31 @@ func OpenLocalAt(path string, password []byte) (*LocalBackend, error) {
 
 	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		zeroize(password)
 		return nil, fmt.Errorf("creating vault directory: %w", err)
 	}
 
 	data, err := b.readWithSharedLock()
 	if err != nil {
 		if !os.IsNotExist(err) {
-			zeroize(password)
 			return nil, fmt.Errorf("reading vault: %w", err)
 		}
 		// New vault — create v2 directly
 		b.salt = make([]byte, saltLen)
 		if _, err := rand.Read(b.salt); err != nil {
-			zeroize(password)
 			return nil, fmt.Errorf("generating salt: %w", err)
 		}
-		b.key = deriveKey(password, b.salt)
+		b.key = deriveKey(password.Bytes(), b.salt)
 		b.index = &vaultIndex{Version: 2, Entries: make(map[string]encryptedEntry)}
 		return b, nil
 	}
 
 	// Existing vault — decrypt outer layer
 	if len(data) < saltLen+nonceLen+1 {
-		zeroize(password)
 		return nil, fmt.Errorf("vault file is corrupt (too small)")
 	}
 
 	b.salt = data[:saltLen]
-	b.key = deriveKey(password, b.salt)
+	b.key = deriveKey(password.Bytes(), b.salt)
 
 	nonce := data[saltLen : saltLen+nonceLen]
 	ciphertext := data[saltLen+nonceLen:]
@@ -331,10 +330,14 @@ func (b *LocalBackend) save() error {
 
 // --- Key derivation ---
 
+// deriveKey runs Argon2id over the password. Does NOT mutate the
+// password slice — callers (working through Secret) own that
+// lifecycle and zero via secret.Zero() at the appropriate point.
+// Before the Secret refactor, this used to call zeroize(password)
+// here, which silently aliased the caller's slice and broke the
+// candidate-password chain by zeroing it after the first try.
 func deriveKey(password []byte, salt []byte) []byte {
-	key := argon2.IDKey(password, salt, argonTime, argonMemory, argonThreads, keyLen)
-	zeroize(password) // clear password from memory after derivation
-	return key
+	return argon2.IDKey(password, salt, argonTime, argonMemory, argonThreads, keyLen)
 }
 
 func deriveEntryKey(masterKey, entrySalt []byte) ([]byte, error) {

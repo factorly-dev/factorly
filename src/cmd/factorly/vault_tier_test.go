@@ -175,8 +175,8 @@ func TestExplicitTierIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if string(pw) != "shared" {
-		t.Errorf("explicit tier picked up the wrong env var: got %q, want shared", string(pw))
+	if string(pw.Bytes()) != "shared" {
+		t.Errorf("explicit tier picked up the wrong env var: got %q, want shared", string(pw.Bytes()))
 	}
 }
 
@@ -302,15 +302,15 @@ func TestTierResolvePasswordPrecedence(t *testing.T) {
 			pw, err := tier.ResolvePassword(false)
 			if c.wantErr {
 				if err == nil {
-					t.Fatalf("expected error, got pw=%q", string(pw))
+					t.Fatalf("expected error, got pw=%q", string(pw.Bytes()))
 				}
 				return
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if string(pw) != c.want {
-				t.Errorf("got %q, want %q", string(pw), c.want)
+			if string(pw.Bytes()) != c.want {
+				t.Errorf("got %q, want %q", string(pw.Bytes()), c.want)
 			}
 		})
 	}
@@ -441,7 +441,7 @@ func TestEnvSourceStrictness(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
-	if string(pw) != "from-bbb" {
-		t.Errorf("got %q, want from-bbb", string(pw))
+	if string(pw.Bytes()) != "from-bbb" {
+		t.Errorf("got %q, want from-bbb", string(pw.Bytes()))
 	}
 }
