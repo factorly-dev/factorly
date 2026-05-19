@@ -20,28 +20,130 @@ import (
 	"golang.org/x/term"
 )
 
-// Process-wide vault cache — first open prompts for password;
-// subsequent opens within the same process reuse the backend.
+// Process-wide vault manager. Single shared instance owns the cache
+// for opened backends and is consumed by the UI server (via Options)
+// so CLI-side and UI-side observers always see the same state.
+//
+// The Manager is lazily constructed on first access. The chain opener
+// dispatches on scope-key conventions:
+//
+//   - ""               → openSmartVault (the startup chain — workspace
+//     chain when --workspace is active, else
+//     project→global)
+//   - "project"        → projectTier().ResolvePassword(false) + Open
+//   - "global"         → globalTier().ResolvePassword(false) + Open
+//   - "workspace:<n>"  → openWorkspaceChainOrNil(<n>, false), falling
+//     through to the cached startup chain when the
+//     workspace has no vault file
+//
+// Non-interactive (`prompt=false`) for project/global/workspace lookups
+// because the UI's unlock dialog handles missing-password cases via
+// OpenWithPassword. The startup scope ("") is the lone exception — it
+// fires on first CLI use and is allowed to prompt because that's the
+// expected interactive bootstrap.
 var (
-	cachedVaultOnce    sync.Once
-	cachedVaultBackend vault.Backend
-	cachedVaultErr     error
+	vaultManagerOnce sync.Once
+	vaultManager     *vault.Manager
+)
+
+func getVaultManager() *vault.Manager {
+	vaultManagerOnce.Do(func() {
+		vaultManager = vault.NewManager(vaultChainOpener, vaultPasswordOpener)
+	})
+	return vaultManager
+}
+
+// vaultChainOpener resolves a scope to a Backend using the
+// non-interactive password chain for every scope except "" (the
+// startup chain, where prompting is OK).
+func vaultChainOpener(scope string) (vault.Backend, error) {
+	switch {
+	case scope == "":
+		return openSmartVault()
+	case scope == "project":
+		t := projectTier()
+		pw, err := t.ResolvePassword(false)
+		if err != nil {
+			return nil, err
+		}
+		defer zeroBytes(pw)
+		return t.Open(pw)
+	case scope == "global":
+		t := globalTier()
+		pw, err := t.ResolvePassword(false)
+		if err != nil {
+			return nil, err
+		}
+		defer zeroBytes(pw)
+		return t.Open(pw)
+	case strings.HasPrefix(scope, "workspace:"):
+		name := strings.TrimPrefix(scope, "workspace:")
+		if err := workspace.ValidateName(name); err != nil {
+			return nil, err
+		}
+		if b, err := openWorkspaceChainOrNil(name, false); err != nil {
+			return nil, err
+		} else if b != nil {
+			return b, nil
+		}
+		// Workspace has no vault file — return the cached startup chain
+		// so callers consulting "the active vault" still get something.
+		return getVaultManager().GetOrOpen("")
+	}
+	return nil, fmt.Errorf("vault manager: unknown scope %q", scope)
+}
+
+// vaultPasswordOpener opens a tier with an explicit password (UI
+// unlock dialog). Scope dispatch mirrors vaultChainOpener.
+func vaultPasswordOpener(scope string, password []byte) (vault.Backend, error) {
+	switch {
+	case scope == "project":
+		return projectTier().Open(password)
+	case scope == "global":
+		return globalTier().Open(password)
+	case strings.HasPrefix(scope, "workspace:"):
+		name := strings.TrimPrefix(scope, "workspace:")
+		if err := workspace.ValidateName(name); err != nil {
+			return nil, err
+		}
+		// Same chain shape as OpenWorkspaceVaultWithPassword used to
+		// return: workspace primary + project→global fallback.
+		wsBackend, err := workspaceTier(name).Open(password)
+		if err != nil {
+			return nil, err
+		}
+		return &vault.FallbackBackend{
+			Primary: wsBackend,
+			SecondaryOpen: func() (vault.Backend, error) {
+				return openFallbackVault()
+			},
+		}, nil
+	}
+	return nil, fmt.Errorf("vault manager: unknown scope %q for password unlock", scope)
+}
+
+// getCachedVault returns the startup vault backend. Thin wrapper for
+// callers that don't need to know about the Manager.
+func getCachedVault() (vault.Backend, error) {
+	return getVaultManager().GetOrOpen("")
+}
+
+// getCachedLocalVault returns a *LocalBackend for commands that need
+// the concrete type (vault set's Has check, callers using
+// LocalBackend-only methods). Separately cached because openVault
+// resolves to a single tier (--vault-path / --global / --workspace /
+// project default), not the fallback chain that getCachedVault
+// returns.
+//
+// Process-wide single-shot via sync.Once: the active tier is fixed
+// by CLI flags, so re-resolving on subsequent calls would yield the
+// same answer.
+var (
 	cachedLocalOnce    sync.Once
 	cachedLocalBackend *vault.LocalBackend
 	cachedLocalErr     error
 )
 
-// getCachedVault returns a cached Backend (may be FallbackBackend).
-// First call opens the vault normally; subsequent calls reuse it.
-func getCachedVault() (vault.Backend, error) {
-	cachedVaultOnce.Do(func() {
-		cachedVaultBackend, cachedVaultErr = openSmartVault()
-	})
-	return cachedVaultBackend, cachedVaultErr
-}
-
-// getCachedLocalVault returns a cached *LocalBackend.
-// For commands that need the concrete type (vault set with Has check).
 func getCachedLocalVault() (*vault.LocalBackend, error) {
 	cachedLocalOnce.Do(func() {
 		cachedLocalBackend, cachedLocalErr = openVault()
@@ -266,47 +368,6 @@ func openVault() (*vault.LocalBackend, error) {
 	return vault.OpenLocalAt(t.Path, pw)
 }
 
-// OpenProjectVault opens (or creates) .factorly/vault.enc using only
-// non-interactive password sources (env vars, keyfile). Returns
-// errProjectVaultLocked if no password is available — UI callers
-// translate that into an unlock dialog. Used by the UI's vault page
-// so a project secret can be stored even when the project vault
-// didn't exist at server startup.
-func OpenProjectVault() (vault.Backend, error) {
-	t := projectTier()
-	pw, err := t.ResolvePassword(false)
-	if err != nil {
-		return nil, err
-	}
-	defer zeroBytes(pw)
-	return t.Open(pw)
-}
-
-// OpenProjectVaultWithPassword opens .factorly/vault.enc using an
-// explicit password (bypassing env-var/keyfile resolution). Used by
-// the UI when the user enters a password through the unlock dialog.
-func OpenProjectVaultWithPassword(password []byte) (vault.Backend, error) {
-	return projectTier().Open(password)
-}
-
-// OpenGlobalVault opens (or creates) ~/.config/factorly/vault.enc with
-// non-interactive password resolution.
-func OpenGlobalVault() (vault.Backend, error) {
-	t := globalTier()
-	pw, err := t.ResolvePassword(false)
-	if err != nil {
-		return nil, err
-	}
-	defer zeroBytes(pw)
-	return t.Open(pw)
-}
-
-// OpenGlobalVaultWithPassword opens ~/.config/factorly/vault.enc with
-// an explicit password.
-func OpenGlobalVaultWithPassword(password []byte) (vault.Backend, error) {
-	return globalTier().Open(password)
-}
-
 // errProjectVaultLocked / errGlobalVaultLocked signal that no
 // non-interactive password source resolved. UI callers detect these
 // via the "vault locked" substring (matching errWorkspaceVaultLocked
@@ -377,69 +438,6 @@ func openWorkspaceChainOrNil(name string, prompt bool) (vault.Backend, error) {
 			return openFallbackVaultWithCandidate(pwForFallback)
 		},
 	}, nil
-}
-
-// OpenWorkspaceVaultWithPassword opens the workspace vault file at
-// .factorly/vaults/<name>.enc using the supplied password and chains it
-// to the project→global fallback. Used by the UI when the user enters
-// a password through the unlock dialog (bypassing env-var/keyfile/prompt
-// resolution).
-func OpenWorkspaceVaultWithPassword(name string, password []byte) (vault.Backend, error) {
-	if err := workspace.ValidateName(name); err != nil {
-		return nil, err
-	}
-	wsBackend, err := workspaceTier(name).Open(password)
-	if err != nil {
-		return nil, err
-	}
-	return &vault.FallbackBackend{
-		Primary: wsBackend,
-		SecondaryOpen: func() (vault.Backend, error) {
-			return openFallbackVault()
-		},
-	}, nil
-}
-
-// OpenWorkspaceVaultUpsert opens (or creates) the workspace vault at
-// .factorly/vaults/<name>.enc using only non-interactive password
-// sources. Returns errWorkspaceVaultLocked if no password is
-// available — caller should surface the UI unlock dialog instead of
-// hanging. Unlike OpenWorkspaceChain, this returns the workspace
-// vault *alone* (no FallbackBackend wrapping), so a Set writes
-// directly to vaults/<name>.enc without falling through to the
-// project vault.
-func OpenWorkspaceVaultUpsert(name string) (vault.Backend, error) {
-	if err := workspace.ValidateName(name); err != nil {
-		return nil, err
-	}
-	t := workspaceTier(name)
-	pw, err := t.ResolvePassword(false)
-	if err != nil {
-		return nil, err
-	}
-	defer zeroBytes(pw)
-	return t.Open(pw)
-}
-
-// OpenWorkspaceChain is the UI-facing entry point for opening the
-// vault chain associated with a named workspace. Empty name returns
-// the no-workspace chain (cached project → global, set up at server
-// startup). Never blocks on stdin — when a workspace vault exists
-// but no non-interactive password source is available, returns
-// errWorkspaceVaultLocked so the UI surfaces its unlock dialog.
-func OpenWorkspaceChain(name string) (vault.Backend, error) {
-	if name == "" {
-		// Reuse the process-wide vault opened at startup so the UI
-		// never re-prompts for the project/global vault password.
-		return getCachedVault()
-	}
-	if b, err := openWorkspaceChainOrNil(name, false); err != nil {
-		return nil, err
-	} else if b != nil {
-		return b, nil
-	}
-	// Workspace has no vault file — reuse the cached project/global chain.
-	return getCachedVault()
 }
 
 // openFallbackVault opens the project vault (if it exists) and lazily

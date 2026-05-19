@@ -142,27 +142,32 @@ func runUI(cmd *cobra.Command, args []string) error {
 		activity.BroadcastStep(workflow, ev)
 	})
 
+	mgr := getVaultManager()
+	// Pre-seed the Manager with tiers the CLI startup already opened
+	// (extractVaultTiers walked the chain and surfaced the per-tier
+	// LocalBackends). Without this, the UI's vault-page would re-open
+	// project / global on first access — and re-prompt for passwords
+	// the user already typed at CLI startup.
+	if projectVault != nil {
+		mgr.Put("project", projectVault)
+	}
+	if globalVault != nil {
+		mgr.Put("global", globalVault)
+	}
+
 	srv, err := ui.New(ui.Options{
-		Config:                     cfg,
-		CfgPath:                    configPath,
-		ToolsDir:                   resolveToolsDir(configPath, cfg.ToolsDir),
-		Registry:                   reg,
-		Proxy:                      p,
-		Vault:                      vaultBackend,
-		Resolver:                   getCachedResolver(),
-		ProjectVault:               projectVault,
-		GlobalVault:                globalVault,
-		Activity:                   activity,
-		ConfirmBroker:              confirmBroker,
-		ActiveWorkspace:            workspaceName,
-		WorkspaceVault:             workspaceVault,
-		WorkspaceVaultOpener:       OpenWorkspaceChain,
-		WorkspacePasswordOpener:    OpenWorkspaceVaultWithPassword,
-		ProjectVaultOpener:         OpenProjectVault,
-		ProjectVaultPasswordOpener: OpenProjectVaultWithPassword,
-		GlobalVaultOpener:          OpenGlobalVault,
-		GlobalVaultPasswordOpener:  OpenGlobalVaultWithPassword,
-		WorkspaceVaultUpsertOpener: OpenWorkspaceVaultUpsert,
+		Config:          cfg,
+		CfgPath:         configPath,
+		ToolsDir:        resolveToolsDir(configPath, cfg.ToolsDir),
+		Registry:        reg,
+		Proxy:           p,
+		Vault:           vaultBackend,
+		Resolver:        getCachedResolver(),
+		Activity:        activity,
+		ConfirmBroker:   confirmBroker,
+		ActiveWorkspace: workspaceName,
+		WorkspaceVault:  workspaceVault,
+		VaultManager:    mgr,
 	})
 	if err != nil {
 		return err

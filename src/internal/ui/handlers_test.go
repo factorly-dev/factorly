@@ -472,11 +472,13 @@ func TestHandleVaultSetAndDelete(t *testing.T) {
 	cfgPath := filepath.Join(dir, "factorly.yaml")
 	_ = os.WriteFile(cfgPath, []byte("tools: {}\n"), 0o644)
 
+	mgr := vault.NewManager(nil, nil)
+	mgr.Put("project", v)
 	srv, err := New(Options{
 		Config:       cfg,
 		CfgPath:      cfgPath,
 		Vault:        v,
-		ProjectVault: v,
+		VaultManager: mgr,
 	})
 	if err != nil {
 		t.Fatal(err)

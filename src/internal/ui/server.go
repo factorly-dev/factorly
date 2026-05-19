@@ -36,8 +36,6 @@ type Server struct {
 	proxy         *proxy.Proxy
 	vault         vault.Backend
 	resolver      *vault.Resolver
-	projectVault  vault.Backend
-	globalVault   vault.Backend
 	tmpls         map[string]*template.Template
 	mux           *http.ServeMux
 	mcpHandler    http.Handler
@@ -47,46 +45,20 @@ type Server struct {
 	// callers (e.g., the MCP server bridge) react to config changes.
 	OnReload func()
 
-	// workspaceMu guards activeWorkspace + vaultBackends. Switching
-	// workspace mid-session reloads config and reopens the vault chain;
-	// vaultBackends caches each workspace's opened chain so toggling
-	// back and forth doesn't re-prompt for passwords.
+	// vaultMgr is the shared process-wide vault Manager. The UI doesn't
+	// open backends directly — it asks the Manager for cached opens
+	// (Cached / GetOrOpen) or completes a UI unlock via OpenWithPassword
+	// + Put. The Manager is the single source of truth for "is this
+	// tier opened?" — CLI startup state and UI unlock state both flow
+	// through the same cache.
+	vaultMgr *vault.Manager
+
+	// workspaceMu guards activeWorkspace only. The vault cache moved
+	// to the Manager (which has its own mutex), so this lock is now
+	// just for the UI's per-session "which workspace is the user on"
+	// state.
 	workspaceMu     sync.Mutex
 	activeWorkspace string
-	vaultBackends   map[string]vault.Backend
-	// WorkspaceVaultOpener opens the vault chain for the given workspace
-	// name. Empty name → the no-workspace chain (project → global). The
-	// caller (cmd/factorly/ui_cmd.go) injects this closure so the UI
-	// package doesn't have to know about vault password resolution.
-	// Returns (nil, nil) when the workspace has no vault file and no
-	// chain should be cached.
-	WorkspaceVaultOpener func(name string) (vault.Backend, error)
-	// WorkspacePasswordOpener opens a workspace vault using an explicit
-	// password (bypassing env-var/keyfile/prompt). Used by the inline
-	// unlock dialog when WorkspaceVaultOpener failed due to a missing
-	// or wrong password.
-	WorkspacePasswordOpener func(name string, password []byte) (vault.Backend, error)
-	// ProjectVaultOpener opens (or creates) the project vault at
-	// .factorly/vault.enc. Resolves the password using the CLI's
-	// existing FACTORLY_PROJECT_VAULT_PASSWORD / FACTORLY_VAULT_PASSWORD /
-	// keyfile chain — no prompt path in UI mode. Returns an error if
-	// password resolution fails. Used by the vault page so a user can
-	// store a project secret even when no .factorly/vault.enc exists
-	// yet.
-	ProjectVaultOpener func() (vault.Backend, error)
-	// ProjectVaultPasswordOpener opens the project vault with an
-	// explicit password (UI unlock dialog).
-	ProjectVaultPasswordOpener func(password []byte) (vault.Backend, error)
-	// GlobalVaultOpener opens (or creates) the global vault on demand.
-	GlobalVaultOpener func() (vault.Backend, error)
-	// GlobalVaultPasswordOpener opens the global vault with an explicit
-	// password.
-	GlobalVaultPasswordOpener func(password []byte) (vault.Backend, error)
-	// WorkspaceVaultUpsertOpener opens (or creates) a workspace vault
-	// directly — no fallback chain — so writes target the workspace
-	// vault file and don't fall through to project/global. Used by the
-	// vault page's "Store in: Workspace · <name>" scope.
-	WorkspaceVaultUpsertOpener func(name string) (vault.Backend, error)
 }
 
 // Config returns the currently-loaded config. Pointer is shared with the
@@ -129,34 +101,15 @@ func (s *Server) setActiveWorkspace(name string) {
 	s.activeWorkspace = name
 }
 
-// cachedWorkspaceVault returns a previously-opened vault chain for the
-// given workspace, or nil if not cached.
-func (s *Server) cachedWorkspaceVault(name string) vault.Backend {
-	s.workspaceMu.Lock()
-	defer s.workspaceMu.Unlock()
-	return s.vaultBackends[name]
-}
-
-// cacheWorkspaceVault stashes an opened vault chain so subsequent
-// switches back to the same workspace don't re-prompt.
-func (s *Server) cacheWorkspaceVault(name string, b vault.Backend) {
-	s.workspaceMu.Lock()
-	defer s.workspaceMu.Unlock()
-	s.vaultBackends[name] = b
-}
-
 // ActiveVault returns the vault chain bound to the currently-active
 // workspace (whichever was last cached during a switch). Falls back to
 // the startup vault when no workspace is active. Used by the OAuth
 // token store so refreshes always target the correct tier.
 func (s *Server) ActiveVault() vault.Backend {
 	s.workspaceMu.Lock()
-	defer s.workspaceMu.Unlock()
-	if b, ok := s.vaultBackends[s.activeWorkspace]; ok && b != nil {
-		return b
-	}
-	// Empty-workspace key was seeded with the startup vault in New().
-	return s.vaultBackends[""]
+	ws := s.activeWorkspace
+	s.workspaceMu.Unlock()
+	return s.vaultMgr.Active(ws)
 }
 
 // Options configures the UI server.
@@ -168,8 +121,6 @@ type Options struct {
 	Proxy         *proxy.Proxy
 	Vault         vault.Backend
 	Resolver      *vault.Resolver
-	ProjectVault  vault.Backend
-	GlobalVault   vault.Backend
 	Activity      *ActivityBroadcaster
 	ConfirmBroker *ConfirmBroker
 	// ActiveWorkspace is the workspace the server was started with
@@ -178,31 +129,15 @@ type Options struct {
 	// request once the user switches via the UI.
 	ActiveWorkspace string
 	// WorkspaceVault is the already-opened workspace vault backend
-	// (the single-tier file, not the fallback chain). Optional — when
-	// nil, the UI's read path opens it on demand via WorkspaceVaultOpener
-	// / WorkspaceVaultUpsertOpener. Passing it here lets the UI inherit
-	// the unlocked state from the CLI startup prompt.
+	// for the startup workspace (the single-tier file, not the
+	// fallback chain). Optional — when nil, the UI's read path opens
+	// it on demand via the Manager. Passing it here lets the UI
+	// inherit the unlocked state from the CLI startup prompt.
 	WorkspaceVault vault.Backend
-	// WorkspaceVaultOpener opens the vault chain for a named workspace.
-	// See Server.WorkspaceVaultOpener for semantics.
-	WorkspaceVaultOpener func(name string) (vault.Backend, error)
-	// WorkspacePasswordOpener opens a named workspace vault with an
-	// explicit password. See Server.WorkspacePasswordOpener.
-	WorkspacePasswordOpener func(name string, password []byte) (vault.Backend, error)
-	// ProjectVaultOpener opens (or creates) the project vault on demand.
-	// See Server.ProjectVaultOpener for semantics.
-	ProjectVaultOpener func() (vault.Backend, error)
-	// ProjectVaultPasswordOpener opens the project vault with an
-	// explicit password (UI unlock dialog).
-	ProjectVaultPasswordOpener func(password []byte) (vault.Backend, error)
-	// GlobalVaultOpener opens (or creates) the global vault on demand.
-	GlobalVaultOpener func() (vault.Backend, error)
-	// GlobalVaultPasswordOpener opens the global vault with an explicit
-	// password.
-	GlobalVaultPasswordOpener func(password []byte) (vault.Backend, error)
-	// WorkspaceVaultUpsertOpener opens (or creates) a workspace vault
-	// directly. See Server.WorkspaceVaultUpsertOpener for semantics.
-	WorkspaceVaultUpsertOpener func(name string) (vault.Backend, error)
+	// VaultManager is the shared process-wide vault Manager. The UI
+	// consults it for cached/lazy opens (read path) and unlock-with-
+	// password flows. Required.
+	VaultManager *vault.Manager
 }
 
 // New creates a UI server.
@@ -241,41 +176,39 @@ func New(opts Options) (*Server, error) {
 		tmpls[page] = t
 	}
 
-	s := &Server{
-		cfg:                        opts.Config,
-		cfgPath:                    opts.CfgPath,
-		toolsDir:                   opts.ToolsDir,
-		registry:                   opts.Registry,
-		proxy:                      opts.Proxy,
-		vault:                      opts.Vault,
-		resolver:                   opts.Resolver,
-		projectVault:               opts.ProjectVault,
-		globalVault:                opts.GlobalVault,
-		activity:                   opts.Activity,
-		confirmBroker:              opts.ConfirmBroker,
-		tmpls:                      tmpls,
-		mux:                        http.NewServeMux(),
-		activeWorkspace:            opts.ActiveWorkspace,
-		vaultBackends:              make(map[string]vault.Backend),
-		WorkspaceVaultOpener:       opts.WorkspaceVaultOpener,
-		WorkspacePasswordOpener:    opts.WorkspacePasswordOpener,
-		ProjectVaultOpener:         opts.ProjectVaultOpener,
-		ProjectVaultPasswordOpener: opts.ProjectVaultPasswordOpener,
-		GlobalVaultOpener:          opts.GlobalVaultOpener,
-		GlobalVaultPasswordOpener:  opts.GlobalVaultPasswordOpener,
-		WorkspaceVaultUpsertOpener: opts.WorkspaceVaultUpsertOpener,
+	// Tests can omit VaultManager — we build a Manager with no
+	// chainOpener / passwordOpener (so cache-only operations work).
+	// Production paths in cmd/factorly always pass one.
+	if opts.VaultManager == nil {
+		opts.VaultManager = vault.NewManager(nil, nil)
 	}
-	// Seed the cache with the startup workspace's already-opened vault
-	// so the user doesn't get re-prompted when they switch to it (and
-	// the vault page treats the tier as unlocked from page-load 1).
-	// Prefer the single-tier WorkspaceVault when the caller extracted
-	// it from the chain; fall back to the full chain backend for
-	// callers that don't bother to split it out.
-	switch {
-	case opts.ActiveWorkspace != "" && opts.WorkspaceVault != nil:
-		s.vaultBackends[opts.ActiveWorkspace] = opts.WorkspaceVault
-	case opts.Vault != nil:
-		s.vaultBackends[opts.ActiveWorkspace] = opts.Vault
+
+	s := &Server{
+		cfg:             opts.Config,
+		cfgPath:         opts.CfgPath,
+		toolsDir:        opts.ToolsDir,
+		registry:        opts.Registry,
+		proxy:           opts.Proxy,
+		vault:           opts.Vault,
+		resolver:        opts.Resolver,
+		activity:        opts.Activity,
+		confirmBroker:   opts.ConfirmBroker,
+		tmpls:           tmpls,
+		mux:             http.NewServeMux(),
+		activeWorkspace: opts.ActiveWorkspace,
+		vaultMgr:        opts.VaultManager,
+	}
+	// Seed the Manager cache with the already-opened startup chain so
+	// the user doesn't get re-prompted on first page load. The empty
+	// scope is the chain-shape contract: see vaultChainOpener.
+	if opts.Vault != nil {
+		s.vaultMgr.Put("", opts.Vault)
+	}
+	// Seed the workspace's single-tier vault separately when the
+	// caller extracted it from the chain — lets the vault page treat
+	// the workspace tier as already-unlocked from page-load 1.
+	if opts.ActiveWorkspace != "" && opts.WorkspaceVault != nil {
+		s.vaultMgr.Put("workspace:"+opts.ActiveWorkspace, opts.WorkspaceVault)
 	}
 
 	s.routes()

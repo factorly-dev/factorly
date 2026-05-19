@@ -50,7 +50,7 @@ func (s *Server) vaultSections(r *http.Request) []vaultSection {
 			Scope: "workspace:" + name,
 		}
 		if _, statErr := os.Stat(workspaceVaultFilePath(name)); statErr == nil {
-			b, openErr := s.openWorkspaceVaultForRead(name)
+			b, openErr := s.vaultMgr.GetOrOpen("workspace:" + name)
 			switch {
 			case openErr == nil && b != nil:
 				if keys, listErr := b.List(); listErr == nil {
@@ -68,7 +68,7 @@ func (s *Server) vaultSections(r *http.Request) []vaultSection {
 	if hasProjectDir() {
 		sec := vaultSection{Label: "Project vault", Scope: "project"}
 		if _, statErr := os.Stat(projectVaultFilePath()); statErr == nil {
-			b, openErr := s.openProjectVaultForRead()
+			b, openErr := s.vaultMgr.GetOrOpen("project")
 			switch {
 			case openErr == nil && b != nil:
 				if keys, listErr := b.List(); listErr == nil {
@@ -84,22 +84,19 @@ func (s *Server) vaultSections(r *http.Request) []vaultSection {
 	// Global tier. Always show — fresh installs need somewhere to land.
 	{
 		sec := vaultSection{Label: "Global vault", Scope: "global"}
-		switch {
-		case s.globalVault != nil:
-			if keys, err := s.globalVault.List(); err == nil {
+		if cached := s.vaultMgr.Cached("global"); cached != nil {
+			if keys, err := cached.List(); err == nil {
 				sec.Keys = keys
 			}
-		default:
-			if _, statErr := os.Stat(vault.DefaultVaultPath()); statErr == nil {
-				b, openErr := s.openGlobalVaultForRead()
-				switch {
-				case openErr == nil && b != nil:
-					if keys, listErr := b.List(); listErr == nil {
-						sec.Keys = keys
-					}
-				case isVaultLockedErr(openErr):
-					sec.Locked = true
+		} else if _, statErr := os.Stat(vault.DefaultVaultPath()); statErr == nil {
+			b, openErr := s.vaultMgr.GetOrOpen("global")
+			switch {
+			case openErr == nil && b != nil:
+				if keys, listErr := b.List(); listErr == nil {
+					sec.Keys = keys
 				}
+			case isVaultLockedErr(openErr):
+				sec.Locked = true
 			}
 		}
 		sections = append(sections, sec)
@@ -143,53 +140,6 @@ func isVaultLockedErr(err error) bool {
 	return strings.Contains(msg, "vault locked") ||
 		strings.Contains(msg, "decrypting vault") ||
 		strings.Contains(msg, "wrong password")
-}
-
-// openWorkspaceVaultForRead returns a cached backend if present,
-// otherwise tries the non-interactive opener. Caches successful opens.
-func (s *Server) openWorkspaceVaultForRead(name string) (vault.Backend, error) {
-	if b := s.cachedWorkspaceVault(name); b != nil {
-		return b, nil
-	}
-	if s.WorkspaceVaultUpsertOpener == nil {
-		return nil, nil
-	}
-	b, err := s.WorkspaceVaultUpsertOpener(name)
-	if err == nil && b != nil {
-		s.cacheWorkspaceVault(name, b)
-	}
-	return b, err
-}
-
-// openProjectVaultForRead returns the startup-opened project vault
-// if present, otherwise tries the non-interactive opener.
-func (s *Server) openProjectVaultForRead() (vault.Backend, error) {
-	if s.projectVault != nil {
-		return s.projectVault, nil
-	}
-	if s.ProjectVaultOpener == nil {
-		return nil, nil
-	}
-	b, err := s.ProjectVaultOpener()
-	if err == nil {
-		s.projectVault = b
-	}
-	return b, err
-}
-
-// openGlobalVaultForRead — same pattern for the global tier.
-func (s *Server) openGlobalVaultForRead() (vault.Backend, error) {
-	if s.globalVault != nil {
-		return s.globalVault, nil
-	}
-	if s.GlobalVaultOpener == nil {
-		return nil, nil
-	}
-	b, err := s.GlobalVaultOpener()
-	if err == nil {
-		s.globalVault = b
-	}
-	return b, err
 }
 
 func (s *Server) handleVaultSet(w http.ResponseWriter, r *http.Request) {
@@ -270,46 +220,9 @@ func (s *Server) handleVaultDelete(w http.ResponseWriter, r *http.Request) {
 // for a password; callers translate those into the unlock partial.
 func (s *Server) resolveVaultBackend(scope string) (vault.Backend, error) {
 	switch {
-	case strings.HasPrefix(scope, "workspace:"):
-		name := strings.TrimPrefix(scope, "workspace:")
-		if s.WorkspaceVaultUpsertOpener == nil {
-			return nil, fmt.Errorf("workspace vault not configured")
-		}
-		b, err := s.WorkspaceVaultUpsertOpener(name)
-		if err != nil {
-			return nil, err
-		}
-		return b, nil
-
-	case scope == "project":
-		if s.projectVault != nil {
-			return s.projectVault, nil
-		}
-		if s.ProjectVaultOpener == nil {
-			return nil, fmt.Errorf("project vault not configured")
-		}
-		b, err := s.ProjectVaultOpener()
-		if err != nil {
-			return nil, err
-		}
-		s.projectVault = b
-		return b, nil
-
-	case scope == "global":
-		if s.globalVault != nil {
-			return s.globalVault, nil
-		}
-		if s.GlobalVaultOpener == nil {
-			return nil, fmt.Errorf("global vault not configured")
-		}
-		b, err := s.GlobalVaultOpener()
-		if err != nil {
-			return nil, err
-		}
-		s.globalVault = b
-		return b, nil
+	case strings.HasPrefix(scope, "workspace:"), scope == "project", scope == "global":
+		return s.vaultMgr.GetOrOpen(scope)
 	}
-
 	return s.vault, nil
 }
 
@@ -373,7 +286,7 @@ func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	backend, err := s.openVaultWithPassword(scope, []byte(password))
+	backend, err := s.vaultMgr.OpenWithPassword(scope, []byte(password))
 	if err != nil {
 		s.renderVaultUnlockPartial(w, vaultUnlockData{
 			Scope: scope, Op: op, Key: key, Value: value,
@@ -381,7 +294,7 @@ func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	s.cacheUnlockedBackend(scope, backend)
+	s.vaultMgr.Put(scope, backend)
 
 	// Complete the deferred operation.
 	switch op {
@@ -406,44 +319,6 @@ func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderVaultKeys(w, r)
-}
-
-// openVaultWithPassword opens the given vault tier using an explicit
-// password supplied through the unlock form.
-func (s *Server) openVaultWithPassword(scope string, password []byte) (vault.Backend, error) {
-	switch {
-	case strings.HasPrefix(scope, "workspace:"):
-		name := strings.TrimPrefix(scope, "workspace:")
-		if s.WorkspacePasswordOpener == nil {
-			return nil, fmt.Errorf("workspace password unlock not configured")
-		}
-		return s.WorkspacePasswordOpener(name, password)
-	case scope == "project":
-		if s.ProjectVaultPasswordOpener == nil {
-			return nil, fmt.Errorf("project password unlock not configured")
-		}
-		return s.ProjectVaultPasswordOpener(password)
-	case scope == "global":
-		if s.GlobalVaultPasswordOpener == nil {
-			return nil, fmt.Errorf("global password unlock not configured")
-		}
-		return s.GlobalVaultPasswordOpener(password)
-	}
-	return nil, fmt.Errorf("unknown scope %q", scope)
-}
-
-// cacheUnlockedBackend stores the opened backend so subsequent reads
-// and writes don't re-prompt for the password.
-func (s *Server) cacheUnlockedBackend(scope string, b vault.Backend) {
-	switch {
-	case strings.HasPrefix(scope, "workspace:"):
-		name := strings.TrimPrefix(scope, "workspace:")
-		s.cacheWorkspaceVault(name, b)
-	case scope == "project":
-		s.projectVault = b
-	case scope == "global":
-		s.globalVault = b
-	}
 }
 
 func (s *Server) renderVaultKeys(w http.ResponseWriter, r *http.Request) {
@@ -582,7 +457,7 @@ func (s *Server) handleVaultUnlockAll(w http.ResponseWriter, r *http.Request) {
 	var results []tierResult
 	pw := []byte(password)
 	for _, t := range s.lockedTiers(r) {
-		backend, err := s.openVaultWithPassword(t.Scope, pw)
+		backend, err := s.vaultMgr.OpenWithPassword(t.Scope, pw)
 		if err != nil {
 			results = append(results, tierResult{
 				Label: t.Label, Scope: t.Scope, Success: false,
@@ -590,7 +465,7 @@ func (s *Server) handleVaultUnlockAll(w http.ResponseWriter, r *http.Request) {
 			})
 			continue
 		}
-		s.cacheUnlockedBackend(t.Scope, backend)
+		s.vaultMgr.Put(t.Scope, backend)
 		results = append(results, tierResult{Label: t.Label, Scope: t.Scope, Success: true})
 	}
 

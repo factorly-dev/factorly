@@ -245,11 +245,15 @@ func TestHandleWorkspaceUnlockWithoutPasswordOpener(t *testing.T) {
 	rec := httptest.NewRecorder()
 	srv.mux.ServeHTTP(rec, req)
 
-	// No password opener configured → returns the unlock partial with an error.
+	// Manager has no password opener (test default Manager is nil
+	// openers) → unlock attempt fails → render the unlock partial
+	// with a generic "incorrect password" message. The user-facing
+	// distinction between "no opener" and "wrong password" was
+	// deliberately collapsed: both end in the same retry UI.
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "unlock is not configured") {
-		t.Errorf("expected helpful error; body=%s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "incorrect password") {
+		t.Errorf("expected unlock retry partial; body=%s", rec.Body.String())
 	}
 }
