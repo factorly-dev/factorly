@@ -247,6 +247,13 @@
   <script src="/static/activity.js"></script>
   <script src="/static/confirm.js"></script>
 
+  <!-- Vault unlock modal (auto-fetched on every page load; renders only
+       when one or more vault tiers are locked and the user hasn't
+       dismissed it for the session). -->
+  <div id="vault-unlock-overlay" class="hidden"
+       hx-get="{{if eq .Nav "vault"}}/vault/unlock-modal?force=1{{else}}/vault/unlock-modal{{end}}"
+       hx-trigger="load" hx-swap="outerHTML"></div>
+
   <!-- Shadow confirm modal (for tool execution confirmations via SSE) -->
   <div id="confirm-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
     <div class="bg-white rounded-xl shadow-2xl border border-gray-200 p-6 max-w-md w-full mx-4" id="confirm-content">

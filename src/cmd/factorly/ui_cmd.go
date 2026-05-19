@@ -119,23 +119,19 @@ func runUI(cmd *cobra.Command, args []string) error {
 	var vaultBackend vault.Backend
 	vaultBackend, _ = getCachedVault()
 
-	// Detect project vs global vault from the cached backend
-	var projectVault, globalVault vault.Backend
-	projectPath := filepath.Join(".factorly", "vault.enc")
-	globalPath := vault.DefaultVaultPath()
-	if fb, ok := vaultBackend.(*vault.FallbackBackend); ok {
-		projectVault = fb.Primary
-		globalVault = fb.Secondary
-	} else if vaultBackend != nil {
-		// Single vault — determine which one it is
-		if _, err := os.Stat(projectPath); err == nil {
-			projectVault = vaultBackend
-		} else if _, err := os.Stat(globalPath); err == nil {
-			globalVault = vaultBackend
-		} else {
-			projectVault = vaultBackend
-		}
-	}
+	// Inherit each tier the CLI startup already unlocked. The chain
+	// returned from getCachedVault is either:
+	//   - workspace→project→global, when --workspace is active and a
+	//     workspace vault file exists (the outermost FallbackBackend's
+	//     Primary is the workspace vault),
+	//   - project→global, when no workspace is active,
+	//   - a single LocalBackend, when only one tier exists.
+	//
+	// SecondaryOpen closures fire lazily on first Get-miss in normal
+	// operation, but we want each tier surfaced to the UI as already-
+	// unlocked at startup so the user doesn't see "locked" badges
+	// after typing the password on the CLI. Force the lazy opens now.
+	workspaceVault, projectVault, globalVault := extractVaultTiers(vaultBackend, workspaceName != "")
 
 	// Set up activity broadcaster for live feed
 	activity := ui.NewActivityBroadcaster()
@@ -147,20 +143,26 @@ func runUI(cmd *cobra.Command, args []string) error {
 	})
 
 	srv, err := ui.New(ui.Options{
-		Config:                  cfg,
-		CfgPath:                 configPath,
-		ToolsDir:                resolveToolsDir(configPath, cfg.ToolsDir),
-		Registry:                reg,
-		Proxy:                   p,
-		Vault:                   vaultBackend,
-		Resolver:                getCachedResolver(),
-		ProjectVault:            projectVault,
-		GlobalVault:             globalVault,
-		Activity:                activity,
-		ConfirmBroker:           confirmBroker,
-		ActiveWorkspace:         workspaceName,
-		WorkspaceVaultOpener:    OpenWorkspaceChain,
-		WorkspacePasswordOpener: OpenWorkspaceVaultWithPassword,
+		Config:                     cfg,
+		CfgPath:                    configPath,
+		ToolsDir:                   resolveToolsDir(configPath, cfg.ToolsDir),
+		Registry:                   reg,
+		Proxy:                      p,
+		Vault:                      vaultBackend,
+		Resolver:                   getCachedResolver(),
+		ProjectVault:               projectVault,
+		GlobalVault:                globalVault,
+		Activity:                   activity,
+		ConfirmBroker:              confirmBroker,
+		ActiveWorkspace:            workspaceName,
+		WorkspaceVault:             workspaceVault,
+		WorkspaceVaultOpener:       OpenWorkspaceChain,
+		WorkspacePasswordOpener:    OpenWorkspaceVaultWithPassword,
+		ProjectVaultOpener:         OpenProjectVault,
+		ProjectVaultPasswordOpener: OpenProjectVaultWithPassword,
+		GlobalVaultOpener:          OpenGlobalVault,
+		GlobalVaultPasswordOpener:  OpenGlobalVaultWithPassword,
+		WorkspaceVaultUpsertOpener: OpenWorkspaceVaultUpsert,
 	})
 	if err != nil {
 		return err
@@ -346,4 +348,87 @@ func openBrowser(url string) {
 	if cmd != nil {
 		_ = cmd.Start()
 	}
+}
+
+// extractVaultTiers walks the chain returned by getCachedVault and
+// pulls out each tier's backend so the UI can surface them as
+// individually-unlocked (rather than re-prompting). Eagerly fires
+// any lazy SecondaryOpen closures so a one-time password the user
+// typed on stdin gets propagated to project + global tiers via the
+// shared-password candidate fallback we built earlier.
+//
+// hasWorkspace tells us whether to expect a workspace tier at the
+// top of the chain (true when --workspace was active).
+//
+// Returns (workspace, project, global) — any tier that wasn't
+// present or didn't unlock is nil.
+func extractVaultTiers(root vault.Backend, hasWorkspace bool) (ws, proj, glob vault.Backend) {
+	if root == nil {
+		return nil, nil, nil
+	}
+
+	// Detect the file each LocalBackend points at so we can sort
+	// tiers by what they are, not by chain position. (More robust:
+	// chain shape can vary with --vault-path, --global, etc.)
+	classify := func(b vault.Backend) (kind string) {
+		lb, ok := b.(*vault.LocalBackend)
+		if !ok {
+			return ""
+		}
+		path := lb.Path()
+		switch {
+		case isWorkspaceVault(path):
+			return "workspace"
+		case isProjectVault(path):
+			return "project"
+		default:
+			return "global"
+		}
+	}
+
+	assign := func(b vault.Backend) {
+		switch classify(b) {
+		case "workspace":
+			if ws == nil {
+				ws = b
+			}
+		case "project":
+			if proj == nil {
+				proj = b
+			}
+		case "global":
+			if glob == nil {
+				glob = b
+			}
+		}
+	}
+
+	// Walk the chain. Each FallbackBackend has a Primary (an opened
+	// backend) and either Secondary (already open) or SecondaryOpen
+	// (lazy). Fire lazy opens so the next layer is reachable.
+	cur := root
+	for cur != nil {
+		fb, ok := cur.(*vault.FallbackBackend)
+		if !ok {
+			assign(cur)
+			break
+		}
+		if fb.Primary != nil {
+			assign(fb.Primary)
+		}
+		// Fire lazy open if needed. EnsureSecondary returns nil on
+		// failure, which is fine — the tier just stays absent.
+		next := fb.EnsureSecondary()
+		if next == nil {
+			break
+		}
+		cur = next
+	}
+
+	// If --workspace wasn't active, the chain's "workspace" slot
+	// should be unused.
+	if !hasWorkspace {
+		ws = nil
+	}
+	return ws, proj, glob
 }

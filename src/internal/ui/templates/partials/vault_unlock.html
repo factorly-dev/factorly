@@ -1,0 +1,36 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+{{define "vault_unlock"}}
+<div class="bg-amber-50 border border-amber-200 rounded p-4">
+  <div class="text-sm font-semibold text-amber-900 mb-2">Unlock {{.Label}}</div>
+  <p class="text-xs text-amber-800 mb-3">
+    {{if eq .Op "set"}}This vault needs a password before we can store <code class="font-mono">{{.Key}}</code>.
+    {{else if eq .Op "delete"}}This vault needs a password before we can delete <code class="font-mono">{{.Key}}</code>.
+    {{else}}This vault needs a password before its contents can be listed.
+    {{end}}
+  </p>
+  <form method="post" action="/vault/unlock" hx-post="/vault/unlock" hx-target="#vault-keys" hx-swap="innerHTML" hx-boost="false" class="space-y-2">
+    <input type="hidden" name="scope" value="{{.Scope}}">
+    {{if .Op}}<input type="hidden" name="op" value="{{.Op}}">{{end}}
+    {{if .Key}}<input type="hidden" name="key" value="{{.Key}}">{{end}}
+    {{if .Value}}<input type="hidden" name="value" value="{{.Value}}">{{end}}
+    <input type="password" name="password" required autofocus placeholder="vault password"
+           class="w-full px-2 py-1.5 border border-amber-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-amber-300">
+    {{if .Error}}<p class="text-xs text-red-600">{{.Error}}</p>{{end}}
+    <div class="flex items-center justify-end gap-2 pt-1">
+      <button type="button" hx-get="/vault" hx-target="#main-content" hx-swap="innerHTML" hx-select="#main-content > *"
+              class="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+      <button type="submit"
+              class="px-3 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700">
+        {{if eq .Op "set"}}Unlock & store
+        {{else if eq .Op "delete"}}Unlock & delete
+        {{else}}Unlock
+        {{end}}
+      </button>
+    </div>
+  </form>
+</div>
+{{end}}

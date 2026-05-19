@@ -26,6 +26,15 @@ func (f *FallbackBackend) ensureSecondary() Backend {
 	return f.Secondary
 }
 
+// EnsureSecondary forces the lazy SecondaryOpen to fire and returns
+// the resulting backend (or nil if it failed / was never set). Used
+// by the UI to eagerly warm the project/global tiers at startup so
+// the user doesn't see them as "locked" when in fact the CLI prompt
+// already had the password to open them.
+func (f *FallbackBackend) EnsureSecondary() Backend {
+	return f.ensureSecondary()
+}
+
 func (f *FallbackBackend) Get(key string) (string, error) {
 	if f.Primary != nil {
 		val, err := f.Primary.Get(key)

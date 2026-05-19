@@ -55,8 +55,17 @@
   <div id="vault-keys">
     {{range .Sections}}
     <div class="border-b border-gray-200 last:border-b-0">
-      <div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide">{{.Label}} <span class="text-gray-300">({{len .Keys}} keys)</span></div>
-      {{if not .Keys}}
+      <div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+        {{.Label}}
+        {{if .Locked}}<span class="text-amber-500">(locked)</span>
+        {{else}}<span class="text-gray-300">({{len .Keys}} keys)</span>{{end}}
+      </div>
+      {{if .Locked}}
+      <div class="px-5 py-3">
+        <button type="button" hx-post="/vault/unlock-form" hx-target="#vault-keys" hx-swap="innerHTML" hx-vals='{"scope":"{{.Scope}}"}'
+                class="text-xs text-indigo-600 hover:text-indigo-800">Unlock to view secrets</button>
+      </div>
+      {{else if not .Keys}}
       <div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>
       {{else}}
       {{range .Keys}}

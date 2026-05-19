@@ -1,0 +1,74 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+{{/*
+After POST /vault/unlock-all, this partial replaces the modal with a
+results card. If everything unlocked, the card auto-dismisses after a
+short delay. If anything failed, it shows the per-tier outcome with a
+"Try again" button that brings the modal back.
+*/}}
+{{define "vault_unlock_result"}}
+{{if .AllSucceeded}}
+<div id="vault-unlock-overlay" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+     hx-trigger="load delay:900ms" hx-get="/vault/unlock-modal-empty" hx-swap="outerHTML">
+  <div class="bg-white rounded-xl shadow-2xl border border-gray-200 p-6 max-w-md w-full mx-4">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-600"><path d="M20 6 9 17l-5-5"/></svg>
+      </div>
+      <div class="flex-1">
+        <h2 class="text-base font-semibold text-gray-900">Vaults unlocked</h2>
+        <p class="text-sm text-gray-500 mt-0.5">{{len .Results}} vault{{if ne (len .Results) 1}}s{{end}} ready.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{{else}}
+<div id="vault-unlock-overlay" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+  <div class="bg-white rounded-xl shadow-2xl border border-gray-200 p-6 max-w-md w-full mx-4">
+    <div class="flex items-start gap-3 mb-4">
+      <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-amber-600"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+      </div>
+      <div class="flex-1">
+        <h2 class="text-base font-semibold text-gray-900">Some vaults didn't unlock</h2>
+        <p class="text-sm text-gray-500 mt-0.5">Different password? Try again with a different one.</p>
+      </div>
+    </div>
+
+    <ul class="mb-4 text-sm space-y-1">
+      {{range .Results}}
+      <li class="flex items-center justify-between text-xs">
+        <span class="font-mono text-gray-600">{{.Label}}</span>
+        {{if .Success}}
+        <span class="text-emerald-600 font-medium">unlocked</span>
+        {{else}}
+        <span class="text-red-500">{{if .Error}}{{.Error}}{{else}}failed{{end}}</span>
+        {{end}}
+      </li>
+      {{end}}
+    </ul>
+
+    <div class="flex items-center justify-end gap-2 pt-2">
+      <button type="button"
+              hx-post="/vault/unlock-dismiss"
+              hx-target="#vault-unlock-overlay" hx-swap="outerHTML"
+              onclick="document.getElementById('vault-unlock-overlay').remove()"
+              class="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700">Skip for now</button>
+      <button type="button"
+              hx-get="/vault/unlock-modal?force=1"
+              hx-target="#vault-unlock-overlay" hx-swap="outerHTML"
+              class="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">Try again</button>
+    </div>
+  </div>
+</div>
+{{end}}
+{{end}}
+
+{{/*
+vault_unlock_modal_empty — a no-op partial that swaps the modal out
+of the DOM. Used by the "all unlocked" result's auto-dismiss timer.
+*/}}
+{{define "vault_unlock_modal_empty"}}<div id="vault-unlock-overlay" class="hidden"></div>{{end}}

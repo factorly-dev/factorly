@@ -10,13 +10,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 var binary string
@@ -5581,3 +5584,322 @@ oauth_providers:
 		t.Errorf("expected valid status via fallback to project vault, got: %s", out)
 	}
 }
+
+// --- Shared-password chain ---
+
+// runWithIsolatedStdin runs the binary with explicit stdin contents,
+// fully isolated env (no FACTORLY_*_PASSWORD inherited, HOME pointed
+// at a tempdir so the developer's real ~/.config/factorly/vault.enc
+// is invisible). Returns stdout, stderr, exit code.
+func runWithIsolatedStdin(t *testing.T, dir, stdin string, args ...string) (string, string, int) {
+	t.Helper()
+	env := []string{}
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(kv, "FACTORLY_VAULT_PASSWORD=") ||
+			strings.HasPrefix(kv, "FACTORLY_PROJECT_VAULT_PASSWORD=") ||
+			strings.HasPrefix(kv, "FACTORLY_WORKSPACE_VAULT_PASSWORD_") ||
+			strings.HasPrefix(kv, "FACTORLY_VAULT_PATH=") ||
+			strings.HasPrefix(kv, "HOME=") {
+			continue
+		}
+		env = append(env, kv)
+	}
+	fakeHome := t.TempDir()
+	env = append(env, "HOME="+fakeHome, "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")
+
+	cmd := exec.Command(binary, args...)
+	cmd.Dir = dir
+	cmd.Env = env
+	cmd.Stdin = strings.NewReader(stdin)
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	exitCode := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			t.Fatalf("run %v: %v\nstderr: %s", args, err, stderr.String())
+		}
+	}
+	return stdout.String(), stderr.String(), exitCode
+}
+
+// countPasswordPrompts counts "Vault password" labels in the stderr
+// output. Used to verify the shared-password fallback skipped a prompt.
+func countPasswordPrompts(stderr string) int {
+	return strings.Count(stderr, "Vault password")
+}
+
+// TestWorkspaceSharedPasswordUnlocksProject: when workspace and
+// project vaults share a password, the workspace prompt's input is
+// reused for the project tier — one prompt total. This was the
+// missing behavior; without the shared-candidate flow the user would
+// be prompted twice (or, due to the bufio scanner bug, fail entirely).
+func TestWorkspaceSharedPasswordUnlocksProject(t *testing.T) {
+	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{
+		"staging": "vars: {}\n",
+	})
+
+	// Seed both vaults with the same password via FACTORLY_VAULT_PASSWORD.
+	for _, args := range [][]string{
+		{"vault", "set", "--workspace", "staging", "WS_KEY", "ws-val"},
+		{"vault", "set", "PROJ_KEY", "proj-val"},
+	} {
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(envWithoutHome(),
+			"FACTORLY_VAULT_PASSWORD=shared",
+			"FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1",
+			"HOME="+t.TempDir(),
+		)
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("seed %v: %v", args, err)
+		}
+	}
+
+	// Now read PROJ_KEY under --workspace staging. Pipe the password
+	// once; the workspace tier should consume it and the project tier
+	// should silently reuse it via the shared-password candidate.
+	stdout, stderr, code := runWithIsolatedStdin(t, dir, "shared\n",
+		"vault", "get", "PROJ_KEY", "--workspace", "staging")
+	if code != 0 {
+		t.Fatalf("get: exit %d\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "proj-val") {
+		t.Errorf("expected proj-val from fallback, got %q", stdout)
+	}
+	if got := countPasswordPrompts(stderr); got != 1 {
+		t.Errorf("expected 1 password prompt (shared-password fallback), got %d\nstderr: %s", got, stderr)
+	}
+}
+
+// TestWorkspaceDifferentPasswordsBothPrompted: when workspace and
+// project vaults have different passwords, the project prompt fires
+// after the workspace one. This exercises the bufio.Scanner-sharing
+// fix — without it the second prompt would see "no input received."
+func TestWorkspaceDifferentPasswordsBothPrompted(t *testing.T) {
+	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{
+		"staging": "vars: {}\n",
+	})
+
+	// Seed workspace with ws-pw and project with proj-pw.
+	for _, set := range []struct {
+		pw   string
+		args []string
+	}{
+		{"ws-pw", []string{"vault", "set", "--workspace", "staging", "WS_KEY", "ws-val"}},
+		{"proj-pw", []string{"vault", "set", "PROJ_KEY", "proj-val"}},
+	} {
+		cmd := exec.Command(binary, set.args...)
+		cmd.Dir = dir
+		cmd.Env = append(envWithoutHome(),
+			"FACTORLY_VAULT_PASSWORD="+set.pw,
+			"FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1",
+			"HOME="+t.TempDir(),
+		)
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("seed %v: %v", set.args, err)
+		}
+	}
+
+	// Pipe both passwords in order. Workspace prompt consumes ws-pw;
+	// shared-password candidate fails on project; project prompt
+	// consumes proj-pw from the shared scanner. Without the scanner
+	// fix the second Scan() would return false and error.
+	stdout, stderr, code := runWithIsolatedStdin(t, dir, "ws-pw\nproj-pw\n",
+		"vault", "get", "PROJ_KEY", "--workspace", "staging")
+	if code != 0 {
+		t.Fatalf("get: exit %d\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "proj-val") {
+		t.Errorf("expected proj-val, got %q", stdout)
+	}
+	if got := countPasswordPrompts(stderr); got != 2 {
+		t.Errorf("expected 2 password prompts (different passwords), got %d\nstderr: %s", got, stderr)
+	}
+}
+
+// TestProjectSharedPasswordUnlocksGlobal: regression — the pre-existing
+// project→global shared-password fallback (in openFallbackVault before
+// workspaces existed) still works after the candidate refactor.
+func TestProjectSharedPasswordUnlocksGlobal(t *testing.T) {
+	dir := t.TempDir()
+	// Create .factorly/ to mark this as a project dir.
+	if err := os.MkdirAll(filepath.Join(dir, ".factorly"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Seed project vault with "shared" and a fake global vault under HOME.
+	fakeHome := t.TempDir()
+	globalDir := filepath.Join(fakeHome, ".config", "factorly")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	seedEnv := append(envWithoutHome(),
+		"FACTORLY_VAULT_PASSWORD=shared",
+		"HOME="+fakeHome,
+		"FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1",
+	)
+	for _, args := range [][]string{
+		{"vault", "set", "PROJ_KEY", "proj-val"},
+		{"vault", "set", "--global", "GLOBAL_KEY", "global-val"},
+	} {
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = seedEnv
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("seed %v: %v", args, err)
+		}
+	}
+
+	// Read GLOBAL_KEY without --workspace; chain is project→global.
+	// One password prompt should unlock both via shared-password.
+	cmd := exec.Command(binary, "vault", "get", "GLOBAL_KEY")
+	cmd.Dir = dir
+	cmd.Env = append(envWithoutHome(),
+		"HOME="+fakeHome,
+		"FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1",
+	)
+	cmd.Stdin = strings.NewReader("shared\n")
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("get: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "global-val") {
+		t.Errorf("expected global-val via fallback, got %q", stdout.String())
+	}
+	if got := countPasswordPrompts(stderr.String()); got != 1 {
+		t.Errorf("expected 1 password prompt (shared-password project→global), got %d\nstderr: %s", got, stderr.String())
+	}
+}
+
+// TestUIInheritsCLIUnlockedTiers verifies that when `factorly ui` is
+// started with --workspace and the user supplies their vault password
+// on stdin (the CLI prompt), both the workspace and project tiers
+// show as already-unlocked in the UI — no per-tier locked badges.
+//
+// Regression: without the extractVaultTiers + WorkspaceVault wiring,
+// the UI re-opens each tier via non-interactive password sources, and
+// shows the project tier as locked even though the CLI just had the
+// password.
+func TestUIInheritsCLIUnlockedTiers(t *testing.T) {
+	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{
+		"staging": "vars: {}\n",
+	})
+
+	// Seed both vaults with the SAME password using env var; we'll
+	// pipe that same password as stdin to the UI startup below.
+	fakeHome := t.TempDir()
+	seedEnv := append(envWithoutHome(),
+		"FACTORLY_VAULT_PASSWORD=shared",
+		"HOME="+fakeHome,
+		"FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1",
+	)
+	for _, args := range [][]string{
+		{"vault", "set", "--workspace", "staging", "WS_KEY", "ws-val"},
+		{"vault", "set", "PROJ_KEY", "proj-val"},
+	} {
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = seedEnv
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("seed %v: %v", args, err)
+		}
+	}
+
+	// Pick a port unlikely to clash with parallel tests.
+	port := freePort(t)
+
+	// Start the UI with stdin-supplied password and no env-var
+	// password — exercises the CLI prompt path.
+	uiCmd := exec.Command(binary, "ui", "--workspace", "staging",
+		"--port", fmt.Sprintf("%d", port), "--no-launch")
+	uiCmd.Dir = dir
+	uiCmd.Env = append(envWithoutHome(),
+		"HOME="+fakeHome,
+		"FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1",
+	)
+	uiCmd.Stdin = strings.NewReader("shared\n")
+	var uiStderr strings.Builder
+	uiCmd.Stderr = &uiStderr
+	uiStdout, err := uiCmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := uiCmd.Start(); err != nil {
+		t.Fatalf("starting ui: %v", err)
+	}
+	defer func() {
+		_ = uiCmd.Process.Kill()
+		_ = uiCmd.Wait()
+	}()
+
+	// Capture the session token from the UI's startup output.
+	token := readSessionToken(t, uiStdout, &uiStderr)
+	if token == "" {
+		t.Fatalf("ui didn't start within timeout\nstderr: %s", uiStderr.String())
+	}
+
+	// Hit /vault and check both tiers list their keys without "locked".
+	cookie := &http.Cookie{Name: "factorly_session", Value: token}
+	req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:%d/vault", port), nil)
+	req.AddCookie(cookie)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("get /vault: %v", err)
+	}
+	defer resp.Body.Close()
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	body := string(bodyBytes)
+
+	if !strings.Contains(body, "WS_KEY") {
+		t.Errorf("expected WS_KEY listed in workspace tier")
+	}
+	if !strings.Contains(body, "PROJ_KEY") {
+		t.Errorf("expected PROJ_KEY listed in project tier (inherited from CLI password)")
+	}
+	// "(locked)" markers indicate the UI didn't inherit. Different
+	// from the (locked) tier rendering — the workspace tier badge.
+	if strings.Contains(body, ">(locked)<") {
+		t.Errorf("found locked-tier badge in /vault response — UI didn't inherit CLI unlocks")
+	}
+}
+
+// freePort grabs an unused TCP port for a test-local server.
+func freePort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close()
+	return port
+}
+
+// readSessionToken pulls the per-run nonce token from the UI's
+// startup message. The UI prints "running at http://localhost:PORT/
+// ?token=NONCE" to stderr on listen.
+func readSessionToken(t *testing.T, stdout io.Reader, stderr *strings.Builder) string {
+	t.Helper()
+	// Drain stdout in the background — required so the subprocess
+	// doesn't block on a full pipe. We don't actually need stdout
+	// content for this test.
+	go func() { _, _ = io.Copy(io.Discard, stdout) }()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if m := tokenRE.FindString(stderr.String()); m != "" {
+			return strings.TrimPrefix(m, "token=")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return ""
+}
+
+var tokenRE = regexp.MustCompile(`token=[a-f0-9]+`)

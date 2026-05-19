@@ -66,6 +66,27 @@ type Server struct {
 	// unlock dialog when WorkspaceVaultOpener failed due to a missing
 	// or wrong password.
 	WorkspacePasswordOpener func(name string, password []byte) (vault.Backend, error)
+	// ProjectVaultOpener opens (or creates) the project vault at
+	// .factorly/vault.enc. Resolves the password using the CLI's
+	// existing FACTORLY_PROJECT_VAULT_PASSWORD / FACTORLY_VAULT_PASSWORD /
+	// keyfile chain — no prompt path in UI mode. Returns an error if
+	// password resolution fails. Used by the vault page so a user can
+	// store a project secret even when no .factorly/vault.enc exists
+	// yet.
+	ProjectVaultOpener func() (vault.Backend, error)
+	// ProjectVaultPasswordOpener opens the project vault with an
+	// explicit password (UI unlock dialog).
+	ProjectVaultPasswordOpener func(password []byte) (vault.Backend, error)
+	// GlobalVaultOpener opens (or creates) the global vault on demand.
+	GlobalVaultOpener func() (vault.Backend, error)
+	// GlobalVaultPasswordOpener opens the global vault with an explicit
+	// password.
+	GlobalVaultPasswordOpener func(password []byte) (vault.Backend, error)
+	// WorkspaceVaultUpsertOpener opens (or creates) a workspace vault
+	// directly — no fallback chain — so writes target the workspace
+	// vault file and don't fall through to project/global. Used by the
+	// vault page's "Store in: Workspace · <name>" scope.
+	WorkspaceVaultUpsertOpener func(name string) (vault.Backend, error)
 }
 
 // Config returns the currently-loaded config. Pointer is shared with the
@@ -156,12 +177,32 @@ type Options struct {
 	// resolved to). The factorly_workspace cookie overrides it per
 	// request once the user switches via the UI.
 	ActiveWorkspace string
+	// WorkspaceVault is the already-opened workspace vault backend
+	// (the single-tier file, not the fallback chain). Optional — when
+	// nil, the UI's read path opens it on demand via WorkspaceVaultOpener
+	// / WorkspaceVaultUpsertOpener. Passing it here lets the UI inherit
+	// the unlocked state from the CLI startup prompt.
+	WorkspaceVault vault.Backend
 	// WorkspaceVaultOpener opens the vault chain for a named workspace.
 	// See Server.WorkspaceVaultOpener for semantics.
 	WorkspaceVaultOpener func(name string) (vault.Backend, error)
 	// WorkspacePasswordOpener opens a named workspace vault with an
 	// explicit password. See Server.WorkspacePasswordOpener.
 	WorkspacePasswordOpener func(name string, password []byte) (vault.Backend, error)
+	// ProjectVaultOpener opens (or creates) the project vault on demand.
+	// See Server.ProjectVaultOpener for semantics.
+	ProjectVaultOpener func() (vault.Backend, error)
+	// ProjectVaultPasswordOpener opens the project vault with an
+	// explicit password (UI unlock dialog).
+	ProjectVaultPasswordOpener func(password []byte) (vault.Backend, error)
+	// GlobalVaultOpener opens (or creates) the global vault on demand.
+	GlobalVaultOpener func() (vault.Backend, error)
+	// GlobalVaultPasswordOpener opens the global vault with an explicit
+	// password.
+	GlobalVaultPasswordOpener func(password []byte) (vault.Backend, error)
+	// WorkspaceVaultUpsertOpener opens (or creates) a workspace vault
+	// directly. See Server.WorkspaceVaultUpsertOpener for semantics.
+	WorkspaceVaultUpsertOpener func(name string) (vault.Backend, error)
 }
 
 // New creates a UI server.
@@ -201,28 +242,39 @@ func New(opts Options) (*Server, error) {
 	}
 
 	s := &Server{
-		cfg:                     opts.Config,
-		cfgPath:                 opts.CfgPath,
-		toolsDir:                opts.ToolsDir,
-		registry:                opts.Registry,
-		proxy:                   opts.Proxy,
-		vault:                   opts.Vault,
-		resolver:                opts.Resolver,
-		projectVault:            opts.ProjectVault,
-		globalVault:             opts.GlobalVault,
-		activity:                opts.Activity,
-		confirmBroker:           opts.ConfirmBroker,
-		tmpls:                   tmpls,
-		mux:                     http.NewServeMux(),
-		activeWorkspace:         opts.ActiveWorkspace,
-		vaultBackends:           make(map[string]vault.Backend),
-		WorkspaceVaultOpener:    opts.WorkspaceVaultOpener,
-		WorkspacePasswordOpener: opts.WorkspacePasswordOpener,
+		cfg:                        opts.Config,
+		cfgPath:                    opts.CfgPath,
+		toolsDir:                   opts.ToolsDir,
+		registry:                   opts.Registry,
+		proxy:                      opts.Proxy,
+		vault:                      opts.Vault,
+		resolver:                   opts.Resolver,
+		projectVault:               opts.ProjectVault,
+		globalVault:                opts.GlobalVault,
+		activity:                   opts.Activity,
+		confirmBroker:              opts.ConfirmBroker,
+		tmpls:                      tmpls,
+		mux:                        http.NewServeMux(),
+		activeWorkspace:            opts.ActiveWorkspace,
+		vaultBackends:              make(map[string]vault.Backend),
+		WorkspaceVaultOpener:       opts.WorkspaceVaultOpener,
+		WorkspacePasswordOpener:    opts.WorkspacePasswordOpener,
+		ProjectVaultOpener:         opts.ProjectVaultOpener,
+		ProjectVaultPasswordOpener: opts.ProjectVaultPasswordOpener,
+		GlobalVaultOpener:          opts.GlobalVaultOpener,
+		GlobalVaultPasswordOpener:  opts.GlobalVaultPasswordOpener,
+		WorkspaceVaultUpsertOpener: opts.WorkspaceVaultUpsertOpener,
 	}
-	// Seed the cache with the startup workspace's already-opened vault so
-	// the user doesn't get re-prompted when they explicitly "switch" to
-	// the active workspace (e.g., back-and-forth toggling).
-	if opts.Vault != nil {
+	// Seed the cache with the startup workspace's already-opened vault
+	// so the user doesn't get re-prompted when they switch to it (and
+	// the vault page treats the tier as unlocked from page-load 1).
+	// Prefer the single-tier WorkspaceVault when the caller extracted
+	// it from the chain; fall back to the full chain backend for
+	// callers that don't bother to split it out.
+	switch {
+	case opts.ActiveWorkspace != "" && opts.WorkspaceVault != nil:
+		s.vaultBackends[opts.ActiveWorkspace] = opts.WorkspaceVault
+	case opts.Vault != nil:
 		s.vaultBackends[opts.ActiveWorkspace] = opts.Vault
 	}
 
@@ -299,6 +351,16 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /vault", s.handleVault)
 	s.mux.HandleFunc("POST /vault", s.handleVaultSet)
 	s.mux.HandleFunc("DELETE /vault/{key}", s.handleVaultDelete)
+	s.mux.HandleFunc("POST /vault/unlock", s.handleVaultUnlock)
+	s.mux.HandleFunc("POST /vault/unlock-form", s.handleVaultUnlockForm)
+	s.mux.HandleFunc("GET /vault/unlock-modal", s.handleVaultUnlockModal)
+	s.mux.HandleFunc("POST /vault/unlock-all", s.handleVaultUnlockAll)
+	s.mux.HandleFunc("POST /vault/unlock-dismiss", s.handleVaultUnlockDismiss)
+	// Auto-dismiss endpoint used by the success result partial to swap
+	// the modal out after a short delay.
+	s.mux.HandleFunc("GET /vault/unlock-modal-empty", func(w http.ResponseWriter, r *http.Request) {
+		s.renderPartial(w, "vault_unlock_modal_empty", nil)
+	})
 
 	// Reload
 	s.mux.HandleFunc("POST /reload", s.handleReload)

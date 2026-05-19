@@ -196,3 +196,58 @@ func TestFallbackNests(t *testing.T) {
 		t.Errorf("Set should not touch project vault")
 	}
 }
+
+func TestEnsureSecondaryFiresLazyOpen(t *testing.T) {
+	primary := newFBMock(map[string]string{"PRI": "p"})
+	openCalls := 0
+	fb := &FallbackBackend{
+		Primary: primary,
+		SecondaryOpen: func() (Backend, error) {
+			openCalls++
+			return newFBMock(map[string]string{"SEC": "s"}), nil
+		},
+	}
+	if openCalls != 0 {
+		t.Errorf("SecondaryOpen called %d times before EnsureSecondary", openCalls)
+	}
+	got := fb.EnsureSecondary()
+	if got == nil {
+		t.Fatal("EnsureSecondary returned nil")
+	}
+	if openCalls != 1 {
+		t.Errorf("expected exactly 1 open, got %d", openCalls)
+	}
+	if val, _ := got.Get("SEC"); val != "s" {
+		t.Errorf("EnsureSecondary returned wrong backend: Get(SEC)=%q", val)
+	}
+	// Calling again should not re-open — Secondary is now cached.
+	again := fb.EnsureSecondary()
+	if openCalls != 1 {
+		t.Errorf("EnsureSecondary re-opened: openCalls=%d", openCalls)
+	}
+	if again != got {
+		t.Error("EnsureSecondary returned a different backend on second call")
+	}
+}
+
+func TestEnsureSecondaryReturnsNilOnOpenFailure(t *testing.T) {
+	primary := newFBMock(map[string]string{})
+	fb := &FallbackBackend{
+		Primary: primary,
+		SecondaryOpen: func() (Backend, error) {
+			return nil, ErrNotFound
+		},
+	}
+	if got := fb.EnsureSecondary(); got != nil {
+		t.Errorf("expected nil on open failure, got %T", got)
+	}
+}
+
+func TestEnsureSecondaryNoOpWhenAlreadySet(t *testing.T) {
+	primary := newFBMock(nil)
+	secondary := newFBMock(map[string]string{"K": "v"})
+	fb := &FallbackBackend{Primary: primary, Secondary: secondary}
+	if got := fb.EnsureSecondary(); got != secondary {
+		t.Error("EnsureSecondary should return existing Secondary unchanged")
+	}
+}

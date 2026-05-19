@@ -711,3 +711,16 @@ func TestCloseZeroizesKeyAndSalt(t *testing.T) {
 		t.Error("expected salt to be zeroized after Close")
 	}
 }
+
+func TestLocalBackendPathAccessor(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/myvault.enc"
+	b, err := OpenLocalAt(path, []byte("password123"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	if got := b.Path(); got != path {
+		t.Errorf("Path() = %q, want %q", got, path)
+	}
+}

@@ -65,6 +65,11 @@ type LocalBackend struct {
 	lockPath string // path to .lock file
 }
 
+// Path returns the on-disk path this backend manages. Used by the UI
+// to classify which tier (workspace / project / global) a backend
+// inherited from the CLI chain belongs to.
+func (b *LocalBackend) Path() string { return b.path }
+
 // DefaultVaultPath returns the default vault file location.
 func DefaultVaultPath() string {
 	home, err := os.UserHomeDir()

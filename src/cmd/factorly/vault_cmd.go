@@ -274,6 +274,94 @@ func openVault() (*vault.LocalBackend, error) {
 	return vault.OpenLocalAt(path, password)
 }
 
+// OpenProjectVault opens (or creates) .factorly/vault.enc using only
+// non-interactive password sources (env vars, keyfile). Returns
+// errProjectVaultLocked if no password is available — UI callers
+// translate that into an unlock dialog. Used by the UI's vault page
+// so a project secret can be stored even when the project vault
+// didn't exist at server startup.
+func OpenProjectVault() (vault.Backend, error) {
+	pw, err := tryResolveProjectVaultPassword()
+	if err != nil {
+		return nil, err
+	}
+	defer zeroBytes(pw)
+	return vault.OpenLocalAt(projectVaultPath(), pw)
+}
+
+// OpenProjectVaultWithPassword opens .factorly/vault.enc using an
+// explicit password (bypassing env-var/keyfile resolution). Used by
+// the UI when the user enters a password through the unlock dialog.
+func OpenProjectVaultWithPassword(password []byte) (vault.Backend, error) {
+	return vault.OpenLocalAt(projectVaultPath(), password)
+}
+
+// OpenGlobalVault opens (or creates) ~/.config/factorly/vault.enc with
+// non-interactive password resolution.
+func OpenGlobalVault() (vault.Backend, error) {
+	pw, err := tryResolveGlobalVaultPassword()
+	if err != nil {
+		return nil, err
+	}
+	defer zeroBytes(pw)
+	return vault.OpenLocalAt(vault.DefaultVaultPath(), pw)
+}
+
+// OpenGlobalVaultWithPassword opens ~/.config/factorly/vault.enc with
+// an explicit password.
+func OpenGlobalVaultWithPassword(password []byte) (vault.Backend, error) {
+	return vault.OpenLocalAt(vault.DefaultVaultPath(), password)
+}
+
+// errProjectVaultLocked / errGlobalVaultLocked signal that no
+// non-interactive password source resolved. UI callers detect these
+// via the "vault locked" substring (matching errWorkspaceVaultLocked
+// for the existing workspace dialog).
+var (
+	errProjectVaultLocked = fmt.Errorf("project vault locked: password required")
+	errGlobalVaultLocked  = fmt.Errorf("global vault locked: password required")
+)
+
+// tryResolveProjectVaultPassword mirrors resolveProjectVaultPassword
+// but skips the interactive prompt. Returns errProjectVaultLocked
+// when no non-interactive source resolves.
+func tryResolveProjectVaultPassword() ([]byte, error) {
+	if pw, ok := os.LookupEnv("FACTORLY_PROJECT_VAULT_PASSWORD"); ok {
+		if pw == "" {
+			return nil, fmt.Errorf("FACTORLY_PROJECT_VAULT_PASSWORD is set but empty")
+		}
+		return []byte(pw), nil
+	}
+	if pw, ok := os.LookupEnv("FACTORLY_VAULT_PASSWORD"); ok {
+		if pw != "" {
+			return []byte(pw), nil
+		}
+	}
+	keyFile := filepath.Join(".factorly", "vault.key")
+	if pw, err := readKeyFile(keyFile); err == nil {
+		return pw, nil
+	}
+	return nil, errProjectVaultLocked
+}
+
+// tryResolveGlobalVaultPassword mirrors resolveGlobalVaultPassword
+// without the interactive prompt.
+func tryResolveGlobalVaultPassword() ([]byte, error) {
+	if pw, ok := os.LookupEnv("FACTORLY_VAULT_PASSWORD"); ok {
+		if pw == "" {
+			return nil, fmt.Errorf("FACTORLY_VAULT_PASSWORD is set but empty")
+		}
+		return []byte(pw), nil
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		keyFile := filepath.Join(home, ".config", "factorly", "vault.key")
+		if pw, err := readKeyFile(keyFile); err == nil {
+			return pw, nil
+		}
+	}
+	return nil, errGlobalVaultLocked
+}
+
 // openSmartVault returns a vault backend that searches project vault first,
 // then falls back to global. For explicit --global or --vault-path, returns
 // a single vault with no fallback.
@@ -304,6 +392,11 @@ func openSmartVault() (vault.Backend, error) {
 // non-interactive password source is available, returns
 // errWorkspaceVaultLocked so the caller can surface an unlock dialog
 // instead of hanging on stdin.
+//
+// The workspace password is preserved and passed down to the
+// fallback chain: if it also unlocks the project / global vault,
+// the user isn't prompted again (common case where one password
+// protects all the local vaults).
 func openWorkspaceChainOrNil(name string, prompt bool) (vault.Backend, error) {
 	wsPath := workspaceVaultPath(name)
 	if _, err := os.Stat(wsPath); err != nil {
@@ -321,15 +414,22 @@ func openWorkspaceChainOrNil(name string, prompt bool) (vault.Backend, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Copy before OpenLocalAt zeroes the password buffer — the copy is
+	// used downstream by the fallback chain to attempt the same
+	// password against project + global vaults.
+	pwForFallback := make([]byte, len(wsPw))
+	copy(pwForFallback, wsPw)
+
 	wsBackend, err := vault.OpenLocalAt(wsPath, wsPw)
 	if err != nil {
+		zeroBytes(pwForFallback)
 		return nil, fmt.Errorf("opening workspace vault: %w", err)
 	}
 	return &vault.FallbackBackend{
 		Primary: wsBackend,
 		SecondaryOpen: func() (vault.Backend, error) {
 			vlog("falling back from workspace vault to project/global chain")
-			return openFallbackVault()
+			return openFallbackVaultWithCandidate(pwForFallback)
 		},
 	}, nil
 }
@@ -354,6 +454,26 @@ func OpenWorkspaceVaultWithPassword(name string, password []byte) (vault.Backend
 			return openFallbackVault()
 		},
 	}, nil
+}
+
+// OpenWorkspaceVaultUpsert opens (or creates) the workspace vault at
+// .factorly/vaults/<name>.enc using only non-interactive password
+// sources. Returns errWorkspaceVaultLocked if no password is
+// available — caller should surface the UI unlock dialog instead of
+// hanging. Unlike OpenWorkspaceChain, this returns the workspace
+// vault *alone* (no FallbackBackend wrapping), so a Set writes
+// directly to vaults/<name>.enc without falling through to the
+// project vault.
+func OpenWorkspaceVaultUpsert(name string) (vault.Backend, error) {
+	if name == "" {
+		return nil, fmt.Errorf("workspace name is required")
+	}
+	pw, err := tryResolveWorkspaceVaultPassword(name)
+	if err != nil {
+		return nil, err
+	}
+	defer zeroBytes(pw)
+	return vault.OpenLocalAt(workspaceVaultPath(name), pw)
 }
 
 // OpenWorkspaceChain is the UI-facing entry point for opening the
@@ -381,6 +501,18 @@ func OpenWorkspaceChain(name string) (vault.Backend, error) {
 // opens the global vault on first fallback. Only prompts for the global
 // password when a key isn't found in the project vault.
 func openFallbackVault() (vault.Backend, error) {
+	return openFallbackVaultWithCandidate(nil)
+}
+
+// openFallbackVaultWithCandidate is the same as openFallbackVault but
+// tries `candidate` (a copy of a password the caller already used on
+// another vault tier) before re-resolving / prompting. Lets the
+// project↔global chain inherit the workspace password — common case
+// is one password protecting every local vault.
+//
+// The candidate is consumed (zeroed) inside this function or its
+// returned closures; callers should not reuse it after the call.
+func openFallbackVaultWithCandidate(candidate []byte) (vault.Backend, error) {
 	projectPath := projectVaultPath()
 	globalPath := vault.DefaultVaultPath()
 	// Respect FACTORLY_VAULT_PATH for global vault location
@@ -394,65 +526,113 @@ func openFallbackVault() (vault.Backend, error) {
 	// Neither exists — create at the best location
 	if projectExists != nil && globalExists != nil {
 		createPath := resolveVaultPath()
+		if pw, ok := tryCandidate(candidate, createPath); ok {
+			return vault.OpenLocalAt(createPath, pw)
+		}
 		pw, err := resolveVaultPassword(createPath)
 		if err != nil {
+			zeroBytes(candidate)
 			return nil, err
 		}
+		zeroBytes(candidate)
 		return vault.OpenLocalAt(createPath, pw)
 	}
 
 	// Only global exists
 	if projectExists != nil {
-		pw, err := resolveVaultPassword(globalPath)
+		b, used, err := openWithCandidateOrPrompt(globalPath, candidate, "Global vault opened with shared password.")
 		if err != nil {
 			return nil, fmt.Errorf("global vault: %w", err)
 		}
-		return vault.OpenLocalAt(globalPath, pw)
+		zeroBytes(used)
+		return b, nil
 	}
 
-	// Open project vault
-	pw, err := resolveVaultPassword(projectPath)
+	// Open project vault — try candidate first. Capture the password
+	// that actually unlocked it so the global tier can reuse it.
+	project, projectPw, err := openWithCandidateOrPrompt(projectPath, candidate, "Project vault opened with shared password.")
 	if err != nil {
-		return nil, fmt.Errorf("project vault: %w", err)
-	}
-	// Copy password before OpenLocalAt zeroes it — needed for trying on global vault
-	pwForGlobal := make([]byte, len(pw))
-	copy(pwForGlobal, pw)
-	project, err := vault.OpenLocalAt(projectPath, pw)
-	if err != nil {
-		zeroBytes(pwForGlobal)
 		return nil, fmt.Errorf("opening project vault: %w", err)
 	}
 
 	// Only project exists
 	if globalExists != nil {
-		zeroBytes(pwForGlobal)
+		zeroBytes(projectPw)
 		return project, nil
 	}
 
-	// Both exist — return fallback with lazy global opening.
-	// Try the project password first to avoid a second prompt when
-	// both vaults share the same password (common case).
+	// Both exist — return fallback with lazy global opening. The
+	// password that opened project (whether user-typed or inherited
+	// from the workspace) becomes the candidate for global, so a
+	// shared password unlocks both tiers with one prompt.
 	return &vault.FallbackBackend{
 		Primary: project,
 		SecondaryOpen: func() (vault.Backend, error) {
 			vlog("falling back to global vault")
-			// Try project password on global vault first
-			global, err := vault.OpenLocalAt(globalPath, pwForGlobal)
-			if err == nil {
-				fmt.Fprintln(os.Stderr, "Global vault opened.")
-				return global, nil
-			}
-			// pwForGlobal is now zeroed by OpenLocalAt (even on failure via deriveKey)
-			// Different password — prompt for global
-			vlog("project password didn't work for global vault, prompting")
-			gpw, err := resolveVaultPassword(globalPath)
+			b, used, err := openWithCandidateOrPrompt(globalPath, projectPw, "Global vault opened with shared password.")
 			if err != nil {
 				return nil, err
 			}
-			return vault.OpenLocalAt(globalPath, gpw)
+			zeroBytes(used)
+			return b, nil
 		},
 	}, nil
+}
+
+// tryCandidate checks whether candidate is non-empty and points at a
+// path the caller is about to open. Returns the candidate (caller
+// uses it) and true when usable; false otherwise.
+func tryCandidate(candidate []byte, path string) ([]byte, bool) {
+	if len(candidate) == 0 {
+		return nil, false
+	}
+	_, err := os.Stat(path)
+	return candidate, err == nil
+}
+
+// openWithCandidateOrPrompt tries the candidate password first; on
+// failure (or when there is no candidate), falls through to the full
+// resolveVaultPassword chain (which prompts on a TTY). Logs `successMsg`
+// to stderr when the candidate succeeded, so the user knows their
+// initial password was reused.
+//
+// The second return value is a copy of whatever password ended up
+// unlocking the vault — caller can pass it as the candidate to the
+// next tier in the chain so a user who typed their password once
+// doesn't get re-prompted for downstream tiers that happen to share
+// it. Caller owns the returned slice and should zero it when done.
+func openWithCandidateOrPrompt(path string, candidate []byte, successMsg string) (vault.Backend, []byte, error) {
+	if len(candidate) > 0 {
+		// Make a working copy — OpenLocalAt zeroes its password buffer.
+		try := make([]byte, len(candidate))
+		copy(try, candidate)
+		b, err := vault.OpenLocalAt(path, try)
+		if err == nil {
+			if successMsg != "" {
+				vlog(successMsg)
+			}
+			used := make([]byte, len(candidate))
+			copy(used, candidate)
+			zeroBytes(candidate)
+			return b, used, nil
+		}
+		vlog("shared password didn't unlock %s; prompting", path)
+		// candidate didn't decrypt — fall through to full resolution.
+		zeroBytes(candidate)
+	}
+	pw, err := resolveVaultPassword(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Snapshot before OpenLocalAt zeroes pw.
+	used := make([]byte, len(pw))
+	copy(used, pw)
+	b, err := vault.OpenLocalAt(path, pw)
+	if err != nil {
+		zeroBytes(used)
+		return nil, nil, err
+	}
+	return b, used, nil
 }
 
 // resolveVaultPassword resolves the password for a vault at the given path.
@@ -612,6 +792,22 @@ func readKeyFile(path string) ([]byte, error) {
 	return pw, nil
 }
 
+// stdinScanner is the shared scanner for piped-stdin password reads.
+// Each promptSecret() call used to create a new bufio.Scanner, which
+// buffers ahead — the first call would read line 1 AND swallow line
+// 2+ into its internal buffer, then get GC'd. Subsequent calls saw
+// empty stdin. A shared scanner reads lines in sequence so multi-
+// prompt flows (e.g., workspace + project + global passwords) work
+// when stdin is piped.
+var stdinScanner *bufio.Scanner
+
+func getStdinScanner() *bufio.Scanner {
+	if stdinScanner == nil {
+		stdinScanner = bufio.NewScanner(os.Stdin)
+	}
+	return stdinScanner
+}
+
 func promptSecret(label string) ([]byte, error) {
 	fmt.Fprint(os.Stderr, label)
 
@@ -626,8 +822,10 @@ func promptSecret(label string) ([]byte, error) {
 		return pw, nil
 	}
 
-	// Fallback: read from stdin (piped input)
-	scanner := bufio.NewScanner(os.Stdin)
+	// Fallback: read from stdin (piped input). Use a process-wide
+	// scanner so multiple promptSecret() calls don't each gobble the
+	// rest of stdin into a discarded buffer.
+	scanner := getStdinScanner()
 	if scanner.Scan() {
 		return []byte(strings.TrimSpace(scanner.Text())), nil
 	}
