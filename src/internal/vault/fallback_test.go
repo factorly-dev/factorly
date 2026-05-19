@@ -5,7 +5,10 @@ package vault
 
 import (
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 type fallbackMockBackend struct {
@@ -211,7 +214,10 @@ func TestEnsureSecondaryFiresLazyOpen(t *testing.T) {
 	if openCalls != 0 {
 		t.Errorf("SecondaryOpen called %d times before EnsureSecondary", openCalls)
 	}
-	got := fb.EnsureSecondary()
+	got, err := fb.EnsureSecondary()
+	if err != nil {
+		t.Fatalf("EnsureSecondary returned error: %v", err)
+	}
 	if got == nil {
 		t.Fatal("EnsureSecondary returned nil")
 	}
@@ -222,7 +228,10 @@ func TestEnsureSecondaryFiresLazyOpen(t *testing.T) {
 		t.Errorf("EnsureSecondary returned wrong backend: Get(SEC)=%q", val)
 	}
 	// Calling again should not re-open — Secondary is now cached.
-	again := fb.EnsureSecondary()
+	again, err := fb.EnsureSecondary()
+	if err != nil {
+		t.Fatalf("second EnsureSecondary returned error: %v", err)
+	}
 	if openCalls != 1 {
 		t.Errorf("EnsureSecondary re-opened: openCalls=%d", openCalls)
 	}
@@ -239,8 +248,12 @@ func TestEnsureSecondaryReturnsNilOnOpenFailure(t *testing.T) {
 			return nil, ErrNotFound
 		},
 	}
-	if got := fb.EnsureSecondary(); got != nil {
-		t.Errorf("expected nil on open failure, got %T", got)
+	got, err := fb.EnsureSecondary()
+	if got != nil {
+		t.Errorf("expected nil backend on open failure, got %T", got)
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
 
@@ -315,7 +328,65 @@ func TestEnsureSecondaryNoOpWhenAlreadySet(t *testing.T) {
 	primary := newFBMock(nil)
 	secondary := newFBMock(map[string]string{"K": "v"})
 	fb := &FallbackBackend{Primary: primary, Secondary: secondary}
-	if got := fb.EnsureSecondary(); got != secondary {
+	got, err := fb.EnsureSecondary()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != secondary {
 		t.Error("EnsureSecondary should return existing Secondary unchanged")
+	}
+}
+
+// TestFallbackOpenerSerializedAcrossGoroutines confirms that
+// concurrent first-time callers do NOT each invoke the opener —
+// critical because the opener may prompt for a password on stdin,
+// and racing it would produce duplicate prompts and torn state.
+// The mutex pattern relies on sync.Once for this guarantee.
+func TestFallbackOpenerSerializedAcrossGoroutines(t *testing.T) {
+	const N = 50
+	primary := newFBMock(map[string]string{})
+
+	var calls int64
+	// Block the opener until all goroutines are racing on it. Without
+	// the barrier the first caller might finish before the others
+	// even start, making the test useless.
+	start := make(chan struct{})
+	fb := &FallbackBackend{
+		Primary: primary,
+		SecondaryOpen: func() (Backend, error) {
+			<-start
+			atomic.AddInt64(&calls, 1)
+			return newFBMock(map[string]string{"K": "v"}), nil
+		},
+	}
+
+	var wg sync.WaitGroup
+	results := make([]string, N)
+	errs := make([]error, N)
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			v, err := fb.Get("K")
+			results[i] = v
+			errs[i] = err
+		}()
+	}
+	// Give all goroutines a chance to enter openSecondary.
+	time.Sleep(20 * time.Millisecond)
+	close(start)
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&calls); got != 1 {
+		t.Errorf("opener invoked %d times; want exactly 1", got)
+	}
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("goroutine %d: %v", i, err)
+		}
+		if results[i] != "v" {
+			t.Errorf("goroutine %d: got %q want %q", i, results[i], "v")
+		}
 	}
 }

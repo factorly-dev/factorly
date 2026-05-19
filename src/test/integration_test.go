@@ -5018,16 +5018,43 @@ func TestWorkspacesCreateRejectsBadName(t *testing.T) {
 // `os.Stat` resolved it to anywhere on disk. With ValidateName at
 // the open entry points, the command fails with a clear error and
 // nothing lands outside .factorly/vaults/.
+//
+// The test pipes a valid FACTORLY_VAULT_PASSWORD so a CLI that *did*
+// proceed past validation would reach the vault-open step and
+// (typically) succeed — making any failure here unambiguously a
+// validation failure rather than a stdin-starvation false positive.
+// Without this env var, a passing test could just mean "the prompt
+// hit EOF on stdin and exited with the wrong error code."
 func TestVaultSetRejectsBadWorkspaceName(t *testing.T) {
 	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{})
 
 	for _, bad := range []string{"../escape", "foo/bar", "a.b", `back\slash`, "."} {
-		_, stderr, code := run(t, dir, "vault", "set", "--workspace", bad, "KEY", "value")
-		if code == 0 {
-			t.Errorf("expected non-zero exit for workspace %q", bad)
+		cmd := exec.Command(binary, "vault", "set", "--workspace", bad, "KEY", "value")
+		cmd.Dir = dir
+		// envWithoutHome strips HOME and FACTORLY_VAULT_PATH so the
+		// test doesn't pick up the dev's real global vault. The
+		// password is a tripwire: if validation were skipped, the
+		// vault open would succeed with this password and the test
+		// would fail loudly (zero exit code).
+		cmd.Env = append(envWithoutHome(),
+			"FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1",
+			"FACTORLY_VAULT_PASSWORD=test-password-tripwire",
+			"HOME="+t.TempDir(),
+		)
+		var stdout, stderr strings.Builder
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		runErr := cmd.Run()
+		code := 0
+		if exitErr, ok := runErr.(*exec.ExitError); ok {
+			code = exitErr.ExitCode()
 		}
-		if !strings.Contains(stderr, "workspace name") {
-			t.Errorf("workspace %q: expected error mentioning workspace name, got: %s", bad, stderr)
+
+		if code == 0 {
+			t.Errorf("expected non-zero exit for workspace %q (stdout: %s)", bad, stdout.String())
+		}
+		if !strings.Contains(stderr.String(), "workspace name") {
+			t.Errorf("workspace %q: expected error mentioning workspace name, got: %s", bad, stderr.String())
 		}
 		// Nothing should have been written outside .factorly/vaults/.
 		// In particular, no file with the literal traversal pattern in

@@ -209,19 +209,6 @@ var vaultDeleteCmd = &cobra.Command{
 	},
 }
 
-// resolveVaultPath determines which vault file to use.
-// Priority: --vault-path flag → --global flag → FACTORLY_VAULT_PATH env →
-// --workspace (.factorly/vaults/<name>.enc) → project vault → global vault.
-//
-// Delegates entirely to activeTier so there's exactly one source of
-// truth for the precedence. Returns an empty string when --workspace
-// is set to an invalid name (path traversal etc.) — callers translate
-// that into a hard error so the user doesn't silently fall through to
-// the global vault.
-func resolveVaultPath() string {
-	return activeTier().Path
-}
-
 func projectVaultPath() string {
 	return filepath.Join(".factorly", "vault.enc")
 }
@@ -267,7 +254,7 @@ func openVault() (*vault.LocalBackend, error) {
 			return nil, err
 		}
 	}
-	t := activeTier()
+	t := activeTier(currentSelector())
 	if t.Path == "" {
 		return nil, fmt.Errorf("no vault tier resolved (check --workspace name)")
 	}
@@ -325,39 +312,22 @@ func OpenGlobalVaultWithPassword(password []byte) (vault.Backend, error) {
 // via the "vault locked" substring (matching errWorkspaceVaultLocked
 // for the existing workspace dialog).
 var (
-	errProjectVaultLocked = fmt.Errorf("project vault locked: password required")
-	errGlobalVaultLocked  = fmt.Errorf("global vault locked: password required")
+	errProjectVaultLocked  = fmt.Errorf("project vault locked: password required")
+	errGlobalVaultLocked   = fmt.Errorf("global vault locked: password required")
+	errExplicitVaultLocked = fmt.Errorf("explicit vault locked: password required")
 )
 
-// tryResolveProjectVaultPassword mirrors resolveProjectVaultPassword
-// but skips the interactive prompt. Returns errProjectVaultLocked
-// when no non-interactive source resolves.
-func tryResolveProjectVaultPassword() ([]byte, error) {
-	return projectTier().ResolvePassword(false)
-}
-
-// tryResolveGlobalVaultPassword mirrors resolveGlobalVaultPassword
-// without the interactive prompt.
-func tryResolveGlobalVaultPassword() ([]byte, error) {
-	return globalTier().ResolvePassword(false)
-}
-
-// openSmartVault returns a vault backend that searches project vault first,
-// then falls back to global. For explicit --global or --vault-path, returns
-// a single vault with no fallback.
+// openSmartVault returns the chain shape that the current CLI flags
+// target. Delegates to activeTier for "which tier?" and to OpenChain
+// for "what chain shape does that tier want?" — the same two-step
+// decision used by every other vault entry point.
 func openSmartVault() (vault.Backend, error) {
-	// Explicit flag = single vault, no fallback
-	if vaultPath != "" || vaultGlobal {
-		return openVault()
-	}
 	if workspaceName != "" {
-		if b, err := openWorkspaceChainOrNil(workspaceName, true); err != nil {
+		if err := workspace.ValidateName(workspaceName); err != nil {
 			return nil, err
-		} else if b != nil {
-			return b, nil
 		}
 	}
-	return openFallbackVault()
+	return activeTier(currentSelector()).OpenChain(true)
 }
 
 // openWorkspaceChainOrNil opens the workspace-vault tier and nests it on
@@ -488,38 +458,36 @@ func openFallbackVault() (vault.Backend, error) {
 // The candidate is consumed (zeroed) inside this function or its
 // returned closures; callers should not reuse it after the call.
 func openFallbackVaultWithCandidate(candidate []byte) (vault.Backend, error) {
-	projectPath := projectTier().Path
+	proj := projectTier()
 	// Global tier honors FACTORLY_VAULT_PATH transparently: when the
 	// env var is set the user is pinning that location, so the chain
-	// uses it as the global tier. Reading once here keeps the
-	// precedence rule centralized in activeTier/explicitTier rather
-	// than spread across multiple helpers.
-	globalPath := vault.DefaultVaultPath()
+	// uses it as the global tier.
+	glob := globalTier()
 	if p := os.Getenv("FACTORLY_VAULT_PATH"); p != "" {
-		globalPath = p
+		glob.Path = p
 	}
 
-	_, projectExists := os.Stat(projectPath)
-	_, globalExists := os.Stat(globalPath)
+	projectExists := proj.Exists()
+	globalExists := glob.Exists()
 
-	// Neither exists — create at the best location
-	if projectExists != nil && globalExists != nil {
-		createPath := resolveVaultPath()
-		if pw, ok := tryCandidate(candidate, createPath); ok {
-			return vault.OpenLocalAt(createPath, pw)
+	// Neither exists — create at the active tier.
+	if !projectExists && !globalExists {
+		t := activeTier(currentSelector())
+		if pw, ok := tryCandidate(candidate, t); ok {
+			return t.Open(pw)
 		}
-		pw, err := resolveVaultPassword(createPath)
+		pw, err := t.ResolvePassword(true)
 		if err != nil {
 			zeroBytes(candidate)
 			return nil, err
 		}
 		zeroBytes(candidate)
-		return vault.OpenLocalAt(createPath, pw)
+		return t.Open(pw)
 	}
 
 	// Only global exists
-	if projectExists != nil {
-		b, used, err := openWithCandidateOrPrompt(globalPath, candidate, "Global vault opened with shared password.")
+	if !projectExists {
+		b, used, err := openWithCandidateOrPrompt(glob, candidate, "Global vault opened with shared password.")
 		if err != nil {
 			return nil, fmt.Errorf("global vault: %w", err)
 		}
@@ -529,13 +497,13 @@ func openFallbackVaultWithCandidate(candidate []byte) (vault.Backend, error) {
 
 	// Open project vault — try candidate first. Capture the password
 	// that actually unlocked it so the global tier can reuse it.
-	project, projectPw, err := openWithCandidateOrPrompt(projectPath, candidate, "Project vault opened with shared password.")
+	project, projectPw, err := openWithCandidateOrPrompt(proj, candidate, "Project vault opened with shared password.")
 	if err != nil {
 		return nil, fmt.Errorf("opening project vault: %w", err)
 	}
 
 	// Only project exists
-	if globalExists != nil {
+	if !globalExists {
 		zeroBytes(projectPw)
 		return project, nil
 	}
@@ -548,7 +516,7 @@ func openFallbackVaultWithCandidate(candidate []byte) (vault.Backend, error) {
 		Primary: project,
 		SecondaryOpen: func() (vault.Backend, error) {
 			vlog("falling back to global vault")
-			b, used, err := openWithCandidateOrPrompt(globalPath, projectPw, "Global vault opened with shared password.")
+			b, used, err := openWithCandidateOrPrompt(glob, projectPw, "Global vault opened with shared password.")
 			if err != nil {
 				return nil, err
 			}
@@ -559,33 +527,36 @@ func openFallbackVaultWithCandidate(candidate []byte) (vault.Backend, error) {
 }
 
 // tryCandidate checks whether candidate is non-empty and points at a
-// path the caller is about to open. Returns the candidate (caller
+// tier the caller is about to open. Returns the candidate (caller
 // uses it) and true when usable; false otherwise.
-func tryCandidate(candidate []byte, path string) ([]byte, bool) {
+func tryCandidate(candidate []byte, t vaultTier) ([]byte, bool) {
 	if len(candidate) == 0 {
 		return nil, false
 	}
-	_, err := os.Stat(path)
-	return candidate, err == nil
+	return candidate, t.Exists()
 }
 
-// openWithCandidateOrPrompt tries the candidate password first; on
-// failure (or when there is no candidate), falls through to the full
-// resolveVaultPassword chain (which prompts on a TTY). Logs `successMsg`
-// to stderr when the candidate succeeded, so the user knows their
-// initial password was reused.
+// openWithCandidateOrPrompt tries the candidate password against the
+// tier's vault file first; on failure (or no candidate), falls
+// through to the tier's full ResolvePassword chain (which prompts on
+// a TTY). Logs successMsg via vlog when the candidate succeeds.
 //
-// The second return value is a copy of whatever password ended up
-// unlocking the vault — caller can pass it as the candidate to the
-// next tier in the chain so a user who typed their password once
-// doesn't get re-prompted for downstream tiers that happen to share
-// it. Caller owns the returned slice and should zero it when done.
-func openWithCandidateOrPrompt(path string, candidate []byte, successMsg string) (vault.Backend, []byte, error) {
+// The second return value is a copy of whatever password unlocked
+// the vault — the caller can pass it as the candidate to the next
+// tier in the chain so a user who typed their password once doesn't
+// get re-prompted for downstream tiers that share it. Caller owns
+// the returned slice and should zero it when done.
+//
+// Taking a vaultTier (not a bare path) means the password-source
+// chain is the *tier's* chain — there is no path inspection or
+// classification step that could pick the wrong env-var table for an
+// absolute path that happens to look like a project vault.
+func openWithCandidateOrPrompt(t vaultTier, candidate []byte, successMsg string) (vault.Backend, []byte, error) {
 	if len(candidate) > 0 {
-		// Make a working copy — OpenLocalAt zeroes its password buffer.
+		// Make a working copy — Open zeroes its password buffer.
 		try := make([]byte, len(candidate))
 		copy(try, candidate)
-		b, err := vault.OpenLocalAt(path, try)
+		b, err := t.Open(try)
 		if err == nil {
 			if successMsg != "" {
 				vlog(successMsg)
@@ -595,30 +566,23 @@ func openWithCandidateOrPrompt(path string, candidate []byte, successMsg string)
 			zeroBytes(candidate)
 			return b, used, nil
 		}
-		vlog("shared password didn't unlock %s; prompting", path)
+		vlog("shared password didn't unlock %s; prompting", t.Path)
 		// candidate didn't decrypt — fall through to full resolution.
 		zeroBytes(candidate)
 	}
-	pw, err := resolveVaultPassword(path)
+	pw, err := t.ResolvePassword(true)
 	if err != nil {
 		return nil, nil, err
 	}
-	// Snapshot before OpenLocalAt zeroes pw.
+	// Snapshot before Open zeroes pw.
 	used := make([]byte, len(pw))
 	copy(used, pw)
-	b, err := vault.OpenLocalAt(path, pw)
+	b, err := t.Open(pw)
 	if err != nil {
 		zeroBytes(used)
 		return nil, nil, err
 	}
 	return b, used, nil
-}
-
-// resolveVaultPassword resolves the password for a vault at the given path
-// by classifying the path into a tier and delegating to vaultTier.ResolvePassword.
-// Returns []byte so the caller can zero it after use.
-func resolveVaultPassword(path string) ([]byte, error) {
-	return tierForPath(path).ResolvePassword(true)
 }
 
 // errWorkspaceVaultLocked signals that no automatic password source
@@ -627,9 +591,21 @@ func resolveVaultPassword(path string) ([]byte, error) {
 // isVaultLocked() unwraps this to detect the case.
 var errWorkspaceVaultLocked = fmt.Errorf("workspace vault locked: password required")
 
-// tierForPath classifies a vault path into a vaultTier. Used by
-// resolveVaultPassword to pick the right password-source table for
-// the file the caller is about to open.
+// tierForPath classifies a vault file path into a tier descriptor.
+//
+// This is for UI use only — specifically extractVaultTiers in
+// ui_cmd.go, which walks a FallbackBackend chain and asks
+// LocalBackend.Path() what file each tier opened. Path provenance is
+// trusted at those callsites because the path came from a backend
+// the caller just opened.
+//
+// Do NOT call this from CLI password-resolution paths. Doing so would
+// reintroduce the bug that Step 3 of the concession fix-up closed:
+// an absolute --vault-path pointing at e.g. /tmp/.factorly/vault.enc
+// would silently classify as the project tier and inherit
+// FACTORLY_PROJECT_VAULT_PASSWORD lookup. CLI callers should hold a
+// vaultTier directly and pass it to openWithCandidateOrPrompt /
+// vault.Open / etc.
 func tierForPath(path string) vaultTier {
 	if isWorkspaceVault(path) {
 		// .factorly/vaults/<name>.enc — derive workspace name from filename.
@@ -640,25 +616,6 @@ func tierForPath(path string) vaultTier {
 		return projectTier()
 	}
 	return globalTier()
-}
-
-// resolveWorkspaceVaultPassword is the prompting variant. Preserved as a
-// thin wrapper for callsites that explicitly target a workspace tier.
-func resolveWorkspaceVaultPassword(name string) ([]byte, error) {
-	return workspaceTier(name).ResolvePassword(true)
-}
-
-// tryResolveWorkspaceVaultPassword is the non-interactive variant.
-func tryResolveWorkspaceVaultPassword(name string) ([]byte, error) {
-	return workspaceTier(name).ResolvePassword(false)
-}
-
-func resolveProjectVaultPassword() ([]byte, error) {
-	return projectTier().ResolvePassword(true)
-}
-
-func resolveGlobalVaultPassword() ([]byte, error) {
-	return globalTier().ResolvePassword(true)
 }
 
 func readKeyFile(path string) ([]byte, error) {

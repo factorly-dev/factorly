@@ -7,25 +7,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
 
-// resetVaultFlags clears the package-level CLI flag variables that
-// activeTier consults so each test starts from a clean slate. Without
-// this, state leaks across tests in undefined order.
-func resetVaultFlags(t *testing.T) {
-	t.Helper()
-	prevPath, prevGlobal, prevWS := vaultPath, vaultGlobal, workspaceName
-	vaultPath, vaultGlobal, workspaceName = "", false, ""
-	t.Cleanup(func() {
-		vaultPath, vaultGlobal, workspaceName = prevPath, prevGlobal, prevWS
-	})
-}
-
 // chdir cds into dir for the duration of the test and restores on
-// cleanup. activeTier consults os.Stat(".factorly") so the cwd matters.
+// cleanup. activeTier consults os.Stat(".factorly") for the
+// project-default branch, so the cwd matters for that case.
 func chdir(t *testing.T, dir string) {
 	t.Helper()
 	prev, err := os.Getwd()
@@ -42,87 +30,127 @@ func chdir(t *testing.T, dir string) {
 // "which tier do we target?" rule is locked down by tests. Before the
 // activeTier consolidation this precedence was implemented inline in
 // three different places, and easy to break in one without noticing.
+//
+// activeTier is pure with respect to its tierSelector input — these
+// tests construct the selector directly rather than mutating package
+// globals, so each subtest is independent and goroutine-safe.
 func TestActiveTierPrecedence(t *testing.T) {
-	// --vault-path wins over everything else.
-	t.Run("vault-path beats global, env, workspace", func(t *testing.T) {
-		resetVaultFlags(t)
-		t.Setenv("FACTORLY_VAULT_PATH", "/from/env.enc")
-		vaultPath = "/explicit.enc"
-		vaultGlobal = true
-		workspaceName = "staging"
-		got := activeTier()
-		if got.Name != "explicit:/explicit.enc" {
-			t.Errorf("expected explicit tier, got %q", got.Name)
-		}
-		if got.Path != "/explicit.enc" {
-			t.Errorf("expected explicit path, got %q", got.Path)
-		}
-	})
+	cases := []struct {
+		name     string
+		selector tierSelector
+		// wantTier is checked via HasPrefix so explicit-tier cases can
+		// match "explicit:/some/path" without spelling out the path.
+		wantTier string
+	}{
+		{
+			name: "vault-path beats global, env, workspace",
+			selector: tierSelector{
+				VaultPath:     "/explicit.enc",
+				VaultGlobal:   true,
+				EnvVaultPath:  "/from/env.enc",
+				WorkspaceName: "staging",
+			},
+			wantTier: "explicit:/explicit.enc",
+		},
+		{
+			name: "--global beats env and workspace",
+			selector: tierSelector{
+				VaultGlobal:   true,
+				EnvVaultPath:  "/from/env.enc",
+				WorkspaceName: "staging",
+			},
+			// --global resolves to explicit-tier identity (single vault,
+			// no chain). Substring match on "explicit:" leaves the path
+			// portion implementation-defined.
+			wantTier: "explicit:",
+		},
+		{
+			// FACTORLY_VAULT_PATH overrides only the global vault
+			// location; it does NOT shadow --workspace or the
+			// project-default tier. So workspace wins when both are set.
+			name: "workspace beats env path",
+			selector: tierSelector{
+				EnvVaultPath:  "/from/env.enc",
+				WorkspaceName: "staging",
+			},
+			wantTier: "workspace:staging",
+		},
+		{
+			// FACTORLY_VAULT_PATH with no project and no other flag:
+			// produces a global tier with the env's path. Identity stays
+			// "global" so OpenChain keeps chain semantics.
+			name: "env path overrides global path only",
+			selector: tierSelector{
+				EnvVaultPath: "/from/env.enc",
+			},
+			wantTier: "global",
+		},
+		{
+			name:     "workspace selector picked",
+			selector: tierSelector{WorkspaceName: "staging"},
+			wantTier: "workspace:staging",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := activeTier(c.selector)
+			if !strings.HasPrefix(got.Name, c.wantTier) {
+				t.Errorf("got tier %q, want prefix %q", got.Name, c.wantTier)
+			}
+		})
+	}
 
-	// --global beats env, workspace, project.
-	t.Run("--global beats env and workspace", func(t *testing.T) {
-		resetVaultFlags(t)
-		t.Setenv("FACTORLY_VAULT_PATH", "/from/env.enc")
-		vaultGlobal = true
-		workspaceName = "staging"
-		got := activeTier()
-		if got.Name != "global" {
-			t.Errorf("expected global tier, got %q", got.Name)
-		}
-	})
-
-	// FACTORLY_VAULT_PATH beats --workspace.
-	t.Run("env path beats workspace", func(t *testing.T) {
-		resetVaultFlags(t)
-		t.Setenv("FACTORLY_VAULT_PATH", "/from/env.enc")
-		workspaceName = "staging"
-		got := activeTier()
-		if got.Name != "explicit:/from/env.enc" {
-			t.Errorf("expected explicit tier from env, got %q", got.Name)
-		}
-	})
-
-	// --workspace beats project default.
-	t.Run("workspace beats project default", func(t *testing.T) {
-		resetVaultFlags(t)
-		dir := t.TempDir()
-		if err := os.MkdirAll(filepath.Join(dir, ".factorly"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		chdir(t, dir)
-		workspaceName = "staging"
-		got := activeTier()
-		if got.Name != "workspace:staging" {
-			t.Errorf("expected workspace tier, got %q", got.Name)
-		}
-	})
-
-	// Project tier is picked when .factorly/ exists and no flag overrides.
+	// Project-default and global-fallback branches depend on cwd, so
+	// each gets its own subtest with chdir handling.
 	t.Run("project default when .factorly exists", func(t *testing.T) {
-		resetVaultFlags(t)
-		t.Setenv("FACTORLY_VAULT_PATH", "")
 		dir := t.TempDir()
 		if err := os.MkdirAll(filepath.Join(dir, ".factorly"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		chdir(t, dir)
-		got := activeTier()
+		got := activeTier(tierSelector{})
 		if got.Name != "project" {
 			t.Errorf("expected project tier, got %q", got.Name)
 		}
 	})
 
-	// Global tier is the final fallback.
 	t.Run("global fallback when no .factorly", func(t *testing.T) {
-		resetVaultFlags(t)
-		t.Setenv("FACTORLY_VAULT_PATH", "")
-		// Use a temp dir that definitely has no .factorly subdir.
 		chdir(t, t.TempDir())
-		got := activeTier()
+		got := activeTier(tierSelector{})
 		if got.Name != "global" {
 			t.Errorf("expected global tier, got %q", got.Name)
 		}
 	})
+}
+
+// TestCurrentSelectorSnapshotsFlags confirms that currentSelector()
+// is the seam between package globals and the pure precedence
+// function — reading from the globals AND from FACTORLY_VAULT_PATH.
+// If any of these inputs is omitted by currentSelector, activeTier
+// would silently make decisions based on stale or missing state.
+func TestCurrentSelectorSnapshotsFlags(t *testing.T) {
+	prevPath, prevGlobal, prevWS := vaultPath, vaultGlobal, workspaceName
+	t.Cleanup(func() {
+		vaultPath, vaultGlobal, workspaceName = prevPath, prevGlobal, prevWS
+	})
+	vaultPath = "/from-flag.enc"
+	vaultGlobal = true
+	workspaceName = "ws-from-flag"
+	t.Setenv("FACTORLY_VAULT_PATH", "/from-env.enc")
+
+	s := currentSelector()
+	if s.VaultPath != "/from-flag.enc" {
+		t.Errorf("VaultPath: got %q", s.VaultPath)
+	}
+	if !s.VaultGlobal {
+		t.Error("VaultGlobal: got false, want true")
+	}
+	if s.WorkspaceName != "ws-from-flag" {
+		t.Errorf("WorkspaceName: got %q", s.WorkspaceName)
+	}
+	if s.EnvVaultPath != "/from-env.enc" {
+		t.Errorf("EnvVaultPath: got %q", s.EnvVaultPath)
+	}
 }
 
 // TestExplicitTierIdentity verifies that a user-pinned path does NOT
@@ -132,11 +160,9 @@ func TestActiveTierPrecedence(t *testing.T) {
 // accidentally trigger FACTORLY_PROJECT_VAULT_PASSWORD lookup just
 // because its filename ends in /.factorly/vault.enc.
 func TestExplicitTierIdentity(t *testing.T) {
-	resetVaultFlags(t)
 	// A path that *looks* like a project vault, but the user pinned it.
 	pinned := filepath.Join(t.TempDir(), ".factorly", "vault.enc")
-	vaultPath = pinned
-	got := activeTier()
+	got := activeTier(tierSelector{VaultPath: pinned})
 	if !strings.HasPrefix(got.Name, "explicit:") {
 		t.Errorf("expected explicit tier identity, got %q", got.Name)
 	}
@@ -311,6 +337,7 @@ func TestTierResolvePasswordSurfacesLockedErr(t *testing.T) {
 		{"workspace", workspaceTier("staging"), errWorkspaceVaultLocked},
 		{"project", projectTier(), errProjectVaultLocked},
 		{"global", globalTier(), errGlobalVaultLocked},
+		{"explicit", explicitTier("/tmp/some.enc"), errExplicitVaultLocked},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -322,15 +349,20 @@ func TestTierResolvePasswordSurfacesLockedErr(t *testing.T) {
 	}
 }
 
-// TestTierForPathClassification verifies that the path -> tier mapping
-// is path-shape sensitive (so absolute paths from --vault-path that
-// happen to live under .factorly/ don't get classified as project
-// tier and inherit FACTORLY_PROJECT_VAULT_PASSWORD lookup).
+// TestTierForPathClassification documents the path-shape classifier
+// used by ui_cmd.go's extractVaultTiers (which walks an open chain
+// and asks LocalBackend.Path() what each opened file is).
 //
-// Note: today tierForPath is still string-based (Step 4 stopped short
-// of fully retiring it because the chain composition still needs to
-// dispatch on path). The cases here lock in the current behavior so
-// any future tweaks to isProjectVault / isWorkspaceVault are noticed.
+// CLI password resolution does NOT use this function — that path was
+// removed in Step 3 of the concession fix-up. CLI flows hold a
+// vaultTier directly (constructed from the active flags/env via
+// activeTier), so an absolute --vault-path can never accidentally
+// inherit project-tier env-var lookup.
+//
+// The /tmp/.factorly/ row that previously documented a "known edge
+// case" is gone with it — the path-shape ambiguity has no production
+// CLI consumer to mislead. extractVaultTiers only sees paths that
+// came from a LocalBackend we opened, so the provenance is trusted.
 func TestTierForPathClassification(t *testing.T) {
 	cases := []struct {
 		path     string
@@ -340,17 +372,6 @@ func TestTierForPathClassification(t *testing.T) {
 		{filepath.Join(".factorly", "vaults", "staging.enc"), "workspace:staging"},
 		{filepath.Join("/tmp", "vault.enc"), "global"},
 	}
-	if runtime.GOOS != "windows" {
-		// Absolute paths that happen to live inside a .factorly/ named
-		// dir under /tmp DO currently classify as project tier — this
-		// is a known edge case (the path-shape matcher can't tell the
-		// difference). Document it here so the behavior change in a
-		// future hardening pass is intentional.
-		cases = append(cases, struct {
-			path     string
-			wantTier string
-		}{filepath.Join("/tmp", ".factorly", "vault.enc"), "project"})
-	}
 	for _, c := range cases {
 		t.Run(c.path, func(t *testing.T) {
 			got := tierForPath(c.path)
@@ -358,5 +379,69 @@ func TestTierForPathClassification(t *testing.T) {
 				t.Errorf("path %s: tier %q, want %q", c.path, got.Name, c.wantTier)
 			}
 		})
+	}
+}
+
+// TestEnvSourceStrictness locks in the contract that "strict-on-empty"
+// is a *field* on envSource, not a positional convention. Reordering
+// the EnvVars slice must not flip which entry rejects an empty value.
+//
+// This is the test the refactor was missing: previously the rule was
+// "the first env var is strict," encoded by index, so a refactor that
+// happened to reorder the slice would silently swap the strictness
+// rule with no test feedback.
+func TestEnvSourceStrictness(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	for _, k := range []string{"AAA", "BBB"} {
+		t.Setenv(k, "__unset__")
+		os.Unsetenv(k)
+	}
+
+	// Build a synthetic tier whose strict entry is in position 1, not 0.
+	// If strictness were positional ("first wins"), AAA would be strict;
+	// because it's a field, BBB is strict regardless of position.
+	tier := vaultTier{
+		Name:        "test",
+		PromptLabel: "test: ",
+		Path:        "/nope.enc",
+		EnvVars: []envSource{
+			{Name: "AAA", Strict: false},
+			{Name: "BBB", Strict: true},
+		},
+		LockedErr: errGlobalVaultLocked,
+	}
+
+	// AAA empty: should silently skip (not strict). With BBB unset,
+	// we fall through to LockedErr.
+	t.Setenv("AAA", "")
+	if _, err := tier.ResolvePassword(false); !errors.Is(err, errGlobalVaultLocked) {
+		t.Errorf("AAA empty (non-strict): want LockedErr, got %v", err)
+	}
+
+	// BBB empty: should error (strict), even though it's not first.
+	os.Unsetenv("AAA")
+	t.Setenv("BBB", "")
+	_, err := tier.ResolvePassword(false)
+	if err == nil || !strings.Contains(err.Error(), "BBB is set but empty") {
+		t.Errorf("BBB empty (strict): want 'BBB is set but empty', got %v", err)
+	}
+
+	// Both empty: AAA scanned first, skipped; BBB errors.
+	t.Setenv("AAA", "")
+	t.Setenv("BBB", "")
+	_, err = tier.ResolvePassword(false)
+	if err == nil || !strings.Contains(err.Error(), "BBB") {
+		t.Errorf("AAA+BBB empty: strict BBB should error, got %v", err)
+	}
+
+	// BBB set, AAA empty: BBB wins.
+	t.Setenv("AAA", "")
+	t.Setenv("BBB", "from-bbb")
+	pw, err := tier.ResolvePassword(false)
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if string(pw) != "from-bbb" {
+		t.Errorf("got %q, want from-bbb", string(pw))
 	}
 }

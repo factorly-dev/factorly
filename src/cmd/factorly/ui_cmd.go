@@ -370,16 +370,22 @@ func extractVaultTiers(root vault.Backend, hasWorkspace bool) (ws, proj, glob va
 	// Detect the file each LocalBackend points at so we can sort
 	// tiers by what they are, not by chain position. (More robust:
 	// chain shape can vary with --vault-path, --global, etc.)
+	//
+	// The path-shape classification is safe to use here because the
+	// path came from a LocalBackend we just opened — provenance is
+	// trusted. Step 3 of the concession fix-up forbade tierForPath
+	// from CLI password resolution paths, where the same ambiguity
+	// would silently mis-route env-var lookups.
 	classify := func(b vault.Backend) (kind string) {
 		lb, ok := b.(*vault.LocalBackend)
 		if !ok {
 			return ""
 		}
-		path := lb.Path()
+		t := tierForPath(lb.Path())
 		switch {
-		case isWorkspaceVault(path):
+		case strings.HasPrefix(t.Name, "workspace:"):
 			return "workspace"
-		case isProjectVault(path):
+		case t.Name == "project":
 			return "project"
 		default:
 			return "global"
@@ -416,9 +422,14 @@ func extractVaultTiers(root vault.Backend, hasWorkspace bool) (ws, proj, glob va
 		if fb.Primary != nil {
 			assign(fb.Primary)
 		}
-		// Fire lazy open if needed. EnsureSecondary returns nil on
-		// failure, which is fine — the tier just stays absent.
-		next := fb.EnsureSecondary()
+		// Fire lazy open if needed. EnsureSecondary returns (nil, err)
+		// on failure — log the reason so a misconfigured tier doesn't
+		// silently look "absent" in the UI's per-tier status, then move
+		// on (the tier simply stays unassigned, matching prior behavior).
+		next, openErr := fb.EnsureSecondary()
+		if openErr != nil {
+			vlog("warming secondary tier failed: %v", openErr)
+		}
 		if next == nil {
 			break
 		}

@@ -31,10 +31,12 @@ type vaultTier struct {
 	PromptLabel string
 	// Path is the on-disk location of the encrypted vault file.
 	Path string
-	// EnvVars are the ordered list of env var names to check for a
-	// non-interactive password. First non-empty wins; an env var that
-	// is set but empty is a user error and produces an error.
-	EnvVars []string
+	// EnvVars are the ordered list of env-var sources for a non-interactive
+	// password. The first non-empty value wins; Strict entries also reject
+	// "set but empty" as a user error (Strict=false silently skips empty).
+	// Strictness is a field, not a position, so re-ordering this slice
+	// can't accidentally flip which env var rejects empty values.
+	EnvVars []envSource
 	// KeyFile is the optional path to a 0600 file holding the password.
 	// Empty string means no keyfile source for this tier.
 	KeyFile string
@@ -42,6 +44,16 @@ type vaultTier struct {
 	// no non-interactive source resolves. UI callers detect this to
 	// surface the unlock dialog.
 	LockedErr error
+}
+
+// envSource is one entry in a tier's password-resolution chain.
+// Strict=true means a set-but-empty value is rejected as a user error
+// (the tier-specific variable). Strict=false means an empty value is
+// silently skipped so the chain can continue (the shared convenience
+// variable). See vaultTier.EnvVars.
+type envSource struct {
+	Name   string
+	Strict bool
 }
 
 // workspaceTier returns the tier descriptor for a named workspace.
@@ -52,9 +64,9 @@ func workspaceTier(name string) vaultTier {
 		Name:        "workspace:" + name,
 		PromptLabel: fmt.Sprintf("Vault password (workspace %q): ", name),
 		Path:        workspaceVaultPath(name),
-		EnvVars: []string{
-			"FACTORLY_WORKSPACE_VAULT_PASSWORD_" + strings.ToUpper(name),
-			"FACTORLY_VAULT_PASSWORD",
+		EnvVars: []envSource{
+			{Name: "FACTORLY_WORKSPACE_VAULT_PASSWORD_" + strings.ToUpper(name), Strict: true},
+			{Name: "FACTORLY_VAULT_PASSWORD", Strict: false},
 		},
 		KeyFile:   filepath.Join(".factorly", "vaults", name+".key"),
 		LockedErr: errWorkspaceVaultLocked,
@@ -67,9 +79,9 @@ func projectTier() vaultTier {
 		Name:        "project",
 		PromptLabel: "Vault password (project): ",
 		Path:        projectVaultPath(),
-		EnvVars: []string{
-			"FACTORLY_PROJECT_VAULT_PASSWORD",
-			"FACTORLY_VAULT_PASSWORD",
+		EnvVars: []envSource{
+			{Name: "FACTORLY_PROJECT_VAULT_PASSWORD", Strict: true},
+			{Name: "FACTORLY_VAULT_PASSWORD", Strict: false},
 		},
 		KeyFile:   filepath.Join(".factorly", "vault.key"),
 		LockedErr: errProjectVaultLocked,
@@ -77,14 +89,15 @@ func projectTier() vaultTier {
 }
 
 // globalTier returns the tier descriptor for the global vault. The
-// path may be overridden by FACTORLY_VAULT_PATH (handled by the
-// upstream resolveVaultPath chain, not here).
+// path may be overridden by FACTORLY_VAULT_PATH; that override is
+// applied in activeTier (for the chain-selection path) and in
+// openFallbackVaultWithCandidate (for the chain-composition path).
 func globalTier() vaultTier {
 	t := vaultTier{
 		Name:        "global",
 		PromptLabel: "Vault password (global): ",
 		Path:        vault.DefaultVaultPath(),
-		EnvVars:     []string{"FACTORLY_VAULT_PASSWORD"},
+		EnvVars:     []envSource{{Name: "FACTORLY_VAULT_PASSWORD", Strict: true}},
 		LockedErr:   errGlobalVaultLocked,
 	}
 	if home, err := os.UserHomeDir(); err == nil {
@@ -108,24 +121,25 @@ func (t vaultTier) Exists() bool {
 // keyfile) and optionally falls through to the interactive prompt.
 // Returns LockedErr when allowPrompt is false and nothing resolved.
 //
+// Strict env entries reject set-but-empty as a user error. Non-strict
+// entries (typically the shared FACTORLY_VAULT_PASSWORD convenience
+// var) silently skip when empty so clearing the shared var doesn't
+// break the tier-specific path.
+//
 // The returned slice is owned by the caller — zero it after use.
 func (t vaultTier) ResolvePassword(allowPrompt bool) ([]byte, error) {
-	for _, env := range t.EnvVars {
-		pw, ok := os.LookupEnv(env)
+	for _, e := range t.EnvVars {
+		pw, ok := os.LookupEnv(e.Name)
 		if !ok {
 			continue
 		}
 		if pw == "" {
-			// First env var (the tier-specific one) is strict: set-but-empty
-			// is a user error. Subsequent fallback env vars (shared
-			// FACTORLY_VAULT_PASSWORD) silently skip when empty so a user
-			// who clears the shared var doesn't break the tier-specific path.
-			if env == t.EnvVars[0] {
-				return nil, fmt.Errorf("%s is set but empty", env)
+			if e.Strict {
+				return nil, fmt.Errorf("%s is set but empty", e.Name)
 			}
 			continue
 		}
-		vlog("%s vault password from %s", t.Name, env)
+		vlog("%s vault password from %s", t.Name, e.Name)
 		return []byte(pw), nil
 	}
 	if t.KeyFile != "" {
@@ -157,6 +171,49 @@ func (t vaultTier) Open(pw []byte) (vault.Backend, error) {
 	return vault.OpenLocalAt(t.Path, pw)
 }
 
+// OpenChain opens the tier and returns the right chain shape for it.
+//
+//   - explicit tiers (--vault-path / FACTORLY_VAULT_PATH) → single
+//     vault, no fallback. The user pinned a path; honoring that pin is
+//     the entire point.
+//   - workspace tier → workspace vault as Primary with a lazy
+//     project→global fallback Secondary; or the bare project→global
+//     chain when the workspace has no vault file.
+//   - project / global tier → the lazy project→global FallbackBackend.
+//
+// This is the chain-shape decision that openSmartVault used to make
+// inline. Routing through tier identity means the decision is colocated
+// with the tier descriptor, not duplicated across helpers.
+//
+// allowPrompt is forwarded to ResolvePassword for the leading tier;
+// non-interactive callers (the UI) pass false so a locked vault
+// returns LockedErr instead of blocking on stdin.
+func (t vaultTier) OpenChain(allowPrompt bool) (vault.Backend, error) {
+	switch {
+	case strings.HasPrefix(t.Name, "explicit:"):
+		// Single vault, no chain. Honors the user's pin exactly.
+		pw, err := t.ResolvePassword(allowPrompt)
+		if err != nil {
+			return nil, err
+		}
+		defer zeroBytes(pw)
+		return t.Open(pw)
+	case strings.HasPrefix(t.Name, "workspace:"):
+		// Workspace name lives in t.Name after the prefix.
+		name := strings.TrimPrefix(t.Name, "workspace:")
+		if b, err := openWorkspaceChainOrNil(name, allowPrompt); err != nil {
+			return nil, err
+		} else if b != nil {
+			return b, nil
+		}
+		// Workspace has no vault file — fall through to project/global chain.
+		return openFallbackVault()
+	default:
+		// project / global / anything else → the lazy project→global chain.
+		return openFallbackVault()
+	}
+}
+
 // explicitTier wraps a user-specified path (--vault-path flag or
 // FACTORLY_VAULT_PATH env var). It opts out of the per-tier env-var
 // chain — only FACTORLY_VAULT_PATH(_PASSWORD) and the canonical
@@ -168,38 +225,89 @@ func explicitTier(path string) vaultTier {
 		Name:        "explicit:" + path,
 		PromptLabel: fmt.Sprintf("Vault password (%s): ", filepath.Base(path)),
 		Path:        path,
-		EnvVars:     []string{"FACTORLY_VAULT_PASSWORD"},
-		LockedErr:   errGlobalVaultLocked, // shares the "global" locked sentinel
+		EnvVars:     []envSource{{Name: "FACTORLY_VAULT_PASSWORD", Strict: true}},
+		LockedErr:   errExplicitVaultLocked,
 	}
 }
 
-// activeTier returns the tier that the current CLI flags/env target
-// for a Set/Get operation. Honors --vault-path, --global,
+// tierSelector is the input record for activeTier — the package-level
+// inputs that determine which tier the current CLI invocation targets.
+// Production code calls activeTier(currentSelector()); tests construct
+// a selector directly so they don't have to mutate package globals.
+//
+// EnvVaultPath captures the value of FACTORLY_VAULT_PATH at the time
+// the selector was built. Putting it in the struct (rather than
+// re-reading inside activeTier) makes the function pure and the
+// precedence rule entirely captured by the selector value.
+type tierSelector struct {
+	VaultPath     string
+	VaultGlobal   bool
+	WorkspaceName string
+	EnvVaultPath  string
+}
+
+// currentSelector snapshots the package-level flag and env state.
+// All production callers of activeTier use this — it's the seam
+// between the package-global CLI state and the pure precedence
+// function.
+func currentSelector() tierSelector {
+	return tierSelector{
+		VaultPath:     vaultPath,
+		VaultGlobal:   vaultGlobal,
+		WorkspaceName: workspaceName,
+		EnvVaultPath:  os.Getenv("FACTORLY_VAULT_PATH"),
+	}
+}
+
+// activeTier returns the tier that the supplied selector targets for
+// a single-vault operation. Honors --vault-path, --global,
 // FACTORLY_VAULT_PATH, --workspace, then falls back to project (when
 // inside .factorly/) or global. This is the single source of truth
 // for "which tier am I operating on?" — before this existed, the same
-// precedence was repeated across resolveVaultPath, openVault, and
-// openSmartVault, drifting independently.
+// precedence was repeated across openVault, openSmartVault, and the
+// per-tier path builders, drifting independently.
+//
+// activeTier is pure with respect to its inputs (the selector), with
+// one exception: the "project default" branch consults os.Stat to see
+// if a .factorly/ directory exists in cwd. That's an unavoidable
+// filesystem dependency — the precedence rule itself requires
+// "project tier wins when we're inside a project."
 //
 // Returns the global tier as a final fallback when no other source
 // applies. Callers that need to surface validation errors for
 // --workspace should do so explicitly before calling this (the tier
 // returned for an invalid workspace name has an empty Path).
-func activeTier() vaultTier {
-	if vaultPath != "" {
-		return explicitTier(vaultPath)
+func activeTier(s tierSelector) vaultTier {
+	if s.VaultPath != "" {
+		return explicitTier(s.VaultPath)
 	}
-	if vaultGlobal {
-		return globalTier()
+	if s.VaultGlobal {
+		// --global means "use the global vault, no fallback chain."
+		// Wrap as explicit so OpenChain takes the no-fallback branch.
+		// The path is the same as globalTier(), but identity is
+		// explicit so the chain composition stays single-vault.
+		return explicitTier(vault.DefaultVaultPath())
 	}
-	if p := os.Getenv("FACTORLY_VAULT_PATH"); p != "" {
-		return explicitTier(p)
-	}
-	if workspaceName != "" {
-		return workspaceTier(workspaceName)
+	if s.WorkspaceName != "" {
+		return workspaceTier(s.WorkspaceName)
 	}
 	if info, err := os.Stat(".factorly"); err == nil && info.IsDir() {
 		return projectTier()
+	}
+	// FACTORLY_VAULT_PATH was deliberately ranked lower than --global,
+	// --workspace, and the project default: it's a "set the global
+	// vault location" knob, not an "explicit pin." Reads done through
+	// OpenChain still consult the project tier first when one exists;
+	// the env var only changes where the global tier lives in the
+	// chain. (openFallbackVaultWithCandidate consults the env directly
+	// for the same reason.)
+	if s.EnvVaultPath != "" {
+		// Build a global tier with overridden path. No explicit-tier
+		// wrap: we still want chain semantics, just with a custom
+		// global path.
+		g := globalTier()
+		g.Path = s.EnvVaultPath
+		return g
 	}
 	return globalTier()
 }
