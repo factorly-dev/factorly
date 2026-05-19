@@ -125,6 +125,36 @@ func TestLoadRejectsPathTraversal(t *testing.T) {
 	}
 }
 
+// TestValidateName exercises the exported validation function that
+// every workspace path-builder now routes through. Callers outside
+// this package (e.g. cmd/factorly) can use it to give the same error
+// message everywhere a user-supplied workspace name lands.
+func TestValidateName(t *testing.T) {
+	good := []string{"staging", "prod", "dev-1", "team_a", "my-workspace"}
+	bad := []struct {
+		name, why string
+	}{
+		{"", "empty"},
+		{"..", "traversal"},
+		{"../etc", "explicit traversal"},
+		{"a/b", "forward slash"},
+		{"a\\b", "backslash"},
+		{".hidden", "leading dot"},
+		{"name.with.dot", "interior dot"},
+		{"trailing.", "trailing dot"},
+	}
+	for _, n := range good {
+		if err := ValidateName(n); err != nil {
+			t.Errorf("expected %q to validate, got %v", n, err)
+		}
+	}
+	for _, c := range bad {
+		if err := ValidateName(c.name); err == nil {
+			t.Errorf("expected %q (%s) to fail validation", c.name, c.why)
+		}
+	}
+}
+
 func TestListEmpty(t *testing.T) {
 	cfg := setup(t)
 	wss, err := List(cfg)

@@ -4,6 +4,7 @@
 package vault
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -240,6 +241,73 @@ func TestEnsureSecondaryReturnsNilOnOpenFailure(t *testing.T) {
 	}
 	if got := fb.EnsureSecondary(); got != nil {
 		t.Errorf("expected nil on open failure, got %T", got)
+	}
+}
+
+// TestFallbackGetSurfacesSecondaryOpenError exercises the
+// fix for the "silent ErrNotFound" bug: when a key misses in the
+// primary AND the lazy opener returns an error, Get must propagate
+// the opener error, not flatten it into ErrNotFound. Without this,
+// the user sees "secret not found" when the real cause was something
+// like a wrong password or no-stdin-input.
+func TestFallbackGetSurfacesSecondaryOpenError(t *testing.T) {
+	primary := newFBMock(map[string]string{})
+	openErr := errors.New("wrong password")
+	fb := &FallbackBackend{
+		Primary: primary,
+		SecondaryOpen: func() (Backend, error) {
+			return nil, openErr
+		},
+	}
+	_, err := fb.Get("MISSING")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, openErr) {
+		t.Errorf("expected wrapped %v, got %v", openErr, err)
+	}
+	if err == ErrNotFound {
+		t.Error("expected wrapped opener error, got bare ErrNotFound")
+	}
+}
+
+// TestFallbackOpenerMemoized confirms that a failing SecondaryOpen
+// is only invoked once; subsequent Gets see the cached error.
+func TestFallbackOpenerMemoized(t *testing.T) {
+	primary := newFBMock(map[string]string{})
+	calls := 0
+	openErr := errors.New("nope")
+	fb := &FallbackBackend{
+		Primary: primary,
+		SecondaryOpen: func() (Backend, error) {
+			calls++
+			return nil, openErr
+		},
+	}
+	for i := 0; i < 3; i++ {
+		_, err := fb.Get("KEY")
+		if err == nil || !errors.Is(err, openErr) {
+			t.Fatalf("call %d: expected wrapped opener error, got %v", i, err)
+		}
+	}
+	if calls != 1 {
+		t.Errorf("expected opener invoked once, got %d", calls)
+	}
+}
+
+// TestFallbackSetSurfacesSecondaryOpenError covers the Set path
+// when Primary is nil and the secondary opener fails.
+func TestFallbackSetSurfacesSecondaryOpenError(t *testing.T) {
+	openErr := errors.New("disk full")
+	fb := &FallbackBackend{
+		Primary: nil,
+		SecondaryOpen: func() (Backend, error) {
+			return nil, openErr
+		},
+	}
+	err := fb.Set("KEY", "value")
+	if err == nil || !errors.Is(err, openErr) {
+		t.Errorf("expected wrapped opener error, got %v", err)
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 
 	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/factorly-dev/factorly/internal/vault"
+	"github.com/factorly-dev/factorly/internal/workspace"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -212,29 +213,13 @@ var vaultDeleteCmd = &cobra.Command{
 // Priority: --vault-path flag → --global flag → FACTORLY_VAULT_PATH env →
 // --workspace (.factorly/vaults/<name>.enc) → project vault → global vault.
 //
-// Workspace ranks below explicit --vault-path / --global / env override so
-// power users can always pin a single target, but above the project vault
-// default so `factorly vault set --workspace staging KEY value` writes
-// to the workspace vault without further ceremony.
+// Delegates entirely to activeTier so there's exactly one source of
+// truth for the precedence. Returns an empty string when --workspace
+// is set to an invalid name (path traversal etc.) — callers translate
+// that into a hard error so the user doesn't silently fall through to
+// the global vault.
 func resolveVaultPath() string {
-	if vaultPath != "" {
-		return vaultPath
-	}
-	if vaultGlobal {
-		return vault.DefaultVaultPath()
-	}
-	if p := os.Getenv("FACTORLY_VAULT_PATH"); p != "" {
-		return p
-	}
-	if workspaceName != "" {
-		// .factorly/vaults/<name>.enc — created on first Set if it doesn't yet exist.
-		return workspaceVaultPath(workspaceName)
-	}
-	// Default: project vault if .factorly/ directory exists
-	if info, err := os.Stat(".factorly"); err == nil && info.IsDir() {
-		return projectVaultPath()
-	}
-	return vault.DefaultVaultPath()
+	return activeTier().Path
 }
 
 func projectVaultPath() string {
@@ -242,10 +227,16 @@ func projectVaultPath() string {
 }
 
 // workspaceVaultPath returns the path to the encrypted vault file for
-// the given workspace. Empty name yields an empty path — the caller
-// treats that as "no workspace, no workspace vault."
+// the given workspace. Empty or invalid names yield an empty path —
+// the caller treats that as "no workspace, no workspace vault."
+//
+// Validating here closes a path-traversal seam: without the
+// ValidateName check, workspaceVaultPath("../escape") returned a path
+// that filepath.Join + os.Stat happily resolved to anywhere on disk.
+// All callers that derive a workspace vault path now route through
+// here, so the seam is closed at the source.
 func workspaceVaultPath(name string) string {
-	if name == "" {
+	if workspace.ValidateName(name) != nil {
 		return ""
 	}
 	return filepath.Join(".factorly", "vaults", name+".enc")
@@ -261,17 +252,31 @@ func isWorkspaceVault(path string) bool {
 		filepath.Base(filepath.Dir(filepath.Dir(path))) == ".factorly"
 }
 
-// openVault opens the vault at the resolved path.
-// When both project and global vaults exist (and no explicit flag),
-// returns a FallbackBackend that checks project first, global second.
+// openVault opens the single tier targeted by the current CLI flags
+// (no fallback chain). Used by write operations (vault set, delete)
+// where the caller wants to land in exactly one file.
+//
+// Returns *LocalBackend (rather than vault.Backend) so callers can
+// use LocalBackend-only methods like Has() for overwrite prompts.
 func openVault() (*vault.LocalBackend, error) {
-	path := resolveVaultPath()
-	vlog("vault path: %s", path)
-	password, err := resolveVaultPassword(path)
+	// Validate workspace name up front so an invalid --workspace
+	// produces a clear error instead of silently falling through to
+	// the global vault.
+	if workspaceName != "" {
+		if err := workspace.ValidateName(workspaceName); err != nil {
+			return nil, err
+		}
+	}
+	t := activeTier()
+	if t.Path == "" {
+		return nil, fmt.Errorf("no vault tier resolved (check --workspace name)")
+	}
+	vlog("vault path: %s", t.Path)
+	pw, err := t.ResolvePassword(true)
 	if err != nil {
 		return nil, err
 	}
-	return vault.OpenLocalAt(path, password)
+	return vault.OpenLocalAt(t.Path, pw)
 }
 
 // OpenProjectVault opens (or creates) .factorly/vault.enc using only
@@ -281,36 +286,38 @@ func openVault() (*vault.LocalBackend, error) {
 // so a project secret can be stored even when the project vault
 // didn't exist at server startup.
 func OpenProjectVault() (vault.Backend, error) {
-	pw, err := tryResolveProjectVaultPassword()
+	t := projectTier()
+	pw, err := t.ResolvePassword(false)
 	if err != nil {
 		return nil, err
 	}
 	defer zeroBytes(pw)
-	return vault.OpenLocalAt(projectVaultPath(), pw)
+	return t.Open(pw)
 }
 
 // OpenProjectVaultWithPassword opens .factorly/vault.enc using an
 // explicit password (bypassing env-var/keyfile resolution). Used by
 // the UI when the user enters a password through the unlock dialog.
 func OpenProjectVaultWithPassword(password []byte) (vault.Backend, error) {
-	return vault.OpenLocalAt(projectVaultPath(), password)
+	return projectTier().Open(password)
 }
 
 // OpenGlobalVault opens (or creates) ~/.config/factorly/vault.enc with
 // non-interactive password resolution.
 func OpenGlobalVault() (vault.Backend, error) {
-	pw, err := tryResolveGlobalVaultPassword()
+	t := globalTier()
+	pw, err := t.ResolvePassword(false)
 	if err != nil {
 		return nil, err
 	}
 	defer zeroBytes(pw)
-	return vault.OpenLocalAt(vault.DefaultVaultPath(), pw)
+	return t.Open(pw)
 }
 
 // OpenGlobalVaultWithPassword opens ~/.config/factorly/vault.enc with
 // an explicit password.
 func OpenGlobalVaultWithPassword(password []byte) (vault.Backend, error) {
-	return vault.OpenLocalAt(vault.DefaultVaultPath(), password)
+	return globalTier().Open(password)
 }
 
 // errProjectVaultLocked / errGlobalVaultLocked signal that no
@@ -326,40 +333,13 @@ var (
 // but skips the interactive prompt. Returns errProjectVaultLocked
 // when no non-interactive source resolves.
 func tryResolveProjectVaultPassword() ([]byte, error) {
-	if pw, ok := os.LookupEnv("FACTORLY_PROJECT_VAULT_PASSWORD"); ok {
-		if pw == "" {
-			return nil, fmt.Errorf("FACTORLY_PROJECT_VAULT_PASSWORD is set but empty")
-		}
-		return []byte(pw), nil
-	}
-	if pw, ok := os.LookupEnv("FACTORLY_VAULT_PASSWORD"); ok {
-		if pw != "" {
-			return []byte(pw), nil
-		}
-	}
-	keyFile := filepath.Join(".factorly", "vault.key")
-	if pw, err := readKeyFile(keyFile); err == nil {
-		return pw, nil
-	}
-	return nil, errProjectVaultLocked
+	return projectTier().ResolvePassword(false)
 }
 
 // tryResolveGlobalVaultPassword mirrors resolveGlobalVaultPassword
 // without the interactive prompt.
 func tryResolveGlobalVaultPassword() ([]byte, error) {
-	if pw, ok := os.LookupEnv("FACTORLY_VAULT_PASSWORD"); ok {
-		if pw == "" {
-			return nil, fmt.Errorf("FACTORLY_VAULT_PASSWORD is set but empty")
-		}
-		return []byte(pw), nil
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		keyFile := filepath.Join(home, ".config", "factorly", "vault.key")
-		if pw, err := readKeyFile(keyFile); err == nil {
-			return pw, nil
-		}
-	}
-	return nil, errGlobalVaultLocked
+	return globalTier().ResolvePassword(false)
 }
 
 // openSmartVault returns a vault backend that searches project vault first,
@@ -398,29 +378,24 @@ func openSmartVault() (vault.Backend, error) {
 // the user isn't prompted again (common case where one password
 // protects all the local vaults).
 func openWorkspaceChainOrNil(name string, prompt bool) (vault.Backend, error) {
-	wsPath := workspaceVaultPath(name)
-	if _, err := os.Stat(wsPath); err != nil {
+	if err := workspace.ValidateName(name); err != nil {
+		return nil, err
+	}
+	t := workspaceTier(name)
+	if !t.Exists() {
 		return nil, nil
 	}
-	var (
-		wsPw []byte
-		err  error
-	)
-	if prompt {
-		wsPw, err = resolveWorkspaceVaultPassword(name)
-	} else {
-		wsPw, err = tryResolveWorkspaceVaultPassword(name)
-	}
+	wsPw, err := t.ResolvePassword(prompt)
 	if err != nil {
 		return nil, err
 	}
-	// Copy before OpenLocalAt zeroes the password buffer — the copy is
-	// used downstream by the fallback chain to attempt the same
-	// password against project + global vaults.
+	// Copy before Open zeroes the password buffer — the copy is used
+	// downstream by the fallback chain to attempt the same password
+	// against project + global vaults.
 	pwForFallback := make([]byte, len(wsPw))
 	copy(pwForFallback, wsPw)
 
-	wsBackend, err := vault.OpenLocalAt(wsPath, wsPw)
+	wsBackend, err := t.Open(wsPw)
 	if err != nil {
 		zeroBytes(pwForFallback)
 		return nil, fmt.Errorf("opening workspace vault: %w", err)
@@ -440,11 +415,10 @@ func openWorkspaceChainOrNil(name string, prompt bool) (vault.Backend, error) {
 // a password through the unlock dialog (bypassing env-var/keyfile/prompt
 // resolution).
 func OpenWorkspaceVaultWithPassword(name string, password []byte) (vault.Backend, error) {
-	if name == "" {
-		return nil, fmt.Errorf("workspace name is required")
+	if err := workspace.ValidateName(name); err != nil {
+		return nil, err
 	}
-	wsPath := workspaceVaultPath(name)
-	wsBackend, err := vault.OpenLocalAt(wsPath, password)
+	wsBackend, err := workspaceTier(name).Open(password)
 	if err != nil {
 		return nil, err
 	}
@@ -465,15 +439,16 @@ func OpenWorkspaceVaultWithPassword(name string, password []byte) (vault.Backend
 // directly to vaults/<name>.enc without falling through to the
 // project vault.
 func OpenWorkspaceVaultUpsert(name string) (vault.Backend, error) {
-	if name == "" {
-		return nil, fmt.Errorf("workspace name is required")
+	if err := workspace.ValidateName(name); err != nil {
+		return nil, err
 	}
-	pw, err := tryResolveWorkspaceVaultPassword(name)
+	t := workspaceTier(name)
+	pw, err := t.ResolvePassword(false)
 	if err != nil {
 		return nil, err
 	}
 	defer zeroBytes(pw)
-	return vault.OpenLocalAt(workspaceVaultPath(name), pw)
+	return t.Open(pw)
 }
 
 // OpenWorkspaceChain is the UI-facing entry point for opening the
@@ -513,9 +488,13 @@ func openFallbackVault() (vault.Backend, error) {
 // The candidate is consumed (zeroed) inside this function or its
 // returned closures; callers should not reuse it after the call.
 func openFallbackVaultWithCandidate(candidate []byte) (vault.Backend, error) {
-	projectPath := projectVaultPath()
+	projectPath := projectTier().Path
+	// Global tier honors FACTORLY_VAULT_PATH transparently: when the
+	// env var is set the user is pinning that location, so the chain
+	// uses it as the global tier. Reading once here keeps the
+	// precedence rule centralized in activeTier/explicitTier rather
+	// than spread across multiple helpers.
 	globalPath := vault.DefaultVaultPath()
-	// Respect FACTORLY_VAULT_PATH for global vault location
 	if p := os.Getenv("FACTORLY_VAULT_PATH"); p != "" {
 		globalPath = p
 	}
@@ -635,18 +614,11 @@ func openWithCandidateOrPrompt(path string, candidate []byte, successMsg string)
 	return b, used, nil
 }
 
-// resolveVaultPassword resolves the password for a vault at the given path.
+// resolveVaultPassword resolves the password for a vault at the given path
+// by classifying the path into a tier and delegating to vaultTier.ResolvePassword.
 // Returns []byte so the caller can zero it after use.
 func resolveVaultPassword(path string) ([]byte, error) {
-	if isWorkspaceVault(path) {
-		// .factorly/vaults/<name>.enc — derive workspace name from filename.
-		name := strings.TrimSuffix(filepath.Base(path), ".enc")
-		return resolveWorkspaceVaultPassword(name)
-	}
-	if isProjectVault(path) {
-		return resolveProjectVaultPassword()
-	}
-	return resolveGlobalVaultPassword()
+	return tierForPath(path).ResolvePassword(true)
 }
 
 // errWorkspaceVaultLocked signals that no automatic password source
@@ -655,121 +627,38 @@ func resolveVaultPassword(path string) ([]byte, error) {
 // isVaultLocked() unwraps this to detect the case.
 var errWorkspaceVaultLocked = fmt.Errorf("workspace vault locked: password required")
 
-// resolveWorkspaceVaultPassword mirrors resolveProjectVaultPassword
-// but with workspace-scoped sources:
-//
-//  1. FACTORLY_WORKSPACE_VAULT_PASSWORD_<UPPER_NAME> env var
-//  2. shared FACTORLY_VAULT_PASSWORD env var (convenience)
-//  3. .factorly/vaults/<name>.key keyfile
-//  4. interactive prompt
-func resolveWorkspaceVaultPassword(name string) ([]byte, error) {
-	if pw, err := tryResolveWorkspaceVaultPassword(name); err == nil {
-		return pw, nil
-	} else if err != errWorkspaceVaultLocked {
-		return nil, err
+// tierForPath classifies a vault path into a vaultTier. Used by
+// resolveVaultPassword to pick the right password-source table for
+// the file the caller is about to open.
+func tierForPath(path string) vaultTier {
+	if isWorkspaceVault(path) {
+		// .factorly/vaults/<name>.enc — derive workspace name from filename.
+		name := strings.TrimSuffix(filepath.Base(path), ".enc")
+		return workspaceTier(name)
 	}
-	pw, err := promptSecret(fmt.Sprintf("Vault password (workspace %q): ", name))
-	if err != nil {
-		return nil, err
+	if isProjectVault(path) {
+		return projectTier()
 	}
-	if len(pw) == 0 {
-		return nil, fmt.Errorf("vault password cannot be empty")
-	}
-	return pw, nil
+	return globalTier()
 }
 
-// tryResolveWorkspaceVaultPassword tries the non-interactive password
-// sources only (env var, shared env var, keyfile). Returns
-// errWorkspaceVaultLocked when none are available — the caller decides
-// whether to prompt (CLI) or surface an unlock dialog (UI).
+// resolveWorkspaceVaultPassword is the prompting variant. Preserved as a
+// thin wrapper for callsites that explicitly target a workspace tier.
+func resolveWorkspaceVaultPassword(name string) ([]byte, error) {
+	return workspaceTier(name).ResolvePassword(true)
+}
+
+// tryResolveWorkspaceVaultPassword is the non-interactive variant.
 func tryResolveWorkspaceVaultPassword(name string) ([]byte, error) {
-	envKey := "FACTORLY_WORKSPACE_VAULT_PASSWORD_" + strings.ToUpper(name)
-	if pw, ok := os.LookupEnv(envKey); ok {
-		if pw == "" {
-			return nil, fmt.Errorf("%s is set but empty", envKey)
-		}
-		vlog("workspace vault password from %s", envKey)
-		return []byte(pw), nil
-	}
-	if pw, ok := os.LookupEnv("FACTORLY_VAULT_PASSWORD"); ok {
-		if pw != "" {
-			vlog("workspace vault password from FACTORLY_VAULT_PASSWORD")
-			return []byte(pw), nil
-		}
-	}
-	keyFile := filepath.Join(".factorly", "vaults", name+".key")
-	if pw, err := readKeyFile(keyFile); err == nil {
-		vlog("workspace vault password from %s", keyFile)
-		return pw, nil
-	}
-	return nil, errWorkspaceVaultLocked
+	return workspaceTier(name).ResolvePassword(false)
 }
 
 func resolveProjectVaultPassword() ([]byte, error) {
-	// 1. Project-specific env var
-	if pw, ok := os.LookupEnv("FACTORLY_PROJECT_VAULT_PASSWORD"); ok {
-		if pw == "" {
-			return nil, fmt.Errorf("FACTORLY_PROJECT_VAULT_PASSWORD is set but empty")
-		}
-		vlog("project vault password from FACTORLY_PROJECT_VAULT_PASSWORD")
-		return []byte(pw), nil
-	}
-
-	// 2. Shared env var (convenience — one password for both)
-	if pw, ok := os.LookupEnv("FACTORLY_VAULT_PASSWORD"); ok {
-		if pw != "" {
-			vlog("project vault password from FACTORLY_VAULT_PASSWORD")
-			return []byte(pw), nil
-		}
-	}
-
-	// 3. Project key file (.factorly/vault.key)
-	keyFile := filepath.Join(".factorly", "vault.key")
-	if pw, err := readKeyFile(keyFile); err == nil {
-		vlog("project vault password from %s", keyFile)
-		return pw, nil
-	}
-
-	// 4. Interactive prompt
-	pw, err := promptSecret("Vault password (project): ")
-	if err != nil {
-		return nil, err
-	}
-	if len(pw) == 0 {
-		return nil, fmt.Errorf("vault password cannot be empty")
-	}
-	return pw, nil
+	return projectTier().ResolvePassword(true)
 }
 
 func resolveGlobalVaultPassword() ([]byte, error) {
-	// 1. Environment variable
-	if pw, ok := os.LookupEnv("FACTORLY_VAULT_PASSWORD"); ok {
-		if pw == "" {
-			return nil, fmt.Errorf("FACTORLY_VAULT_PASSWORD is set but empty")
-		}
-		vlog("vault password from FACTORLY_VAULT_PASSWORD")
-		return []byte(pw), nil
-	}
-
-	// 2. Global key file
-	home, err := os.UserHomeDir()
-	if err == nil {
-		keyFile := filepath.Join(home, ".config", "factorly", "vault.key")
-		if pw, err := readKeyFile(keyFile); err == nil {
-			vlog("vault password from %s", keyFile)
-			return pw, nil
-		}
-	}
-
-	// 3. Interactive prompt
-	pw, err := promptSecret("Vault password (global): ")
-	if err != nil {
-		return nil, err
-	}
-	if len(pw) == 0 {
-		return nil, fmt.Errorf("vault password cannot be empty")
-	}
-	return pw, nil
+	return globalTier().ResolvePassword(true)
 }
 
 func readKeyFile(path string) ([]byte, error) {

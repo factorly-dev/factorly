@@ -29,6 +29,22 @@ type Workspace struct {
 	Vars        map[string]string `yaml:"vars,omitempty"`
 }
 
+// ValidateName rejects workspace names that would let an attacker
+// escape the .factorly/ tree or create surprising filenames. Empty
+// names, path separators (`/` `\`), and dots (`.` covers both `..`
+// traversal and hidden-file names) are all rejected. Callers that
+// treat empty as "no workspace selected" should branch before
+// calling this.
+func ValidateName(name string) error {
+	if name == "" {
+		return fmt.Errorf("workspace name is required")
+	}
+	if strings.ContainsAny(name, "/\\.") {
+		return fmt.Errorf("workspace name %q must not contain path separators or dots", name)
+	}
+	return nil
+}
+
 // Load reads .factorly/workspaces/<name>.yaml relative to the active
 // config and returns the parsed workspace. Empty name returns nil,
 // nil — the caller treats "no workspace selected" as no overlay.
@@ -36,8 +52,8 @@ func Load(cfgPath, name string) (*Workspace, error) {
 	if name == "" {
 		return nil, nil
 	}
-	if strings.ContainsAny(name, "/\\.") {
-		return nil, fmt.Errorf("workspace name %q must not contain path separators or dots", name)
+	if err := ValidateName(name); err != nil {
+		return nil, err
 	}
 	dir := workspaceDir(cfgPath)
 	if dir == "" {
@@ -74,10 +90,7 @@ func Load(cfgPath, name string) (*Workspace, error) {
 // at .factorly/workspaces/<name>.yaml. Used by the bootstrap to decide
 // whether to auto-select "default" when no --workspace flag is set.
 func Exists(cfgPath, name string) bool {
-	if name == "" {
-		return false
-	}
-	if strings.ContainsAny(name, "/\\.") {
+	if ValidateName(name) != nil {
 		return false
 	}
 	dir := workspaceDir(cfgPath)
@@ -134,11 +147,8 @@ func Save(cfgPath string, ws *Workspace) error {
 	if ws == nil {
 		return fmt.Errorf("workspace is nil")
 	}
-	if ws.Name == "" {
-		return fmt.Errorf("workspace name is required")
-	}
-	if strings.ContainsAny(ws.Name, "/\\.") {
-		return fmt.Errorf("workspace name %q must not contain path separators or dots", ws.Name)
+	if err := ValidateName(ws.Name); err != nil {
+		return err
 	}
 	dir := workspaceDir(cfgPath)
 	if dir == "" {
@@ -171,11 +181,8 @@ func Save(cfgPath string, ws *Workspace) error {
 // (if any) is intentionally left alone — deleting both would be
 // destructive and irreversible. Returns nil if the file didn't exist.
 func Delete(cfgPath, name string) error {
-	if name == "" {
-		return fmt.Errorf("workspace name is required")
-	}
-	if strings.ContainsAny(name, "/\\.") {
-		return fmt.Errorf("workspace name %q must not contain path separators or dots", name)
+	if err := ValidateName(name); err != nil {
+		return err
 	}
 	dir := workspaceDir(cfgPath)
 	if dir == "" {

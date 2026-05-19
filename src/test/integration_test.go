@@ -5013,6 +5013,31 @@ func TestWorkspacesCreateRejectsBadName(t *testing.T) {
 	}
 }
 
+// TestVaultSetRejectsBadWorkspaceName closes the path-traversal
+// seam: workspaceVaultPath used to happily join `../escape.enc` and
+// `os.Stat` resolved it to anywhere on disk. With ValidateName at
+// the open entry points, the command fails with a clear error and
+// nothing lands outside .factorly/vaults/.
+func TestVaultSetRejectsBadWorkspaceName(t *testing.T) {
+	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{})
+
+	for _, bad := range []string{"../escape", "foo/bar", "a.b", `back\slash`, "."} {
+		_, stderr, code := run(t, dir, "vault", "set", "--workspace", bad, "KEY", "value")
+		if code == 0 {
+			t.Errorf("expected non-zero exit for workspace %q", bad)
+		}
+		if !strings.Contains(stderr, "workspace name") {
+			t.Errorf("workspace %q: expected error mentioning workspace name, got: %s", bad, stderr)
+		}
+		// Nothing should have been written outside .factorly/vaults/.
+		// In particular, no file with the literal traversal pattern in
+		// its name should now exist on the test tempdir's parent.
+		if _, err := os.Stat(filepath.Join(dir, "..", "escape.enc")); err == nil {
+			t.Errorf("workspace %q escaped .factorly/vaults/", bad)
+		}
+	}
+}
+
 // TestExecHonorsWorkspace: `factorly exec --workspace X -- ... {{env:VAR}} ...`
 // resolves VAR from the workspace's vars. Without this, exec's resolver
 // would only see os.Getenv. Also verifies precedence: --env wins over
@@ -5775,6 +5800,58 @@ func TestProjectSharedPasswordUnlocksGlobal(t *testing.T) {
 	}
 	if got := countPasswordPrompts(stderr.String()); got != 1 {
 		t.Errorf("expected 1 password prompt (shared-password project→global), got %d\nstderr: %s", got, stderr.String())
+	}
+}
+
+// TestWorkspaceChainSurfacesProjectVaultError exercises the
+// FallbackBackend error-surfacing fix: when the workspace vault opens
+// fine but the lazy project-tier opener fails (here: wrong password),
+// the user must see a clear error, not "secret not found."
+//
+// Before the fix, FallbackBackend.ensureSecondary silently swallowed
+// the open error and Get fell through to ErrNotFound — the user saw
+// "secret not found" and had no way to diagnose the real cause.
+func TestWorkspaceChainSurfacesProjectVaultError(t *testing.T) {
+	dir := setupWorkspaceProject(t, "tools: {}\n", map[string]string{
+		"staging": "vars: {}\n",
+	})
+
+	// Seed workspace vault with ws-pw, project vault with proj-pw,
+	// and PROJ_KEY living in project.
+	for _, set := range []struct {
+		pw   string
+		args []string
+	}{
+		{"ws-pw", []string{"vault", "set", "--workspace", "staging", "WS_KEY", "ws-val"}},
+		{"proj-pw", []string{"vault", "set", "PROJ_KEY", "proj-val"}},
+	} {
+		cmd := exec.Command(binary, set.args...)
+		cmd.Dir = dir
+		cmd.Env = append(envWithoutHome(),
+			"FACTORLY_VAULT_PASSWORD="+set.pw,
+			"FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1",
+			"HOME="+t.TempDir(),
+		)
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("seed %v: %v", set.args, err)
+		}
+	}
+
+	// Workspace unlocks (ws-pw is right), then the chain falls back to
+	// project; the shared candidate fails, the second prompt receives
+	// the wrong password. The error must surface — not get flattened
+	// into "secret not found."
+	stdout, stderr, code := runWithIsolatedStdin(t, dir, "ws-pw\nwrong-pw\n",
+		"vault", "get", "PROJ_KEY", "--workspace", "staging")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit on wrong password, got 0\nstdout: %s\nstderr: %s", stdout, stderr)
+	}
+	combined := stderr + stdout
+	if strings.Contains(combined, "secret not found") {
+		t.Errorf("error surfaced as bare 'secret not found' — FallbackBackend swallowed the open error\nstderr: %s", stderr)
+	}
+	if !strings.Contains(combined, "vault") {
+		t.Errorf("expected error to mention vault/chain, got: %s", combined)
 	}
 }
 
