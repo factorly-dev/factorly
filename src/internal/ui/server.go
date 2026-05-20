@@ -24,6 +24,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/proxy"
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/factorly-dev/factorly/internal/shadow"
+	"github.com/factorly-dev/factorly/internal/store"
 	"github.com/factorly-dev/factorly/internal/vault"
 )
 
@@ -52,6 +53,10 @@ type Server struct {
 	// tier opened?" — CLI startup state and UI unlock state both flow
 	// through the same cache.
 	vaultMgr *vault.Manager
+
+	// storeMgr is the analogous Manager for the store primitive. The
+	// /store page consults this for tier-specific backend access.
+	storeMgr *store.Manager
 
 	// workspaceMu guards activeWorkspace only. The vault cache moved
 	// to the Manager (which has its own mutex), so this lock is now
@@ -138,6 +143,11 @@ type Options struct {
 	// consults it for cached/lazy opens (read path) and unlock-with-
 	// password flows. Required.
 	VaultManager *vault.Manager
+	// StoreManager is the shared process-wide store Manager. The UI's
+	// /store page reads keys via this. Optional — when nil, a Manager
+	// without a chainOpener is created so the store page renders
+	// (empty sections) without crashing in tests.
+	StoreManager *store.Manager
 }
 
 // New creates a UI server.
@@ -156,6 +166,7 @@ func New(opts Options) (*Server, error) {
 		"templates/history.html",
 		"templates/auth.html",
 		"templates/vault.html",
+		"templates/store.html",
 		"templates/blueprints.html",
 		"templates/blueprints_browse.html",
 		"templates/blueprint_browse_detail.html",
@@ -183,6 +194,11 @@ func New(opts Options) (*Server, error) {
 	if opts.VaultManager == nil {
 		opts.VaultManager = vault.NewManager(nil, nil)
 	}
+	// Same defaulting for the store Manager so the /store page
+	// renders empty sections in tests rather than crashing.
+	if opts.StoreManager == nil {
+		opts.StoreManager = store.NewManager(nil)
+	}
 
 	s := &Server{
 		cfg:             opts.Config,
@@ -198,6 +214,7 @@ func New(opts Options) (*Server, error) {
 		mux:             http.NewServeMux(),
 		activeWorkspace: opts.ActiveWorkspace,
 		vaultMgr:        opts.VaultManager,
+		storeMgr:        opts.StoreManager,
 	}
 	// Seed the Manager cache with the already-opened startup chain so
 	// the user doesn't get re-prompted on first page load. The empty
@@ -290,6 +307,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /vault", s.handleVault)
 	s.mux.HandleFunc("POST /vault", s.handleVaultSet)
 	s.mux.HandleFunc("DELETE /vault/{key}", s.handleVaultDelete)
+
+	// Store page — agent-writable workspace state. No unlock dance
+	// (store has no password), just browse / save / delete.
+	s.mux.HandleFunc("GET /store", s.handleStore)
+	s.mux.HandleFunc("POST /store", s.handleStoreSet)
+	s.mux.HandleFunc("DELETE /store/{key}", s.handleStoreDelete)
 	s.mux.HandleFunc("POST /vault/unlock", s.handleVaultUnlock)
 	s.mux.HandleFunc("POST /vault/unlock-form", s.handleVaultUnlockForm)
 	s.mux.HandleFunc("GET /vault/unlock-modal", s.handleVaultUnlockModal)

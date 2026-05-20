@@ -30,6 +30,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/proxy"
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/factorly-dev/factorly/internal/shadow"
+	"github.com/factorly-dev/factorly/internal/store"
 	"github.com/factorly-dev/factorly/internal/update"
 	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/factorly-dev/factorly/internal/workspace"
@@ -276,19 +277,35 @@ var callCmd = &cobra.Command{
 			return err
 		}
 
-		// Resolve {{vault:KEY}} refs in parameter values
-		for _, v := range params {
-			if vault.HasVaultRefs(v) {
+		// Resolve {{prefix:KEY}} refs in parameter values. Uses the
+		// resolver populated by bootstrapProviders so {{store:KEY}},
+		// {{env:VAR}}, {{expr:...}} all work in command-line param
+		// values, not just in tool YAML defaults.
+		//
+		// Vault refs need extra handling: when no {{vault:...}} ref
+		// appears in the config, initResolver intentionally skips
+		// opening the vault (no password prompt for vault-free
+		// projects). But the user might still pass a vault ref on the
+		// command line. So check for that case and lazily open vault
+		// here, registering it on the cached resolver.
+		resolver := getCachedResolver()
+		if resolver != nil {
+			needsVault := false
+			for _, v := range params {
+				if vault.HasVaultRefs(v) {
+					needsVault = true
+					break
+				}
+			}
+			if needsVault {
 				backend, err := getCachedVault()
 				if err != nil {
 					return fmt.Errorf("resolving vault refs in params: %w", err)
 				}
-				resolver := vault.NewResolver()
 				resolver.Register("vault", backend)
-				for k, pv := range params {
-					params[k] = resolveVaultRef(resolver, pv)
-				}
-				break
+			}
+			for k, pv := range params {
+				params[k] = resolveVaultRef(resolver, pv)
 			}
 		}
 
@@ -587,7 +604,7 @@ func init() {
 
 	toolsCmd.AddCommand(toolsListCmd, toolsShowCmd, addCmd, removeCmd, importCmd, recordCmd, statusCmd, toolsPromoteCmd)
 	utilsCmd.AddCommand(autocompleteCmd)
-	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, workspacesCmd, authCmd, serveCmd, wrapCmd, execCmd, logsCmd, utilsCmd, uiCmd, blueprintCmd)
+	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, storeCmd, workspacesCmd, authCmd, serveCmd, wrapCmd, execCmd, logsCmd, utilsCmd, uiCmd, blueprintCmd)
 }
 
 // loadConfig loads config and builds a registry. Does not open the vault
@@ -1058,7 +1075,130 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 		}
 	}
 
+	// Register factorly.store.* builtin handlers. These give the agent
+	// the four operations the CLI exposes — save, search, list, delete —
+	// against the same workspace-scoped bbolt store. Handlers go through
+	// getActiveStore(), so workspace cascade and audit logging are
+	// identical to the CLI path.
+	if bp, ok := providers["builtin"].(*provider.BuiltinProvider); ok {
+		if _, has := cfg.Tools["factorly.store.save"]; has {
+			bp.RegisterHandler("factorly.store.save", makeStoreSaveHandler())
+		}
+		if _, has := cfg.Tools["factorly.store.search"]; has {
+			bp.RegisterHandler("factorly.store.search", makeStoreSearchHandler())
+		}
+		if _, has := cfg.Tools["factorly.store.list"]; has {
+			bp.RegisterHandler("factorly.store.list", makeStoreListHandler())
+		}
+		if _, has := cfg.Tools["factorly.store.delete"]; has {
+			bp.RegisterHandler("factorly.store.delete", makeStoreDeleteHandler())
+		}
+		vlog("initialized factorly.store.* builtin handlers")
+	}
+
 	return p, nil
+}
+
+// makeStoreSaveHandler returns a builtin handler that writes a
+// key/value to the active workspace store. Mirrors `factorly store
+// set` end-to-end including audit logging.
+func makeStoreSaveHandler() provider.BuiltinHandler {
+	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
+		key := params["key"]
+		if key == "" {
+			return &provider.Result{Error: "key is required", ExitCode: 1}, nil
+		}
+		value := params["value"]
+		backend, err := getActiveStore()
+		if err != nil {
+			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
+		}
+		ttl, hasTTL, ttlErr := parseStoreTTL(params["ttl"])
+		if ttlErr != nil {
+			return &provider.Result{Error: ttlErr.Error(), ExitCode: 1}, nil
+		}
+		if hasTTL {
+			if lb, ok := backend.(*store.LocalBackend); ok {
+				if err := lb.SetWithTTL(key, value, ttl); err != nil {
+					logStoreOp("save", key, "error")
+					return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
+				}
+			} else {
+				return &provider.Result{Error: "TTL not supported by backend", ExitCode: 1}, nil
+			}
+		} else if err := backend.Set(key, value); err != nil {
+			logStoreOp("save", key, "error")
+			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
+		}
+		logStoreOp("save", key, "success")
+		return &provider.Result{Output: "saved " + key}, nil
+	}
+}
+
+// makeStoreSearchHandler returns a substring-match handler. Output
+// is newline-separated keys for ergonomic shell-style consumption.
+func makeStoreSearchHandler() provider.BuiltinHandler {
+	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
+		backend, err := getActiveStore()
+		if err != nil {
+			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
+		}
+		keys, err := backend.Search(params["query"])
+		if err != nil {
+			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
+		}
+		return &provider.Result{Output: joinNewline(keys)}, nil
+	}
+}
+
+// makeStoreListHandler returns every key in the active store.
+func makeStoreListHandler() provider.BuiltinHandler {
+	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
+		backend, err := getActiveStore()
+		if err != nil {
+			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
+		}
+		keys, err := backend.List()
+		if err != nil {
+			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
+		}
+		return &provider.Result{Output: joinNewline(keys)}, nil
+	}
+}
+
+// makeStoreDeleteHandler removes a key. Idempotent — missing keys
+// are not errors, mirroring the CLI behavior.
+func makeStoreDeleteHandler() provider.BuiltinHandler {
+	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
+		key := params["key"]
+		if key == "" {
+			return &provider.Result{Error: "key is required", ExitCode: 1}, nil
+		}
+		backend, err := getActiveStore()
+		if err != nil {
+			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
+		}
+		if err := backend.Delete(key); err != nil {
+			logStoreOp("delete", key, "error")
+			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
+		}
+		logStoreOp("delete", key, "success")
+		return &provider.Result{Output: "deleted " + key}, nil
+	}
+}
+
+// joinNewline glues a string slice with newlines for the agent-
+// facing output of List/Search. Pulled inline so the four handlers
+// share one formatting rule.
+func joinNewline(s []string) string {
+	if len(s) == 0 {
+		return ""
+	}
+	out := s[0]
+	for _, k := range s[1:] {
+		out += "\n" + k
+	}
+	return out
 }
 
 // makeFactorlyCodeHandler returns a builtin handler that compiles +
@@ -1213,6 +1353,20 @@ func initResolver(cfg *config.Config) (*vault.Resolver, error) {
 	} else {
 		resolver.Register("env", vault.EnvBackend{})
 	}
+
+	// Register the store backend for {{store:KEY}} reference syntax.
+	// Wrapped in a lazy resolver function so the bbolt file isn't
+	// created until a {{store:KEY}} ref actually fires. Without
+	// laziness, every factorly invocation would touch
+	// .factorly/store.db even when nothing references it.
+	resolver.RegisterFunc("store", func(key string) (string, error) {
+		reader, err := getCachedStoreReader()
+		if err != nil {
+			return "", err
+		}
+		return reader.Get(key)
+	})
+	vlog("registered lazy store backend for {{store:KEY}} resolution")
 
 	if !hasVaultRefs {
 		// No vault refs in config — skip the password prompt, but still

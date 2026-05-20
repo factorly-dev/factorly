@@ -42,6 +42,7 @@
 | Topic | Description |
 |-------|-------------|
 | [Vault](vault.md) | Encrypted secret storage with per-entry encryption |
+| [Store](store.md) | Agent-writable workspace state — cross-run scratchpad for the agent (`{{store:KEY}}`, `factorly.store.*`) |
 | [OAuth](oauth.md) | OAuth 2.0 authentication with PKCE and auto-refresh |
 | [OpenAPI Import](openapi-import.md) | Generate tools from OpenAPI/Swagger specs |
 | [Project Directory](project-directory.md) | Modular configs with `.factorly/` and `tools_dir` |

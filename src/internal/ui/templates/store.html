@@ -1,0 +1,99 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-2">Store</h1>
+<p class="text-sm text-gray-500 mb-4">
+  Agent-writable workspace state. Cross-run scratchpad for things like
+  "I researched these URLs," "user prefers brief responses," "last
+  deployment SHA." Default TTL is 30d with refresh-on-read.
+</p>
+{{if .ActiveWorkspace}}
+<div class="mb-6 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded text-xs text-indigo-700">
+  Active workspace: <span class="font-mono font-semibold">{{.ActiveWorkspace}}</span> —
+  reads come from <code class="font-mono">.factorly/workspaces/{{.ActiveWorkspace}}/store.db</code> first,
+  falling through to the project store. Writes target whichever tier you select in the "Store in" dropdown.
+</div>
+{{else}}
+<div class="mb-6"></div>
+{{end}}
+
+<!-- Add entry form -->
+<div class="bg-white rounded-lg border border-gray-200 p-5 mb-6">
+  <h2 class="font-semibold mb-3 text-sm">Save Entry</h2>
+  <form hx-post="/store" hx-target="#store-keys" hx-swap="innerHTML" hx-on::after-request="if(event.detail.successful) this.reset()" class="space-y-3">
+    <div class="flex gap-3 items-end">
+      <div class="flex-1">
+        <label class="block text-[10px] text-gray-400 uppercase mb-1">Key</label>
+        <input type="text" name="key" required placeholder="research:url:example.com"
+               class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+      </div>
+      <div class="w-32">
+        <label class="block text-[10px] text-gray-400 uppercase mb-1">TTL</label>
+        <input type="text" name="ttl" placeholder="30d"
+               class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+      </div>
+      <div class="w-40">
+        <label class="block text-[10px] text-gray-400 uppercase mb-1">Save in</label>
+        <select name="scope" class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
+          {{range .Sections}}
+          <option value="{{.Scope}}">{{.Label}}</option>
+          {{end}}
+        </select>
+      </div>
+    </div>
+    <div>
+      <label class="block text-[10px] text-gray-400 uppercase mb-1">Value</label>
+      <textarea name="value" required rows="3" placeholder="value"
+                class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200"></textarea>
+    </div>
+    <div class="flex items-center justify-between">
+      <p class="text-[11px] text-gray-400">
+        TTL examples: <code class="bg-gray-100 px-1 rounded">7d</code>,
+        <code class="bg-gray-100 px-1 rounded">24h</code>,
+        <code class="bg-gray-100 px-1 rounded">30m</code>,
+        <code class="bg-gray-100 px-1 rounded">0</code> = never expire.
+      </p>
+      <button type="submit"
+              class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shrink-0">
+        Save
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- Key list -->
+<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+  <div id="store-keys">
+    {{range .Sections}}
+    <div class="border-b border-gray-200 last:border-b-0">
+      <div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+        {{.Label}}
+        <span class="text-gray-300">({{len .Keys}} keys)</span>
+      </div>
+      {{if not .Keys}}
+      <div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>
+      {{else}}
+      {{range .Keys}}
+      <div class="px-5 py-2.5">
+        <div class="flex items-center justify-between">
+          <span class="font-mono text-sm">{{.}}</span>
+          <div class="flex items-center gap-3">
+            <button hx-delete="/store/{{.}}?scope={{$.Scope}}"
+                    hx-target="#store-keys"
+                    hx-swap="innerHTML"
+                    hx-confirm="Delete store entry '{{.}}'?"
+                    class="text-red-400 hover:text-red-600 text-xs">delete</button>
+          </div>
+        </div>
+      </div>
+      {{end}}
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+</div>
+
+{{end}}

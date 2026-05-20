@@ -246,6 +246,10 @@ type tierSelector struct {
 	VaultGlobal   bool
 	WorkspaceName string
 	EnvVaultPath  string
+	// StoreGlobal pins store operations to the global tier
+	// (~/.config/factorly/store.db). Consumed by activeStoreTier
+	// only; activeTier ignores it.
+	StoreGlobal bool
 }
 
 // currentSelector snapshots the package-level flag and env state.
@@ -258,6 +262,7 @@ func currentSelector() tierSelector {
 		VaultGlobal:   vaultGlobal,
 		WorkspaceName: workspaceName,
 		EnvVaultPath:  os.Getenv("FACTORLY_VAULT_PATH"),
+		StoreGlobal:   storeGlobal,
 	}
 }
 

@@ -11,9 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/factorly-dev/factorly/internal/workspace"
 	"github.com/spf13/cobra"
@@ -154,32 +152,9 @@ func getCachedLocalVault() (*vault.LocalBackend, error) {
 
 // logVaultOp logs a vault operation to the JSONL audit trail.
 // Never logs secret values — only the operation and key name.
-// Uses the shared process-wide logger to maintain hash chain integrity.
+// Thin wrapper over the shared logKVOp helper (cmd/factorly/audit.go).
 func logVaultOp(op string, key string, status string) {
-	log := sharedLogger
-	if log == nil {
-		// Fallback: vault commands can run before bootstrap (e.g., factorly vault set)
-		if os.Getenv("FACTORLY_NO_LOG") != "" {
-			return
-		}
-		fallback, err := logger.NewJSONL("")
-		if err != nil {
-			return
-		}
-		defer fallback.Close()
-		log = fallback
-	}
-
-	entry := &logger.Entry{
-		Timestamp: time.Now(),
-		Interface: "vault",
-		Tool:      "vault." + op,
-		Status:    status,
-	}
-	if key != "" {
-		entry.Params = map[string]string{"key": key}
-	}
-	_ = log.Log(entry)
+	logKVOp("vault", op, key, status)
 }
 
 var vaultPath string

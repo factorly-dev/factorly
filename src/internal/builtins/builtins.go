@@ -114,7 +114,77 @@ func Register(cfg *config.Config, opts Options) {
 			{Name: "params", Type: "json", Description: factorlyCodeParamParamsDescription},
 		},
 	})
+
+	// factorly.store.* — agent-writable workspace state primitive.
+	// Mirror of the `factorly store` CLI subcommands. Default shadow
+	// is permissive (no confirm) because store is the agent's write
+	// surface by design; operators tighten via `factorly.store.save`
+	// shadow rules in their config if they want approval gating.
+	//
+	// Audit log entries for save/delete flow through the same
+	// logStoreOp path the CLI uses, so `factorly store history <key>`
+	// surfaces both CLI and agent-driven changes.
+	register("factorly.store.save", config.ToolConfig{
+		Type:        "builtin",
+		Description: factorlyStoreSaveDescription,
+		Parameters: []config.ParamConfig{
+			{Name: "key", Description: "Key to save under. Use prefixes like `research:url:...` for implicit namespacing.", Required: true},
+			{Name: "value", Type: "text", Description: "Value to save. Strings only; JSON-encode if you need structure.", Required: true},
+			{Name: "ttl", Description: "Optional lifetime (e.g. 7d, 24h, 30m). 0 = never expire. Empty = default 30d with refresh-on-read.", Required: false},
+		},
+	})
+
+	register("factorly.store.search", config.ToolConfig{
+		Type:        "builtin",
+		Description: factorlyStoreSearchDescription,
+		Parameters: []config.ParamConfig{
+			{Name: "query", Description: "Substring to match against keys (case-insensitive). Empty returns all keys.", Required: false},
+		},
+	})
+
+	register("factorly.store.list", config.ToolConfig{
+		Type:        "builtin",
+		Description: factorlyStoreListDescription,
+	})
+
+	register("factorly.store.delete", config.ToolConfig{
+		Type:        "builtin",
+		Description: factorlyStoreDeleteDescription,
+		Parameters: []config.ParamConfig{
+			{Name: "key", Description: "Key to remove.", Required: true},
+		},
+	})
 }
+
+// factorlyStoreSaveDescription teaches the agent how to use the
+// save primitive. Kept terse — the surface is intentionally narrow
+// (no tags, no namespaces) so there's not much to explain.
+const factorlyStoreSaveDescription = `Save a key/value pair to the workspace store — your scratchpad for cross-run state.
+
+Use this for things like:
+  - "I researched these URLs already, don't re-fetch"
+  - "The user prefers brief responses, no emojis"
+  - "Last successful deployment SHA was X"
+
+Key conventions:
+  - Plain strings; use prefixes like ` + "`research:url:<url>`" + ` for implicit namespacing.
+  - Values are strings too; JSON-encode if you need structure.
+  - Default TTL is 30 days with refresh-on-read — frequently-touched entries stay alive.
+  - Pass ttl=0 for never-expire (use sparingly; the store is short-term memory by design).
+
+The store is workspace-scoped: when --workspace is active, you write to that workspace's store. Otherwise the project store.`
+
+const factorlyStoreSearchDescription = `Search store keys by substring (case-insensitive). Returns matching key names, one per line.
+
+Empty query returns all keys, sorted. The store has no semantic search by design — use prefixes (` + "`research:url:*`" + `) and Search to enumerate, then Get specific keys you want.`
+
+const factorlyStoreListDescription = `List every key in the workspace store, sorted. Workspace-scoped: cascades from project when reading inside a workspace.
+
+Pair with Get to enumerate what you've previously saved.`
+
+const factorlyStoreDeleteDescription = `Remove a key from the workspace store. Idempotent — deleting a missing key is not an error.
+
+Use to clean up entries that are no longer useful. Audit-logged.`
 
 // factorlyCodeDescription teaches an MCP agent enough to compose a
 // working script without trial-and-error. Kept in one place so the

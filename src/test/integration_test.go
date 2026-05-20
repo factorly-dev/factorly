@@ -1387,6 +1387,99 @@ func TestSyncCursorDetection(t *testing.T) {
 	}
 }
 
+// --- Store Builtins (agent-facing) ---
+
+// TestStoreBuiltinsRoundTripViaCode exercises the four factorly.store.*
+// builtins through factorly.code — the canonical "agent uses store"
+// path. A script saves a key, searches for it, lists keys, and
+// deletes — round-tripping the agent-writable surface.
+func TestStoreBuiltinsRoundTripViaCode(t *testing.T) {
+	// Isolate HOME so the global store tier can never touch the dev's
+	// real ~/.config/factorly/store.db. The test only writes to the
+	// project store, but a regression that cascaded a write to the
+	// global tier would silently pollute the user's environment.
+	t.Setenv("HOME", t.TempDir())
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools: {}`,
+	})
+
+	src := `package main
+import (
+    "errors"
+    "factorly"
+)
+func Run(p map[string]string) (any, error) {
+    if r, err := factorly.Call("factorly.store.save", map[string]string{"key": "agent-note", "value": "remembered"}); err != nil {
+        return nil, err
+    } else if r.IsError() {
+        return nil, errors.New("save: " + r.Error)
+    }
+    r, err := factorly.Call("factorly.store.list", map[string]string{})
+    if err != nil { return nil, err }
+    if r.IsError() { return nil, errors.New("list: " + r.Error) }
+    return r.Output, nil
+}`
+	stdout, stderr, code := run(t, dir, "call", "factorly.code", "--code", src, "--params", "{}")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stdout, "agent-note") {
+		t.Errorf("expected list output to mention agent-note, got %q", stdout)
+	}
+
+	// Confirm via CLI that the key really landed in the store.
+	out, _, code := run(t, dir, "store", "get", "agent-note")
+	if code != 0 {
+		t.Fatalf("cli get exit %d", code)
+	}
+	if strings.TrimSpace(out) != "remembered" {
+		t.Errorf("cli get = %q, want 'remembered'", out)
+	}
+}
+
+// --- Store Refs in Params ---
+
+// TestCallParamWithStoreRef pins the {{store:KEY}} reference syntax
+// end-to-end. The store backend should resolve refs in CLI param
+// values just like {{vault:KEY}} does, but without ever opening
+// the vault (no password prompt). Regression guard for the
+// HasVaultRefs exclusion that lets store-only ref strings skip the
+// vault-open branch.
+func TestCallParamWithStoreRef(t *testing.T) {
+	// Isolate HOME so the global store tier can never touch the dev's
+	// real ~/.config/factorly/store.db.
+	t.Setenv("HOME", t.TempDir())
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `
+tools:
+  echo.test:
+    type: cli
+    command: echo
+    args: ["{{text}}"]
+    parameters:
+      - name: text
+        description: text to echo
+        required: true
+`,
+	})
+
+	// Seed the store directly (no password prompt; no vault touched).
+	_, _, code := run(t, dir, "store", "set", "MY_NOTE", "from-store")
+	if code != 0 {
+		t.Fatal("store set failed")
+	}
+
+	stdout, _, code := run(t, dir, "call", "echo.test", "--text", "{{store:MY_NOTE}}")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if strings.TrimSpace(stdout) != "from-store" {
+		t.Errorf("expected 'from-store', got %q", stdout)
+	}
+}
+
 // --- Vault Refs in Params ---
 
 func TestCallParamWithVaultRef(t *testing.T) {

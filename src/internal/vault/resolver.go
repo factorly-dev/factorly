@@ -187,13 +187,25 @@ func (r *Resolver) Redact(s string, originalRefs []string) string {
 }
 
 // HasVaultRefs returns true if the string contains any {{backend:key}} references
-// that require vault access. Excludes {{env:VAR}} since env vars are resolved
-// at config load time — unresolved env refs mean the var isn't set, not that
-// the vault is needed.
+// that require vault access. Excludes references that DON'T need the vault
+// opened to resolve:
+//   - {{env:VAR}}: resolved against the env backend at config load
+//   - {{store:KEY}}: resolved against the bbolt store (no password)
+//   - {{expr:...}}: pure computation, no I/O
+//
+// Anything else (vault, op, external backends like aws-sm) requires the
+// vault backend or external secret backends; callers gate the password
+// prompt + backend open on this returning true.
 func HasVaultRefs(s string) bool {
 	matches := refPattern.FindAllStringSubmatch(s, -1)
 	for _, m := range matches {
-		if len(m) >= 2 && m[1] != "env" {
+		if len(m) < 2 {
+			continue
+		}
+		switch m[1] {
+		case "env", "store", "expr":
+			continue
+		default:
 			return true
 		}
 	}
