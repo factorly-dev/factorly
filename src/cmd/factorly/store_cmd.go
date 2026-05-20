@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/factorly-dev/factorly/internal/logger"
@@ -30,33 +29,23 @@ var storeTTLFlag string
 // win). Snapshot into tierSelector.StoreGlobal via currentSelector().
 var storeGlobal bool
 
-// Process-wide store Manager. Mirrors the vault Manager pattern at
-// vault_cmd.go: lazily constructed on first access, owns a per-scope
-// cache, shared by CLI commands and (eventually) the UI server.
+// openStore is the per-operation backend opener. Every store
+// operation in cmd/factorly goes through this. We deliberately do
+// NOT cache the backend: bbolt holds an exclusive file lock for the
+// lifetime of an open handle, and a long-lived cache means a running
+// factorly process (MCP server, factorly ui, factorly call --watch)
+// would lock out every other factorly process. Per-op opens release
+// the lock as soon as the work is done, at the cost of one
+// bbolt.Open per call (sub-ms for an existing file).
 //
-// The chainOpener dispatches on scope strings:
+// Scope dispatch:
 //   - "project"           → .factorly/store.db
 //   - "global"            → ~/.config/factorly/store.db
 //   - "workspace:<name>"  → .factorly/workspaces/<name>/store.db
 //
-// No password resolution machinery — store is unencrypted.
-var (
-	storeManagerOnce sync.Once
-	storeManager     *store.Manager
-)
-
-func getStoreManager() *store.Manager {
-	storeManagerOnce.Do(func() {
-		storeManager = store.NewManager(storeChainOpener)
-	})
-	return storeManager
-}
-
-// storeChainOpener resolves a scope to a bbolt-backed Backend. This
-// is the only place in cmd/factorly that knows about the
-// scope → on-disk path mapping for store; everything else goes
-// through the Manager.
-func storeChainOpener(scope string) (store.Backend, error) {
+// Callers are responsible for closing the returned backend. Prefer
+// withStore / withActiveStore, which handle the defer correctly.
+func openStore(scope string) (store.Backend, error) {
 	var t storeTier
 	switch {
 	case scope == "project":
@@ -78,82 +67,85 @@ func storeChainOpener(scope string) (store.Backend, error) {
 	return store.OpenLocalAt(t.Path)
 }
 
-// getActiveStore returns the store Backend the current CLI invocation
-// should write/read against. Single-tier selection (no fallback
-// chain) because writes need to be unambiguous — like vault
-// set/delete, store operations target exactly one tier.
-//
-// The returned Backend's lifetime is owned by the Manager; do not
-// Close it directly.
-func getActiveStore() (store.Backend, error) {
-	if err := validateActiveStoreName(); err != nil {
-		return nil, err
-	}
-	t := activeStoreTier(currentSelector())
-	scope := t.Name
-	return getStoreManager().GetOrOpen(scope)
-}
-
-// getCachedStoreReader returns the read-side cascade for the active
-// scope: when --workspace is set, the workspace store with project
-// fallback; otherwise the project store directly.
-//
-// This is what gets registered as the {{store:KEY}} resolver backend
-// — reads cascade so a project-wide store value is visible inside a
-// workspace context unless the workspace specifically overrides it.
-//
-// Writes don't go through this (they use getActiveStore to target
-// exactly one tier). Mirrors the read/write asymmetry vault has.
-func getCachedStoreReader() (store.Backend, error) {
-	if err := validateActiveStoreName(); err != nil {
-		return nil, err
-	}
-	t := activeStoreTier(currentSelector())
-	mgr := getStoreManager()
-	primary, err := mgr.GetOrOpen(t.Name)
+// withStore opens the backend for the given scope, runs fn, and
+// closes the backend. Errors from fn take precedence over Close
+// errors. If Close fails after fn succeeds, the Close error is
+// returned — a leaked bbolt lock is something the caller wants to
+// know about.
+func withStore(scope string, fn func(store.Backend) error) error {
+	b, err := openStore(scope)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	// Project tier already IS the project — no fallback. Same for
-	// global. Only workspace tier gets the cascade wrapper.
+	fnErr := fn(b)
+	closeErr := b.Close()
+	if fnErr != nil {
+		return fnErr
+	}
+	return closeErr
+}
+
+// withActiveStore opens the backend the current CLI invocation
+// targets (from currentSelector), runs fn, and closes. Single-tier
+// selection — writes go to exactly one place, mirroring vault
+// set/delete semantics.
+func withActiveStore(fn func(store.Backend) error) error {
+	if err := validateActiveStoreName(); err != nil {
+		return err
+	}
+	return withStore(activeStoreTier(currentSelector()).Name, fn)
+}
+
+// withCascadeStore opens the read-cascade for the active scope, runs
+// fn with a Backend that reads cascade workspace→project, and closes
+// every underlying handle.
+//
+// Reads cascade because a project-wide store value should be visible
+// inside a workspace context unless the workspace specifically
+// overrides it. Writes do NOT cascade — see withActiveStore for the
+// single-tier write path.
+//
+// When --workspace is not set, this is equivalent to withStore on
+// the active scope (project or global).
+//
+// Both opens happen up front — laziness wouldn't buy anything since
+// the closure is short-lived and the project file is always opened
+// for any workspace read that misses the workspace tier. The cost is
+// a few sub-ms bbolt.Open calls per closure invocation.
+func withCascadeStore(fn func(store.Backend) error) error {
+	if err := validateActiveStoreName(); err != nil {
+		return err
+	}
+	t := activeStoreTier(currentSelector())
+	primary, err := openStore(t.Name)
+	if err != nil {
+		return err
+	}
+	defer primary.Close()
+
+	// Non-workspace tiers are already terminal — project IS the
+	// project, global IS global.
 	if !strings.HasPrefix(t.Name, "workspace:") {
-		return primary, nil
+		return fn(primary)
 	}
-	// Workspace tier: wrap with a lazy project fallback so reads of
-	// keys that don't exist in the workspace fall through to the
-	// project store. Project tier opens on first miss; if it doesn't
-	// exist either (fresh install with no project store yet), the
-	// fallback opener silently returns nil and Get yields ErrNotFound.
-	return &fallbackStoreReader{
-		primary:  primary,
-		fallback: func() (store.Backend, error) { return mgr.GetOrOpen("project") },
-	}, nil
+
+	// Workspace tier: also open project for fallback. If the project
+	// store doesn't exist yet (or its open fails), reads fall through
+	// to ErrNotFound rather than erroring — same forgiving behavior
+	// the old lazy-opener path had.
+	secondary, _ := openStore("project")
+	if secondary != nil {
+		defer secondary.Close()
+	}
+	return fn(&fallbackStoreReader{primary: primary, secondary: secondary})
 }
 
-// fallbackStoreReader gives store the workspace→project read
-// cascade. Mirrors vault.FallbackBackend's shape and concurrency
-// contract (sync.Once-style lazy open of the fallback), but lives
-// here because store's Backend interface has an extra Search method
-// vault's FallbackBackend doesn't know about.
+// fallbackStoreReader implements the workspace→project read cascade.
+// Both backends are owned by withCascadeStore; this type does NOT
+// own their lifetimes (Close is a no-op).
 type fallbackStoreReader struct {
-	primary  store.Backend
-	fallback func() (store.Backend, error)
-
-	openOnce     sync.Once
-	cachedSec    store.Backend
-	cachedSecErr error
-}
-
-func (f *fallbackStoreReader) loadFallback() (store.Backend, error) {
-	f.openOnce.Do(func() {
-		if f.fallback == nil {
-			return
-		}
-		b, err := f.fallback()
-		f.cachedSec = b
-		f.cachedSecErr = err
-	})
-	return f.cachedSec, f.cachedSecErr
+	primary   store.Backend
+	secondary store.Backend // nil = no fallback
 }
 
 func (f *fallbackStoreReader) Get(key string) (string, error) {
@@ -164,11 +156,10 @@ func (f *fallbackStoreReader) Get(key string) (string, error) {
 	if !errors.Is(err, store.ErrNotFound) {
 		return "", err
 	}
-	sec, secErr := f.loadFallback()
-	if secErr != nil || sec == nil {
+	if f.secondary == nil {
 		return "", store.ErrNotFound
 	}
-	return sec.Get(key)
+	return f.secondary.Get(key)
 }
 
 // Set / Delete are unambiguously workspace-scoped — fallback for
@@ -178,11 +169,8 @@ func (f *fallbackStoreReader) Set(key, value string) error { return f.primary.Se
 func (f *fallbackStoreReader) Delete(key string) error     { return f.primary.Delete(key) }
 
 // List and Search union the primary's keys with the fallback's,
-// deduplicating. This way `factorly store list` from a workspace
-// context shows everything readable in that scope. Workspace
-// entries shadow project entries with the same name (we add
-// workspace keys to the set first, then project entries that
-// aren't already present).
+// deduplicating. Workspace entries shadow project entries with the
+// same name.
 func (f *fallbackStoreReader) List() ([]string, error) {
 	primaryKeys, err := f.primary.List()
 	if err != nil {
@@ -192,9 +180,8 @@ func (f *fallbackStoreReader) List() ([]string, error) {
 	for _, k := range primaryKeys {
 		seen[k] = true
 	}
-	sec, secErr := f.loadFallback()
-	if secErr == nil && sec != nil {
-		secondaryKeys, err := sec.List()
+	if f.secondary != nil {
+		secondaryKeys, err := f.secondary.List()
 		if err == nil {
 			for _, k := range secondaryKeys {
 				if !seen[k] {
@@ -204,8 +191,6 @@ func (f *fallbackStoreReader) List() ([]string, error) {
 			}
 		}
 	}
-	// List() on individual backends is already sorted, but the union
-	// breaks ordering. Re-sort for a stable result.
 	sortStringsInPlace(primaryKeys)
 	return primaryKeys, nil
 }
@@ -219,9 +204,8 @@ func (f *fallbackStoreReader) Search(query string) ([]string, error) {
 	for _, k := range primaryKeys {
 		seen[k] = true
 	}
-	sec, secErr := f.loadFallback()
-	if secErr == nil && sec != nil {
-		secondaryKeys, err := sec.Search(query)
+	if f.secondary != nil {
+		secondaryKeys, err := f.secondary.Search(query)
 		if err == nil {
 			for _, k := range secondaryKeys {
 				if !seen[k] {
@@ -235,9 +219,8 @@ func (f *fallbackStoreReader) Search(query string) ([]string, error) {
 	return primaryKeys, nil
 }
 
-// Close is a no-op — the Manager owns the lifetimes of the wrapped
-// backends. Closing here would yank the cached backends out from
-// under any other holder.
+// Close is a no-op — withCascadeStore owns the lifetimes of the
+// underlying handles.
 func (f *fallbackStoreReader) Close() error { return nil }
 
 // sortStringsInPlace is a tiny helper to keep the import surface
@@ -312,10 +295,6 @@ var storeSetCmd = &cobra.Command{
 	Short: "Save a key/value pair to the store",
 	Args:  requireArgs(1, "factorly store set <key> [value]"),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		backend, err := getActiveStore()
-		if err != nil {
-			return err
-		}
 		key := args[0]
 		var value string
 		if len(args) > 1 {
@@ -338,25 +317,27 @@ var storeSetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		// Local cast to call SetWithTTL — store.Backend is the resolver-
-		// compatible narrow interface; the concrete LocalBackend exposes
-		// the TTL-bearing variant.
-		if hasTTL {
-			if lb, ok := backend.(*store.LocalBackend); ok {
+		return withActiveStore(func(backend store.Backend) error {
+			// Local cast to call SetWithTTL — store.Backend is the
+			// resolver-compatible narrow interface; LocalBackend exposes
+			// the TTL-bearing variant.
+			if hasTTL {
+				lb, ok := backend.(*store.LocalBackend)
+				if !ok {
+					return fmt.Errorf("store: TTL not supported on backend %T", backend)
+				}
 				if err := lb.SetWithTTL(key, value, ttl); err != nil {
 					logStoreOp("save", key, "error")
 					return err
 				}
-			} else {
-				return fmt.Errorf("store: TTL not supported on backend %T", backend)
+			} else if err := backend.Set(key, value); err != nil {
+				logStoreOp("save", key, "error")
+				return err
 			}
-		} else if err := backend.Set(key, value); err != nil {
-			logStoreOp("save", key, "error")
-			return err
-		}
-		logStoreOp("save", key, "success")
-		fmt.Fprintf(os.Stderr, "Saved %s to store\n", key)
-		return nil
+			logStoreOp("save", key, "success")
+			fmt.Fprintf(os.Stderr, "Saved %s to store\n", key)
+			return nil
+		})
 	},
 }
 
@@ -365,22 +346,20 @@ var storeGetCmd = &cobra.Command{
 	Short: "Retrieve a value from the store",
 	Args:  requireArgs(1, "factorly store get <key>"),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		backend, err := getActiveStore()
-		if err != nil {
-			return err
-		}
-		value, err := backend.Get(args[0])
-		if err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return fmt.Errorf("key %q not found", args[0])
+		return withCascadeStore(func(backend store.Backend) error {
+			value, err := backend.Get(args[0])
+			if err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					return fmt.Errorf("key %q not found", args[0])
+				}
+				return err
 			}
-			return err
-		}
-		// Get is high-frequency and low-information for audit
-		// purposes — deliberately NOT logged. If users need
-		// per-tool gating they can wrap store reads in a code tool.
-		fmt.Print(value)
-		return nil
+			// Get is high-frequency and low-information for audit
+			// purposes — deliberately NOT logged. If users need
+			// per-tool gating they can wrap store reads in a code tool.
+			fmt.Print(value)
+			return nil
+		})
 	},
 }
 
@@ -388,18 +367,16 @@ var storeListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all keys in the store",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		backend, err := getActiveStore()
-		if err != nil {
-			return err
-		}
-		keys, err := backend.List()
-		if err != nil {
-			return err
-		}
-		for _, k := range keys {
-			fmt.Println(k)
-		}
-		return nil
+		return withCascadeStore(func(backend store.Backend) error {
+			keys, err := backend.List()
+			if err != nil {
+				return err
+			}
+			for _, k := range keys {
+				fmt.Println(k)
+			}
+			return nil
+		})
 	},
 }
 
@@ -408,18 +385,16 @@ var storeSearchCmd = &cobra.Command{
 	Short: "Search keys by substring (case-insensitive)",
 	Args:  requireArgs(1, "factorly store search <query>"),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		backend, err := getActiveStore()
-		if err != nil {
-			return err
-		}
-		keys, err := backend.Search(args[0])
-		if err != nil {
-			return err
-		}
-		for _, k := range keys {
-			fmt.Println(k)
-		}
-		return nil
+		return withCascadeStore(func(backend store.Backend) error {
+			keys, err := backend.Search(args[0])
+			if err != nil {
+				return err
+			}
+			for _, k := range keys {
+				fmt.Println(k)
+			}
+			return nil
+		})
 	},
 }
 
@@ -428,17 +403,15 @@ var storeDeleteCmd = &cobra.Command{
 	Short: "Remove a key from the store",
 	Args:  requireArgs(1, "factorly store delete <key>"),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		backend, err := getActiveStore()
-		if err != nil {
-			return err
-		}
-		if err := backend.Delete(args[0]); err != nil {
-			logStoreOp("delete", args[0], "error")
-			return err
-		}
-		logStoreOp("delete", args[0], "success")
-		fmt.Fprintf(os.Stderr, "Deleted %s from store\n", args[0])
-		return nil
+		return withActiveStore(func(backend store.Backend) error {
+			if err := backend.Delete(args[0]); err != nil {
+				logStoreOp("delete", args[0], "error")
+				return err
+			}
+			logStoreOp("delete", args[0], "success")
+			fmt.Fprintf(os.Stderr, "Deleted %s from store\n", args[0])
+			return nil
+		})
 	},
 }
 

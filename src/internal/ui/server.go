@@ -54,9 +54,13 @@ type Server struct {
 	// through the same cache.
 	vaultMgr *vault.Manager
 
-	// storeMgr is the analogous Manager for the store primitive. The
-	// /store page consults this for tier-specific backend access.
-	storeMgr *store.Manager
+	// storeOpener opens the store backend for a given scope on demand.
+	// Per-request opens — the bbolt file lock is held only for the
+	// duration of one HTTP handler so other factorly processes (CLI,
+	// MCP server, parallel UI tabs) can write concurrently. Callers
+	// MUST Close the returned backend; the handler helpers in
+	// handlers_store.go handle the defer.
+	storeOpener StoreOpener
 
 	// workspaceMu guards activeWorkspace only. The vault cache moved
 	// to the Manager (which has its own mutex), so this lock is now
@@ -143,12 +147,20 @@ type Options struct {
 	// consults it for cached/lazy opens (read path) and unlock-with-
 	// password flows. Required.
 	VaultManager *vault.Manager
-	// StoreManager is the shared process-wide store Manager. The UI's
-	// /store page reads keys via this. Optional — when nil, a Manager
-	// without a chainOpener is created so the store page renders
-	// (empty sections) without crashing in tests.
-	StoreManager *store.Manager
+	// StoreOpener opens a fresh store backend for a given scope. The
+	// /store page calls this once per HTTP request and closes the
+	// returned backend before responding — bbolt holds a per-file
+	// exclusive lock, so caching would block concurrent factorly
+	// processes. Optional in tests; nil means "no store available"
+	// (the page renders empty sections).
+	StoreOpener StoreOpener
 }
+
+// StoreOpener is the seam between the UI and the actual store
+// backend implementation. cmd/factorly wires this to openStore; tests
+// inject a stub that returns a pre-seeded LocalBackend at a temp
+// path.
+type StoreOpener func(scope string) (store.Backend, error)
 
 // New creates a UI server.
 func New(opts Options) (*Server, error) {
@@ -194,11 +206,9 @@ func New(opts Options) (*Server, error) {
 	if opts.VaultManager == nil {
 		opts.VaultManager = vault.NewManager(nil, nil)
 	}
-	// Same defaulting for the store Manager so the /store page
-	// renders empty sections in tests rather than crashing.
-	if opts.StoreManager == nil {
-		opts.StoreManager = store.NewManager(nil)
-	}
+	// Tests can omit StoreOpener — leave it nil and the /store page
+	// renders empty sections (handlers degrade gracefully when the
+	// opener is nil).
 
 	s := &Server{
 		cfg:             opts.Config,
@@ -214,7 +224,7 @@ func New(opts Options) (*Server, error) {
 		mux:             http.NewServeMux(),
 		activeWorkspace: opts.ActiveWorkspace,
 		vaultMgr:        opts.VaultManager,
-		storeMgr:        opts.StoreManager,
+		storeOpener:     opts.StoreOpener,
 	}
 	// Seed the Manager cache with the already-opened startup chain so
 	// the user doesn't get re-prompted on first page load. The empty

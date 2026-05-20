@@ -1102,6 +1102,10 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 // makeStoreSaveHandler returns a builtin handler that writes a
 // key/value to the active workspace store. Mirrors `factorly store
 // set` end-to-end including audit logging.
+//
+// Per-op open via withActiveStore so the bbolt file lock is released
+// as soon as the write completes — concurrent factorly processes
+// (CLI from another terminal, factorly ui) aren't blocked.
 func makeStoreSaveHandler() provider.BuiltinHandler {
 	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
 		key := params["key"]
@@ -1109,28 +1113,37 @@ func makeStoreSaveHandler() provider.BuiltinHandler {
 			return &provider.Result{Error: "key is required", ExitCode: 1}, nil
 		}
 		value := params["value"]
-		backend, err := getActiveStore()
-		if err != nil {
-			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
-		}
 		ttl, hasTTL, ttlErr := parseStoreTTL(params["ttl"])
 		if ttlErr != nil {
 			return &provider.Result{Error: ttlErr.Error(), ExitCode: 1}, nil
 		}
-		if hasTTL {
-			if lb, ok := backend.(*store.LocalBackend); ok {
+		var resultErr string
+		err := withActiveStore(func(backend store.Backend) error {
+			if hasTTL {
+				lb, ok := backend.(*store.LocalBackend)
+				if !ok {
+					resultErr = "TTL not supported by backend"
+					return nil
+				}
 				if err := lb.SetWithTTL(key, value, ttl); err != nil {
 					logStoreOp("save", key, "error")
-					return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
+					resultErr = err.Error()
+					return nil
 				}
-			} else {
-				return &provider.Result{Error: "TTL not supported by backend", ExitCode: 1}, nil
+			} else if err := backend.Set(key, value); err != nil {
+				logStoreOp("save", key, "error")
+				resultErr = err.Error()
+				return nil
 			}
-		} else if err := backend.Set(key, value); err != nil {
-			logStoreOp("save", key, "error")
+			logStoreOp("save", key, "success")
+			return nil
+		})
+		if err != nil {
 			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
 		}
-		logStoreOp("save", key, "success")
+		if resultErr != "" {
+			return &provider.Result{Error: resultErr, ExitCode: 1}, nil
+		}
 		return &provider.Result{Output: "saved " + key}, nil
 	}
 }
@@ -1139,11 +1152,12 @@ func makeStoreSaveHandler() provider.BuiltinHandler {
 // is newline-separated keys for ergonomic shell-style consumption.
 func makeStoreSearchHandler() provider.BuiltinHandler {
 	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
-		backend, err := getActiveStore()
-		if err != nil {
-			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
-		}
-		keys, err := backend.Search(params["query"])
+		var keys []string
+		err := withCascadeStore(func(backend store.Backend) error {
+			var listErr error
+			keys, listErr = backend.Search(params["query"])
+			return listErr
+		})
 		if err != nil {
 			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
 		}
@@ -1154,11 +1168,12 @@ func makeStoreSearchHandler() provider.BuiltinHandler {
 // makeStoreListHandler returns every key in the active store.
 func makeStoreListHandler() provider.BuiltinHandler {
 	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
-		backend, err := getActiveStore()
-		if err != nil {
-			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
-		}
-		keys, err := backend.List()
+		var keys []string
+		err := withCascadeStore(func(backend store.Backend) error {
+			var listErr error
+			keys, listErr = backend.List()
+			return listErr
+		})
 		if err != nil {
 			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
 		}
@@ -1174,15 +1189,22 @@ func makeStoreDeleteHandler() provider.BuiltinHandler {
 		if key == "" {
 			return &provider.Result{Error: "key is required", ExitCode: 1}, nil
 		}
-		backend, err := getActiveStore()
+		var resultErr string
+		err := withActiveStore(func(backend store.Backend) error {
+			if err := backend.Delete(key); err != nil {
+				logStoreOp("delete", key, "error")
+				resultErr = err.Error()
+				return nil
+			}
+			logStoreOp("delete", key, "success")
+			return nil
+		})
 		if err != nil {
 			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
 		}
-		if err := backend.Delete(key); err != nil {
-			logStoreOp("delete", key, "error")
-			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
+		if resultErr != "" {
+			return &provider.Result{Error: resultErr, ExitCode: 1}, nil
 		}
-		logStoreOp("delete", key, "success")
 		return &provider.Result{Output: "deleted " + key}, nil
 	}
 }
@@ -1355,18 +1377,23 @@ func initResolver(cfg *config.Config) (*vault.Resolver, error) {
 	}
 
 	// Register the store backend for {{store:KEY}} reference syntax.
-	// Wrapped in a lazy resolver function so the bbolt file isn't
-	// created until a {{store:KEY}} ref actually fires. Without
-	// laziness, every factorly invocation would touch
-	// .factorly/store.db even when nothing references it.
+	// Per-substitution open via withCascadeStore so the bbolt file
+	// lock is held only for the microseconds it takes to read the key
+	// — concurrent factorly processes don't block on each other.
+	// (Laziness is also automatic: no {{store:KEY}} ref means no open.)
 	resolver.RegisterFunc("store", func(key string) (string, error) {
-		reader, err := getCachedStoreReader()
-		if err != nil {
-			return "", err
-		}
-		return reader.Get(key)
+		var value string
+		err := withCascadeStore(func(backend store.Backend) error {
+			v, getErr := backend.Get(key)
+			if getErr != nil {
+				return getErr
+			}
+			value = v
+			return nil
+		})
+		return value, err
 	})
-	vlog("registered lazy store backend for {{store:KEY}} resolution")
+	vlog("registered store backend for {{store:KEY}} resolution")
 
 	if !hasVaultRefs {
 		// No vault refs in config — skip the password prompt, but still

@@ -40,6 +40,12 @@ func (s *Server) handleStore(w http.ResponseWriter, r *http.Request) {
 // the user can write to shows up as both a "Save in" choice and a
 // listed section.
 //
+// Per-tier opens: each section opens its bbolt file, lists keys,
+// closes. bbolt holds an exclusive file lock for the lifetime of an
+// open handle — caching would block concurrent factorly processes
+// (CLI in another terminal, MCP server). Costs a sub-ms open per
+// section per page render; not worth caching.
+//
 // Unlike vault, store has no locked concept. A missing file is
 // just "empty" — the file will be created on first write.
 func (s *Server) storeSections(r *http.Request) []storeSection {
@@ -52,11 +58,7 @@ func (s *Server) storeSections(r *http.Request) []storeSection {
 			Scope: "workspace:" + name,
 		}
 		if _, statErr := os.Stat(workspaceStoreFilePath(name)); statErr == nil {
-			if b, err := s.storeMgr.GetOrOpen("workspace:" + name); err == nil && b != nil {
-				if keys, listErr := b.List(); listErr == nil {
-					sec.Keys = keys
-				}
-			}
+			sec.Keys = listKeysFromOpener(s.storeOpener, "workspace:"+name)
 		}
 		sections = append(sections, sec)
 	}
@@ -65,11 +67,7 @@ func (s *Server) storeSections(r *http.Request) []storeSection {
 	if hasProjectDir() {
 		sec := storeSection{Label: "Project store", Scope: "project"}
 		if _, statErr := os.Stat(projectStoreFilePath()); statErr == nil {
-			if b, err := s.storeMgr.GetOrOpen("project"); err == nil && b != nil {
-				if keys, listErr := b.List(); listErr == nil {
-					sec.Keys = keys
-				}
-			}
+			sec.Keys = listKeysFromOpener(s.storeOpener, "project")
 		}
 		sections = append(sections, sec)
 	}
@@ -78,24 +76,37 @@ func (s *Server) storeSections(r *http.Request) []storeSection {
 	// somewhere to write.
 	{
 		sec := storeSection{Label: "Global store", Scope: "global"}
-		if cached := s.storeMgr.Cached("global"); cached != nil {
-			if keys, err := cached.List(); err == nil {
-				sec.Keys = keys
-			}
-		} else if home, err := os.UserHomeDir(); err == nil {
+		if home, err := os.UserHomeDir(); err == nil {
 			globalPath := filepath.Join(home, ".config", "factorly", "store.db")
 			if _, statErr := os.Stat(globalPath); statErr == nil {
-				if b, err := s.storeMgr.GetOrOpen("global"); err == nil && b != nil {
-					if keys, listErr := b.List(); listErr == nil {
-						sec.Keys = keys
-					}
-				}
+				sec.Keys = listKeysFromOpener(s.storeOpener, "global")
 			}
 		}
 		sections = append(sections, sec)
 	}
 
 	return sections
+}
+
+// listKeysFromOpener opens the scope, lists keys, closes. Returns
+// nil on any error or when the opener is unavailable — the caller
+// renders an "empty section" in that case rather than surfacing the
+// error in the page (a fresh project has no store file yet, which
+// is normal, not exceptional).
+func listKeysFromOpener(opener StoreOpener, scope string) []string {
+	if opener == nil {
+		return nil
+	}
+	b, err := opener(scope)
+	if err != nil || b == nil {
+		return nil
+	}
+	defer b.Close()
+	keys, err := b.List()
+	if err != nil {
+		return nil
+	}
+	return keys
 }
 
 // projectStoreFilePath / workspaceStoreFilePath duplicate the path
@@ -135,8 +146,12 @@ func (s *Server) handleStoreSet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid scope", http.StatusBadRequest)
 		return
 	}
+	if s.storeOpener == nil {
+		http.Error(w, "store not available", http.StatusServiceUnavailable)
+		return
+	}
 
-	backend, err := s.storeMgr.GetOrOpen(scope)
+	backend, err := s.storeOpener(scope)
 	if err != nil {
 		http.Error(w, "opening store: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -145,6 +160,7 @@ func (s *Server) handleStoreSet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "store not available", http.StatusServiceUnavailable)
 		return
 	}
+	defer backend.Close()
 
 	ttl, hasTTL, parseErr := parseStoreTTLValue(ttlStr)
 	if parseErr != nil {
@@ -182,7 +198,11 @@ func (s *Server) handleStoreDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid scope", http.StatusBadRequest)
 		return
 	}
-	backend, err := s.storeMgr.GetOrOpen(scope)
+	if s.storeOpener == nil {
+		http.Error(w, "store not available", http.StatusServiceUnavailable)
+		return
+	}
+	backend, err := s.storeOpener(scope)
 	if err != nil {
 		http.Error(w, "opening store: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -191,6 +211,7 @@ func (s *Server) handleStoreDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "store not available", http.StatusServiceUnavailable)
 		return
 	}
+	defer backend.Close()
 	if err := backend.Delete(key); err != nil && !errors.Is(err, store.ErrNotFound) {
 		http.Error(w, "store delete: "+err.Error(), http.StatusInternalServerError)
 		return

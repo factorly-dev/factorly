@@ -168,7 +168,7 @@ func runUI(cmd *cobra.Command, args []string) error {
 		ActiveWorkspace: workspaceName,
 		WorkspaceVault:  workspaceVault,
 		VaultManager:    mgr,
-		StoreManager:    getStoreManager(),
+		StoreOpener:     openStore,
 	})
 	if err != nil {
 		return err
