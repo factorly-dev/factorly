@@ -1,3 +1,19 @@
+## [v0.11.2] - 2026-05-20
+
+### Added
+- Trello blueprint now includes list labels and card label updates
+- `internal/promote` package with `FromLog` and `FromEntry` for recovering scripts from audit log
+- CLI command `factorly tools promote --from-sha <prefix> --name <name>`
+- "Save as tool" button on `factorly.code` rows in `/history` UI
+- GET/POST `/tools/promote` handler with source preview, inferred parameters, and compile-error surfacing
+- `codeprov.Validate` export for compile-checking without registration side effects
+- Path assertion added to `TestGeneratePathParams` for multi-param path conversion
+- New `TestConvertPathPlaceholders` unit test with 6 cases covering edge cases
+
+### Changed
+- `historyEntry` gains `SourceSHA` and `Promotable` fields
+- History and promote scanner buffer bumped to 1MB to handle embedded scripts
+
 ## [v0.11.1] - 2026-05-20
 
 ### Changed
