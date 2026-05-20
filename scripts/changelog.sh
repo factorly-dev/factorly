@@ -44,6 +44,7 @@ fi
 
 # Summarize with LLM
 factorly -v call anthropic.ask \
+    --max_tokens 10240 \
     --system 'You convert git commit messages into a Keep a Changelog formatted entry.
 
 Rules:
