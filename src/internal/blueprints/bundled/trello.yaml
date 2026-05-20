@@ -155,3 +155,44 @@ tools:
       - name: filter
         description: "Filter (all, closed, none, open)"
         in: query
+
+  trello.list_labels:
+    type: rest
+    description: List labels defined on a board
+    base_url: "https://api.trello.com/1"
+    method: GET
+    path: "/boards/{{board_id}}/labels"
+    auth:
+      type: header
+      header: Authorization
+      value: 'OAuth oauth_consumer_key="{{vault:TRELLO_API_KEY}}", oauth_token="{{vault:TRELLO_API_TOKEN}}"'
+    parameters:
+      - name: board_id
+        description: Board ID
+        required: true
+        in: path
+      - name: limit
+        description: "Max labels to return (default 50, max 1000)"
+        in: query
+
+  trello.update_card_labels:
+    type: rest
+    description: Replace the set of labels on a card with the given list of label IDs
+    base_url: "https://api.trello.com/1"
+    method: PUT
+    path: "/cards/{{card_id}}"
+    auth:
+      type: header
+      header: Authorization
+      value: 'OAuth oauth_consumer_key="{{vault:TRELLO_API_KEY}}", oauth_token="{{vault:TRELLO_API_TOKEN}}"'
+    parameters:
+      - name: card_id
+        description: Card ID
+        required: true
+        in: path
+      - name: idLabels
+        description: "Comma-separated list of label IDs (empty string clears all labels)"
+        required: true
+        in: query
+    shadow:
+      confirm: true
