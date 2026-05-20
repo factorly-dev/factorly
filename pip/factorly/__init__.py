@@ -3,4 +3,4 @@
 
 """Factorly — security and governance layer for AI agent tool access."""
 
-__version__ = "0.11.1"
+__version__ = "0.11.2"
