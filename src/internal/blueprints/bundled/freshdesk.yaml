@@ -70,7 +70,7 @@ tools:
     description: Get a ticket by ID
     base_url: "https://YOUR_DOMAIN.freshdesk.com/api/v2"
     method: GET
-    path: "/tickets/{ticket_id}"
+    path: "/tickets/{{ticket_id}}"
     auth:
       type: bearer
       token: "{{vault:FRESHDESK_API_KEY}}"
@@ -85,7 +85,7 @@ tools:
     description: Update an existing ticket
     base_url: "https://YOUR_DOMAIN.freshdesk.com/api/v2"
     method: PUT
-    path: "/tickets/{ticket_id}"
+    path: "/tickets/{{ticket_id}}"
     auth:
       type: bearer
       token: "{{vault:FRESHDESK_API_KEY}}"

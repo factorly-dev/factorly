@@ -77,7 +77,7 @@ tools:
     description: Update an existing ticket
     base_url: "https://YOUR_SUBDOMAIN.zendesk.com/api/v2"
     method: PUT
-    path: "/tickets/{ticket_id}"
+    path: "/tickets/{{ticket_id}}"
     auth:
       type: bearer
       token: "{{vault:ZENDESK_API_TOKEN}}"
@@ -98,7 +98,7 @@ tools:
     description: Get a ticket by ID
     base_url: "https://YOUR_SUBDOMAIN.zendesk.com/api/v2"
     method: GET
-    path: "/tickets/{ticket_id}"
+    path: "/tickets/{{ticket_id}}"
     auth:
       type: bearer
       token: "{{vault:ZENDESK_API_TOKEN}}"

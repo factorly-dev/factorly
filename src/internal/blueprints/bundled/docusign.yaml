@@ -29,7 +29,7 @@ tools:
     description: List envelopes for an account
     base_url: "https://demo.docusign.net/restapi/v2.1"
     method: GET
-    path: "/accounts/{accountId}/envelopes"
+    path: "/accounts/{{accountId}}/envelopes"
     auth:
       type: oauth
       provider: docusign
@@ -54,7 +54,7 @@ tools:
     description: Get an envelope by ID
     base_url: "https://demo.docusign.net/restapi/v2.1"
     method: GET
-    path: "/accounts/{accountId}/envelopes/{envelopeId}"
+    path: "/accounts/{{accountId}}/envelopes/{{envelopeId}}"
     auth:
       type: oauth
       provider: docusign
@@ -73,7 +73,7 @@ tools:
     description: Create and send an envelope
     base_url: "https://demo.docusign.net/restapi/v2.1"
     method: POST
-    path: "/accounts/{accountId}/envelopes"
+    path: "/accounts/{{accountId}}/envelopes"
     auth:
       type: oauth
       provider: docusign
@@ -102,7 +102,7 @@ tools:
     description: Get a document from an envelope
     base_url: "https://demo.docusign.net/restapi/v2.1"
     method: GET
-    path: "/accounts/{accountId}/envelopes/{envelopeId}/documents/{documentId}"
+    path: "/accounts/{{accountId}}/envelopes/{{envelopeId}}/documents/{{documentId}}"
     auth:
       type: oauth
       provider: docusign
@@ -125,7 +125,7 @@ tools:
     description: List recipients of an envelope
     base_url: "https://demo.docusign.net/restapi/v2.1"
     method: GET
-    path: "/accounts/{accountId}/envelopes/{envelopeId}/recipients"
+    path: "/accounts/{{accountId}}/envelopes/{{envelopeId}}/recipients"
     auth:
       type: oauth
       provider: docusign

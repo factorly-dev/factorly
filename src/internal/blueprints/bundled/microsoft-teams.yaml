@@ -30,7 +30,7 @@ tools:
     description: Send a message to a channel
     base_url: "https://graph.microsoft.com/v1.0"
     method: POST
-    path: "/teams/{team_id}/channels/{channel_id}/messages"
+    path: "/teams/{{team_id}}/channels/{{channel_id}}/messages"
     auth:
       type: oauth
       provider: microsoft-teams
@@ -55,7 +55,7 @@ tools:
     description: List channels in a team
     base_url: "https://graph.microsoft.com/v1.0"
     method: GET
-    path: "/teams/{team_id}/channels"
+    path: "/teams/{{team_id}}/channels"
     auth:
       type: oauth
       provider: microsoft-teams
@@ -80,7 +80,7 @@ tools:
     description: List members of a team
     base_url: "https://graph.microsoft.com/v1.0"
     method: GET
-    path: "/teams/{team_id}/members"
+    path: "/teams/{{team_id}}/members"
     auth:
       type: oauth
       provider: microsoft-teams
@@ -95,7 +95,7 @@ tools:
     description: Get a channel by ID
     base_url: "https://graph.microsoft.com/v1.0"
     method: GET
-    path: "/teams/{team_id}/channels/{channel_id}"
+    path: "/teams/{{team_id}}/channels/{{channel_id}}"
     auth:
       type: oauth
       provider: microsoft-teams

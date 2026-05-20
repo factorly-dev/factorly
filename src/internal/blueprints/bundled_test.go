@@ -253,6 +253,54 @@ func TestBundledParametersHaveDescriptions(t *testing.T) {
 	}
 }
 
+// TestBundledPathTemplateSyntax catches the OpenAPI-import mistake of
+// writing single-brace path params (`/users/{id}`) instead of
+// Factorly's double-brace template syntax (`/users/{{id}}`). The
+// single-brace form parses fine, installs fine, and only fails at
+// call time when the REST provider's `{{name}}` substitution doesn't
+// match — the URL is sent literally with `{id}` and the API returns
+// 404 or worse. This regression test fails at build time instead.
+//
+// The check: strip all valid `{{...}}` templates from each path,
+// then any remaining `{` followed by an identifier char is a bug.
+func TestBundledPathTemplateSyntax(t *testing.T) {
+	// Sentinel that can't appear in a URL path (NUL byte).
+	const sentinel = "\x00"
+	for _, bp := range Bundled() {
+		bp := bp
+		t.Run(bp.Header.Name, func(t *testing.T) {
+			parsed, err := ParseBlueprint([]byte(bp.YAML))
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			for toolName, tc := range parsed.Tools {
+				if tc.Path == "" {
+					continue
+				}
+				// Replace all valid `{{...}}` templates with sentinel
+				// pairs so the remaining `{` and `}` characters are
+				// only single-brace placeholders (which are bugs).
+				stripped := strings.ReplaceAll(tc.Path, "{{", sentinel+sentinel)
+				stripped = strings.ReplaceAll(stripped, "}}", sentinel+sentinel)
+				// Any surviving `{` followed by an identifier char is a
+				// single-brace placeholder — convert to a single-brace
+				// scan that the REST provider would silently ignore.
+				for i := 0; i < len(stripped)-1; i++ {
+					if stripped[i] != '{' {
+						continue
+					}
+					c := stripped[i+1]
+					if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' {
+						t.Errorf("tool %s: path %q contains single-brace template placeholder near %q — must use double braces (`{{name}}`)",
+							toolName, tc.Path, stripped[i:min(i+12, len(stripped))])
+						break
+					}
+				}
+			}
+		})
+	}
+}
+
 // TestBundledOAuthEndpoints ensures every oauth blueprint declares the
 // provider config the OAuth flow needs (auth_url, token_url, scopes, vault-
 // referenced client_id/secret).

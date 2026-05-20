@@ -94,7 +94,7 @@ tools:
     description: Get an email message by ID
     base_url: "https://graph.microsoft.com/v1.0"
     method: GET
-    path: "/me/messages/{message_id}"
+    path: "/me/messages/{{message_id}}"
     auth:
       type: oauth
       provider: microsoft-outlook

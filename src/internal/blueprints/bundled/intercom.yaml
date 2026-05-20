@@ -51,7 +51,7 @@ tools:
     description: Reply to a conversation
     base_url: "https://api.intercom.io"
     method: POST
-    path: "/conversations/{conversation_id}/reply"
+    path: "/conversations/{{conversation_id}}/reply"
     auth:
       type: bearer
       token: "{{vault:INTERCOM_ACCESS_TOKEN}}"
@@ -120,7 +120,7 @@ tools:
     description: Get a conversation by ID
     base_url: "https://api.intercom.io"
     method: GET
-    path: "/conversations/{conversation_id}"
+    path: "/conversations/{{conversation_id}}"
     auth:
       type: bearer
       token: "{{vault:INTERCOM_ACCESS_TOKEN}}"

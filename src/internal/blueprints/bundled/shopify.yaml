@@ -59,7 +59,7 @@ tools:
     description: Get an order by ID
     base_url: "https://YOUR_STORE.myshopify.com/admin/api/2024-01"
     method: GET
-    path: "/orders/{order_id}.json"
+    path: "/orders/{{order_id}}.json"
     auth:
       type: bearer
       token: "{{vault:SHOPIFY_ACCESS_TOKEN}}"

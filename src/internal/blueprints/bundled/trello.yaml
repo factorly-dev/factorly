@@ -1,6 +1,6 @@
 name: trello
 display_name: Trello
-version: 1.0.1
+version: 1.0.0
 description: Kanban boards, cards, and task management
 category: business
 author: factorly
@@ -28,7 +28,7 @@ tools:
     description: List cards on a board
     base_url: "https://api.trello.com/1"
     method: GET
-    path: "/boards/{board_id}/cards"
+    path: "/boards/{{board_id}}/cards"
     auth:
       type: header
       header: Authorization
@@ -90,7 +90,7 @@ tools:
     description: Update a card
     base_url: "https://api.trello.com/1"
     method: PUT
-    path: "/cards/{card_id}"
+    path: "/cards/{{card_id}}"
     auth:
       type: header
       header: Authorization
@@ -117,7 +117,7 @@ tools:
     description: Move a card to a different list
     base_url: "https://api.trello.com/1"
     method: PUT
-    path: "/cards/{card_id}"
+    path: "/cards/{{card_id}}"
     auth:
       type: header
       header: Authorization
@@ -142,7 +142,7 @@ tools:
     description: List lists on a board
     base_url: "https://api.trello.com/1"
     method: GET
-    path: "/boards/{board_id}/lists"
+    path: "/boards/{{board_id}}/lists"
     auth:
       type: header
       header: Authorization

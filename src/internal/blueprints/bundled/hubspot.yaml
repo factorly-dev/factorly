@@ -88,7 +88,7 @@ tools:
     description: Get a contact by ID
     base_url: "https://api.hubapi.com"
     method: GET
-    path: "/crm/v3/objects/contacts/{contactId}"
+    path: "/crm/v3/objects/contacts/{{contactId}}"
     auth:
       type: bearer
       token: "{{vault:HUBSPOT_API_KEY}}"

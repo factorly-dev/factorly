@@ -45,7 +45,7 @@ tools:
     description: Get a record by object type and ID
     base_url: "https://YOUR_INSTANCE.salesforce.com/services/data/v59.0"
     method: GET
-    path: "/sobjects/{objectType}/{recordId}"
+    path: "/sobjects/{{objectType}}/{{recordId}}"
     auth:
       type: oauth
       provider: salesforce
@@ -64,7 +64,7 @@ tools:
     description: Create a new record
     base_url: "https://YOUR_INSTANCE.salesforce.com/services/data/v59.0"
     method: POST
-    path: "/sobjects/{objectType}"
+    path: "/sobjects/{{objectType}}"
     auth:
       type: oauth
       provider: salesforce
@@ -100,7 +100,7 @@ tools:
     description: Update an existing record
     base_url: "https://YOUR_INSTANCE.salesforce.com/services/data/v59.0"
     method: PATCH
-    path: "/sobjects/{objectType}/{recordId}"
+    path: "/sobjects/{{objectType}}/{{recordId}}"
     auth:
       type: oauth
       provider: salesforce
@@ -125,7 +125,7 @@ tools:
     description: "Describe an SObject's metadata and fields"
     base_url: "https://YOUR_INSTANCE.salesforce.com/services/data/v59.0"
     method: GET
-    path: "/sobjects/{objectType}/describe"
+    path: "/sobjects/{{objectType}}/describe"
     auth:
       type: oauth
       provider: salesforce

@@ -40,7 +40,7 @@ tools:
     description: Get a scheduled event by UUID
     base_url: "https://api.calendly.com"
     method: GET
-    path: "/scheduled_events/{event_uuid}"
+    path: "/scheduled_events/{{event_uuid}}"
     auth:
       type: bearer
       token: "{{vault:CALENDLY_API_KEY}}"
@@ -73,7 +73,7 @@ tools:
     description: List invitees for a scheduled event
     base_url: "https://api.calendly.com"
     method: GET
-    path: "/scheduled_events/{event_uuid}/invitees"
+    path: "/scheduled_events/{{event_uuid}}/invitees"
     auth:
       type: bearer
       token: "{{vault:CALENDLY_API_KEY}}"

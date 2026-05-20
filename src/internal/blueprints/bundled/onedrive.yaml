@@ -46,7 +46,7 @@ tools:
     description: Get file metadata by ID
     base_url: "https://graph.microsoft.com/v1.0"
     method: GET
-    path: "/me/drive/items/{item_id}"
+    path: "/me/drive/items/{{item_id}}"
     auth:
       type: oauth
       provider: onedrive
@@ -61,7 +61,7 @@ tools:
     description: Search for files
     base_url: "https://graph.microsoft.com/v1.0"
     method: GET
-    path: "/me/drive/root/search(q='{query}')"
+    path: "/me/drive/root/search(q='{{query}}')"
     auth:
       type: oauth
       provider: onedrive
@@ -100,7 +100,7 @@ tools:
     description: Upload a small file (up to 4MB)
     base_url: "https://graph.microsoft.com/v1.0"
     method: PUT
-    path: "/me/drive/root:/{filename}:/content"
+    path: "/me/drive/root:/{{filename}}:/content"
     auth:
       type: oauth
       provider: onedrive

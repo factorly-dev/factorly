@@ -19,7 +19,7 @@ tools:
     description: List records for an object
     base_url: "https://api.attio.com/v2"
     method: POST
-    path: "/objects/{object}/records/query"
+    path: "/objects/{{object}}/records/query"
     auth:
       type: bearer
       token: "{{vault:ATTIO_API_KEY}}"
@@ -40,7 +40,7 @@ tools:
     description: Create a new record
     base_url: "https://api.attio.com/v2"
     method: POST
-    path: "/objects/{object}/records"
+    path: "/objects/{{object}}/records"
     auth:
       type: bearer
       token: "{{vault:ATTIO_API_KEY}}"
@@ -61,7 +61,7 @@ tools:
     description: Search records with filters
     base_url: "https://api.attio.com/v2"
     method: POST
-    path: "/objects/{object}/records/query"
+    path: "/objects/{{object}}/records/query"
     auth:
       type: bearer
       token: "{{vault:ATTIO_API_KEY}}"
@@ -83,7 +83,7 @@ tools:
     description: Update an existing record
     base_url: "https://api.attio.com/v2"
     method: PUT
-    path: "/objects/{object}/records/{record_id}"
+    path: "/objects/{{object}}/records/{{record_id}}"
     auth:
       type: bearer
       token: "{{vault:ATTIO_API_KEY}}"
@@ -118,7 +118,7 @@ tools:
     description: Get a record by ID
     base_url: "https://api.attio.com/v2"
     method: GET
-    path: "/objects/{object}/records/{record_id}"
+    path: "/objects/{{object}}/records/{{record_id}}"
     auth:
       type: bearer
       token: "{{vault:ATTIO_API_KEY}}"

@@ -19,7 +19,7 @@ tools:
     description: List tasks in a list
     base_url: "https://api.clickup.com/api/v2"
     method: GET
-    path: "/list/{list_id}/task"
+    path: "/list/{{list_id}}/task"
     auth:
       type: bearer
       token: "{{vault:CLICKUP_API_KEY}}"
@@ -40,7 +40,7 @@ tools:
     description: Create a new task
     base_url: "https://api.clickup.com/api/v2"
     method: POST
-    path: "/list/{list_id}/task"
+    path: "/list/{{list_id}}/task"
     auth:
       type: bearer
       token: "{{vault:CLICKUP_API_KEY}}"
@@ -70,7 +70,7 @@ tools:
     description: Get a task by ID
     base_url: "https://api.clickup.com/api/v2"
     method: GET
-    path: "/task/{task_id}"
+    path: "/task/{{task_id}}"
     auth:
       type: bearer
       token: "{{vault:CLICKUP_API_KEY}}"
@@ -85,7 +85,7 @@ tools:
     description: Update an existing task
     base_url: "https://api.clickup.com/api/v2"
     method: PUT
-    path: "/task/{task_id}"
+    path: "/task/{{task_id}}"
     auth:
       type: bearer
       token: "{{vault:CLICKUP_API_KEY}}"
@@ -114,7 +114,7 @@ tools:
     description: List spaces in a team
     base_url: "https://api.clickup.com/api/v2"
     method: GET
-    path: "/team/{team_id}/space"
+    path: "/team/{{team_id}}/space"
     auth:
       type: bearer
       token: "{{vault:CLICKUP_API_KEY}}"
@@ -129,7 +129,7 @@ tools:
     description: List lists in a folder
     base_url: "https://api.clickup.com/api/v2"
     method: GET
-    path: "/folder/{folder_id}/list"
+    path: "/folder/{{folder_id}}/list"
     auth:
       type: bearer
       token: "{{vault:CLICKUP_API_KEY}}"

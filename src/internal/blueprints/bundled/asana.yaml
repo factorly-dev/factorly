@@ -57,7 +57,7 @@ tools:
     description: Search tasks in a workspace
     base_url: "https://app.asana.com/api/1.0"
     method: GET
-    path: "/workspaces/{workspace_gid}/tasks/search"
+    path: "/workspaces/{{workspace_gid}}/tasks/search"
     auth:
       type: bearer
       token: "{{vault:ASANA_ACCESS_TOKEN}}"
@@ -96,7 +96,7 @@ tools:
     description: Update an existing task
     base_url: "https://app.asana.com/api/1.0"
     method: PUT
-    path: "/tasks/{task_gid}"
+    path: "/tasks/{{task_gid}}"
     auth:
       type: bearer
       token: "{{vault:ASANA_ACCESS_TOKEN}}"
@@ -117,7 +117,7 @@ tools:
     description: Get a task by GID
     base_url: "https://app.asana.com/api/1.0"
     method: GET
-    path: "/tasks/{task_gid}"
+    path: "/tasks/{{task_gid}}"
     auth:
       type: bearer
       token: "{{vault:ASANA_ACCESS_TOKEN}}"
