@@ -327,6 +327,44 @@ paths:
 	if !paramNames["repo_id"] {
 		t.Error("missing path param 'repo_id'")
 	}
+
+	// The on-disk Path field must use Factorly's double-brace template
+	// syntax for both placeholders, not OpenAPI's single-brace form.
+	// Without this assertion the test only verifies that the params
+	// were *parsed* — single-brace paths would slip through and produce
+	// silently broken URLs at call time (see TestBundledPathTemplateSyntax
+	// in internal/blueprints for the same check on bundled blueprints).
+	if tc.Path != "/users/{{username}}/repos/{{repo_id}}" {
+		t.Errorf("Path = %q, want \"/users/{{username}}/repos/{{repo_id}}\"", tc.Path)
+	}
+}
+
+// TestConvertPathPlaceholders directly exercises the single→double
+// brace conversion that the OpenAPI importer applies. Each row is
+// kept tight so a regression naming a single failing case is easy to
+// read in CI output.
+func TestConvertPathPlaceholders(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"/users", "/users"},
+		{"/users/{id}", "/users/{{id}}"},
+		{"/users/{username}/repos/{repo_id}", "/users/{{username}}/repos/{{repo_id}}"},
+		{"/orders/{order_id}.json", "/orders/{{order_id}}.json"},
+		// OData-style query within the path: the inner placeholder is
+		// converted but the surrounding quotes are left alone.
+		{"/search(q='{query}')", "/search(q='{{query}}')"},
+		// Already-double-braced input: the regex is greedy on the outer
+		// `{...}` so `{{foo}}` becomes `{{{foo}}}` — documenting this so
+		// callers (and a future maintainer) know NOT to feed
+		// already-converted paths back through this function.
+		{"/already/{{converted}}", "/already/{{{converted}}}"},
+	}
+	for _, c := range cases {
+		if got := convertPathPlaceholders(c.in); got != c.want {
+			t.Errorf("convertPathPlaceholders(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
 }
 
 func TestGeneratePathParamsWithExplicit(t *testing.T) {
