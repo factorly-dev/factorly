@@ -1,17 +1,26 @@
 name: trello
 display_name: Trello
-version: 1.0.0
+version: 1.0.1
 description: Kanban boards, cards, and task management
 category: business
 author: factorly
 homepage: https://github.com/factorly-dev/factorly
 license: MIT
 auth_type: api_key
-auth_guide: "Get your API key at https://trello.com/power-ups/admin"
+auth_guide: |
+  Trello requires BOTH an API key and a member token, sent together in
+  an OAuth1-style Authorization header. Generate both at
+  https://trello.com/power-ups/admin (create a Power-Up, then issue an
+  API token from its credentials page).
+
+  Store both in your vault:
+    factorly vault set TRELLO_API_KEY    <your-key>
+    factorly vault set TRELLO_API_TOKEN  <your-token>
 
 requires:
   vault_keys:
     - TRELLO_API_KEY
+    - TRELLO_API_TOKEN
 
 tools:
   trello.list_cards:
@@ -21,8 +30,9 @@ tools:
     method: GET
     path: "/boards/{board_id}/cards"
     auth:
-      type: bearer
-      token: "{{vault:TRELLO_API_KEY}}"
+      type: header
+      header: Authorization
+      value: 'OAuth oauth_consumer_key="{{vault:TRELLO_API_KEY}}", oauth_token="{{vault:TRELLO_API_TOKEN}}"'
     parameters:
       - name: board_id
         description: Board ID
@@ -39,8 +49,9 @@ tools:
     method: POST
     path: /cards
     auth:
-      type: bearer
-      token: "{{vault:TRELLO_API_KEY}}"
+      type: header
+      header: Authorization
+      value: 'OAuth oauth_consumer_key="{{vault:TRELLO_API_KEY}}", oauth_token="{{vault:TRELLO_API_TOKEN}}"'
     parameters:
       - name: idList
         description: List ID to add the card to
@@ -66,8 +77,9 @@ tools:
     method: GET
     path: /members/me/boards
     auth:
-      type: bearer
-      token: "{{vault:TRELLO_API_KEY}}"
+      type: header
+      header: Authorization
+      value: 'OAuth oauth_consumer_key="{{vault:TRELLO_API_KEY}}", oauth_token="{{vault:TRELLO_API_TOKEN}}"'
     parameters:
       - name: filter
         description: "Filter (all, closed, members, open, starred)"
@@ -80,8 +92,9 @@ tools:
     method: PUT
     path: "/cards/{card_id}"
     auth:
-      type: bearer
-      token: "{{vault:TRELLO_API_KEY}}"
+      type: header
+      header: Authorization
+      value: 'OAuth oauth_consumer_key="{{vault:TRELLO_API_KEY}}", oauth_token="{{vault:TRELLO_API_TOKEN}}"'
     parameters:
       - name: card_id
         description: Card ID
@@ -106,8 +119,9 @@ tools:
     method: PUT
     path: "/cards/{card_id}"
     auth:
-      type: bearer
-      token: "{{vault:TRELLO_API_KEY}}"
+      type: header
+      header: Authorization
+      value: 'OAuth oauth_consumer_key="{{vault:TRELLO_API_KEY}}", oauth_token="{{vault:TRELLO_API_TOKEN}}"'
     parameters:
       - name: card_id
         description: Card ID
@@ -130,8 +144,9 @@ tools:
     method: GET
     path: "/boards/{board_id}/lists"
     auth:
-      type: bearer
-      token: "{{vault:TRELLO_API_KEY}}"
+      type: header
+      header: Authorization
+      value: 'OAuth oauth_consumer_key="{{vault:TRELLO_API_KEY}}", oauth_token="{{vault:TRELLO_API_TOKEN}}"'
     parameters:
       - name: board_id
         description: Board ID
