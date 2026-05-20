@@ -1,3 +1,14 @@
+## [v0.11.1] - 2026-05-20
+
+### Changed
+- Updated Trello authorization header to correct form
+- Polished colors for bullets and pills
+- Updated roadmap
+
+### Fixed
+- Fixed regression bug in blueprint templates using OpenAPI style path parameters instead of Factorly template parameters
+- Fixed missing text parameter for workflow params
+
 ## [v0.11.0] - 2026-05-19
 
 Workspaces, code tools, and a unified vault layer.
