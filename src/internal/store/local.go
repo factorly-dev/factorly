@@ -189,6 +189,51 @@ func (b *LocalBackend) Get(key string) (string, error) {
 	return rec.Value, nil
 }
 
+// Entry returns the full metadata for key without the refresh-on-
+// read side effect Get has. Used by the UI's detail page to render
+// value + TTL remaining + timestamps without bumping the entry's
+// lifetime every time someone opens the page.
+//
+// Returns ErrNotFound for missing or expired keys (matching Get's
+// contract). Unlike Get, Entry does NOT trigger lazy cleanup of
+// expired entries — that's a Get side effect we don't want a UI
+// page render to inherit.
+func (b *LocalBackend) Entry(key string) (EntryInfo, error) {
+	if key == "" {
+		return EntryInfo{}, fmt.Errorf("store: key is empty")
+	}
+	now := b.nowFn()
+
+	var rec entryRecord
+	var found bool
+	if err := b.db.View(func(tx *bolt.Tx) error {
+		bk := tx.Bucket(bucketName)
+		raw := bk.Get([]byte(key))
+		if raw == nil {
+			return nil
+		}
+		if err := json.Unmarshal(raw, &rec); err != nil {
+			return fmt.Errorf("store: decoding entry %q: %w", key, err)
+		}
+		found = true
+		return nil
+	}); err != nil {
+		return EntryInfo{}, err
+	}
+	if !found {
+		return EntryInfo{}, ErrNotFound
+	}
+	if rec.expired(now) {
+		return EntryInfo{}, ErrNotFound
+	}
+	return EntryInfo{
+		Value:      rec.Value,
+		CreatedAt:  rec.CreatedAt,
+		LastReadAt: rec.LastReadAt,
+		TTL:        time.Duration(rec.TTL),
+	}, nil
+}
+
 // Set stores value under key with the default TTL (30d). For an
 // explicit TTL use SetWithTTL. A TTL of 0 means "never expire."
 func (b *LocalBackend) Set(key, value string) error {

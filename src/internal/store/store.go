@@ -30,12 +30,56 @@
 // (Search, History) use the wider store.Backend interface.
 package store
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 // ErrNotFound is returned when a key does not exist in the backend.
 // Aliased so the package is self-contained even though it equals
 // vault.ErrNotFound's semantics.
 var ErrNotFound = errors.New("store key not found")
+
+// EntryInfo is the metadata view of a stored entry. Returned by
+// Entry(key) on backends that support it (LocalBackend). Used by the
+// UI's detail page to show value + TTL remaining + last-read without
+// the side effect that Get has (refresh-on-read).
+type EntryInfo struct {
+	Value      string
+	CreatedAt  time.Time
+	LastReadAt time.Time     // zero when never read
+	TTL        time.Duration // 0 = never expires
+}
+
+// Expired reports whether the entry should be treated as deleted at
+// the given moment. Lifetime anchors on LastReadAt when set
+// (refresh-on-read), otherwise CreatedAt. Mirrors the lazy-expiration
+// check Get performs internally.
+func (e EntryInfo) Expired(now time.Time) bool {
+	if e.TTL == 0 {
+		return false
+	}
+	anchor := e.CreatedAt
+	if !e.LastReadAt.IsZero() && e.LastReadAt.After(anchor) {
+		anchor = e.LastReadAt
+	}
+	return now.Sub(anchor) >= e.TTL
+}
+
+// Remaining reports how long until the entry expires. Returns
+// (0, false) for never-expire entries; (negative duration, true)
+// for already-expired entries (callers can decide how to render
+// "expired N ago" vs filtering them out).
+func (e EntryInfo) Remaining(now time.Time) (time.Duration, bool) {
+	if e.TTL == 0 {
+		return 0, false
+	}
+	anchor := e.CreatedAt
+	if !e.LastReadAt.IsZero() && e.LastReadAt.After(anchor) {
+		anchor = e.LastReadAt
+	}
+	return e.TTL - now.Sub(anchor), true
+}
 
 // Backend is the contract every store implementation satisfies. The
 // first five methods overlap vault.Backend so a store backend can be

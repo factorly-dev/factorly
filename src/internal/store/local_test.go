@@ -341,6 +341,86 @@ func TestLocalBackendConcurrentWrites(t *testing.T) {
 	}
 }
 
+// TestLocalBackendEntryReturnsMetadata exercises the Entry method —
+// the side-effect-free read used by the UI detail page. Must NOT
+// bump LastReadAt (that's Get's contract), must return ErrNotFound
+// for missing/expired, and must surface accurate CreatedAt + TTL.
+func TestLocalBackendEntryReturnsMetadata(t *testing.T) {
+	b := newBackend(t)
+	base := time.Now()
+	b.nowFn = func() time.Time { return base }
+	if err := b.SetWithTTL("k", "v", 2*time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	info, err := b.Entry("k")
+	if err != nil {
+		t.Fatalf("Entry: %v", err)
+	}
+	if info.Value != "v" {
+		t.Errorf("Value = %q, want v", info.Value)
+	}
+	if info.TTL != 2*time.Hour {
+		t.Errorf("TTL = %s, want 2h", info.TTL)
+	}
+	if !info.CreatedAt.Equal(base) {
+		t.Errorf("CreatedAt = %v, want %v", info.CreatedAt, base)
+	}
+	if !info.LastReadAt.IsZero() {
+		t.Errorf("LastReadAt should be zero on a fresh entry, got %v", info.LastReadAt)
+	}
+
+	// Confirm Entry is side-effect-free: a second Entry call still
+	// sees LastReadAt as zero. (Get would have bumped it.)
+	info2, err := b.Entry("k")
+	if err != nil {
+		t.Fatalf("Entry 2nd: %v", err)
+	}
+	if !info2.LastReadAt.IsZero() {
+		t.Error("Entry should not bump LastReadAt; got non-zero")
+	}
+
+	// Expired entries return ErrNotFound (matches Get).
+	b.nowFn = func() time.Time { return base.Add(3 * time.Hour) }
+	if _, err := b.Entry("k"); err != ErrNotFound {
+		t.Errorf("expired Entry: got %v, want ErrNotFound", err)
+	}
+
+	// Missing key returns ErrNotFound.
+	if _, err := b.Entry("nope"); err != ErrNotFound {
+		t.Errorf("missing Entry: got %v, want ErrNotFound", err)
+	}
+}
+
+// TestEntryInfoRemaining covers the never-expire and approaching-
+// expiry math the UI uses to render a TTL badge.
+func TestEntryInfoRemaining(t *testing.T) {
+	base := time.Now()
+	// never-expire
+	info := EntryInfo{CreatedAt: base, TTL: 0}
+	if _, hasTTL := info.Remaining(base); hasTTL {
+		t.Error("TTL=0 should report no remaining (never-expire)")
+	}
+	// alive
+	info = EntryInfo{CreatedAt: base, TTL: time.Hour}
+	rem, hasTTL := info.Remaining(base.Add(30 * time.Minute))
+	if !hasTTL || rem != 30*time.Minute {
+		t.Errorf("at 30m: remaining = %v hasTTL=%v, want 30m true", rem, hasTTL)
+	}
+	// past expiry (negative)
+	info = EntryInfo{CreatedAt: base, TTL: time.Hour}
+	rem, hasTTL = info.Remaining(base.Add(2 * time.Hour))
+	if !hasTTL || rem >= 0 {
+		t.Errorf("past expiry: remaining = %v hasTTL=%v, want negative,true", rem, hasTTL)
+	}
+	// LastReadAt anchors lifetime
+	info = EntryInfo{CreatedAt: base, LastReadAt: base.Add(45 * time.Minute), TTL: time.Hour}
+	rem, _ = info.Remaining(base.Add(50 * time.Minute))
+	// 1h - (50m - 45m) = 55m
+	if rem != 55*time.Minute {
+		t.Errorf("refresh-anchored: remaining = %v, want 55m", rem)
+	}
+}
+
 // TestLocalBackendPathAccessor confirms Path returns the file we
 // opened. Pedantic but the UI relies on this for diagnostics.
 func TestLocalBackendPathAccessor(t *testing.T) {

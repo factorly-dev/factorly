@@ -6,9 +6,15 @@
 {{define "content"}}
 <h1 class="text-2xl font-bold mb-2">Store</h1>
 <p class="text-sm text-gray-500 mb-4">
-  Agent-writable workspace state. Cross-run scratchpad for things like
+  Agent-writable workspace state.
+</p>
+<p class="text-sm text-gray-500 mb-4">
+Cross-run scratchpad for things like
   "I researched these URLs," "user prefers brief responses," "last
-  deployment SHA." Default TTL is 30d with refresh-on-read.
+  deployment SHA."
+</p>
+<p class="text-sm text-gray-500 mb-4">
+  Default TTL is 30d with refresh-on-read.
 </p>
 {{if .ActiveWorkspace}}
 <div class="mb-6 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded text-xs text-indigo-700">
@@ -67,21 +73,22 @@
 <!-- Key list -->
 <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
   <div id="store-keys">
-    {{range .Sections}}
+    {{range $section := .Sections}}
     <div class="border-b border-gray-200 last:border-b-0">
       <div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide">
-        {{.Label}}
-        <span class="text-gray-300">({{len .Keys}} keys)</span>
+        {{$section.Label}}
+        <span class="text-gray-300">({{len $section.Keys}} keys)</span>
       </div>
-      {{if not .Keys}}
+      {{if not $section.Keys}}
       <div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>
       {{else}}
-      {{range .Keys}}
+      {{range $section.Keys}}
       <div class="px-5 py-2.5">
         <div class="flex items-center justify-between">
-          <span class="font-mono text-sm">{{.}}</span>
+          <a href="/store/entry?scope={{$section.Scope}}&key={{.}}" class="font-mono text-sm hover:text-indigo-600">{{.}}</a>
           <div class="flex items-center gap-3">
-            <button hx-delete="/store/{{.}}?scope={{$.Scope}}"
+            <a href="/store/entry?scope={{$section.Scope}}&key={{.}}" class="text-indigo-500 hover:text-indigo-700 text-xs">view</a>
+            <button hx-delete="/store/{{.}}?scope={{$section.Scope}}"
                     hx-target="#store-keys"
                     hx-swap="innerHTML"
                     hx-confirm="Delete store entry '{{.}}'?"

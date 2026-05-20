@@ -179,6 +179,7 @@ func New(opts Options) (*Server, error) {
 		"templates/auth.html",
 		"templates/vault.html",
 		"templates/store.html",
+		"templates/store_entry.html",
 		"templates/blueprints.html",
 		"templates/blueprints_browse.html",
 		"templates/blueprint_browse_detail.html",
@@ -319,10 +320,19 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /vault/{key}", s.handleVaultDelete)
 
 	// Store page — agent-writable workspace state. No unlock dance
-	// (store has no password), just browse / save / delete.
+	// (store has no password), just browse / save / delete / view.
 	s.mux.HandleFunc("GET /store", s.handleStore)
 	s.mux.HandleFunc("POST /store", s.handleStoreSet)
 	s.mux.HandleFunc("DELETE /store/{key}", s.handleStoreDelete)
+	// Detail page for a single entry — value + TTL + inline edit.
+	// Scope + key are query params (workspace scopes contain ":"
+	// which would tangle URL-path scopes).
+	s.mux.HandleFunc("GET /store/entry", s.handleStoreEntry)
+	s.mux.HandleFunc("POST /store/entry", s.handleStoreEntryUpdate)
+	// Delete is a plain POST (not DELETE) so HTML forms can submit
+	// it without JS. The list page's hx-delete button still uses
+	// DELETE /store/{key} — different mode, different route.
+	s.mux.HandleFunc("POST /store/entry/delete", s.handleStoreEntryDelete)
 	s.mux.HandleFunc("POST /vault/unlock", s.handleVaultUnlock)
 	s.mux.HandleFunc("POST /vault/unlock-form", s.handleVaultUnlockForm)
 	s.mux.HandleFunc("GET /vault/unlock-modal", s.handleVaultUnlockModal)

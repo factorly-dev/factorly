@@ -1,0 +1,85 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+{{define "content"}}
+<div class="mb-4">
+  <a href="/store" class="text-xs text-gray-500 hover:text-gray-900">← Back to Store</a>
+</div>
+
+<div class="flex items-baseline justify-between mb-1">
+  <h1 class="text-2xl font-bold font-mono break-all">{{.Key}}</h1>
+  <span class="text-[10px] uppercase text-gray-400 tracking-wide ml-4 shrink-0">{{.ScopeLabel}}</span>
+</div>
+
+<div class="flex items-center gap-3 mb-6 text-xs text-gray-500">
+  <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 rounded font-medium">
+    {{if .HasTTL}}
+      {{if eq .RemainingHuman "expired"}}
+        <span class="text-red-600">{{.RemainingHuman}}</span>
+      {{else}}
+        TTL: {{.RemainingHuman}}
+      {{end}}
+    {{else}}
+      {{.RemainingHuman}}
+    {{end}}
+  </span>
+  <span>created {{.CreatedAt.Format "2006-01-02 15:04"}}</span>
+  {{if not .LastReadAt.IsZero}}
+  <span>· last read {{.LastReadAt.Format "2006-01-02 15:04"}}</span>
+  {{end}}
+</div>
+
+<!-- Edit form. No htmx attributes — the body-level hx-boost on
+     <body> transparently turns the POST + 303 + GET into a content
+     swap. Plain navigation pattern; URL stays in sync because the
+     redirect lands on /store/entry?scope=...&key=... -->
+<form method="POST" action="/store/entry"
+      class="bg-white rounded-lg border border-gray-200 p-5 mb-6">
+  <input type="hidden" name="scope" value="{{.Scope}}">
+  <input type="hidden" name="key" value="{{.Key}}">
+
+  <div class="mb-4">
+    <label class="block text-[10px] text-gray-400 uppercase mb-1">Value</label>
+    <textarea name="value" rows="12"
+              class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">{{.Value}}</textarea>
+  </div>
+
+  <div class="flex items-end gap-3">
+    <div class="w-32">
+      <label class="block text-[10px] text-gray-400 uppercase mb-1">TTL</label>
+      <input type="text" name="ttl" placeholder="(unchanged)"
+             class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+    </div>
+    <p class="text-[11px] text-gray-400 flex-1 pb-2">
+      Leave TTL blank to keep the entry's existing lifetime. Set
+      <code class="bg-gray-100 px-1 rounded">0</code> to make it never expire.
+    </p>
+    <button type="submit"
+            class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">
+      Save
+    </button>
+  </div>
+</form>
+
+<!-- Delete: plain POST form. boost intercepts the submit and
+     navigates to /store via the handler's 303. hx-confirm here
+     matches the list-page delete buttons' confirm semantics
+     (browser-native confirm() under the hood; same UX as the
+     <button hx-delete> rows in renderStoreKeys). -->
+<form method="POST" action="/store/entry/delete"
+      hx-confirm="Delete store entry '{{.Key}}'?"
+      class="bg-white rounded-lg border border-red-100 p-5">
+  <input type="hidden" name="scope" value="{{.Scope}}">
+  <input type="hidden" name="key" value="{{.Key}}">
+  <h2 class="font-semibold mb-2 text-sm text-red-700">Delete entry</h2>
+  <p class="text-xs text-gray-500 mb-3">
+    Removes <code class="font-mono">{{.Key}}</code> from <span class="font-medium">{{.ScopeLabel}}</span>. Cannot be undone.
+  </p>
+  <button type="submit"
+          class="px-3 py-1.5 bg-red-50 text-red-700 text-sm font-medium rounded hover:bg-red-100 transition-colors border border-red-200">
+    Delete
+  </button>
+</form>
+{{end}}
