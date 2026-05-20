@@ -77,6 +77,18 @@ func (p *Provider) Setup() error { return nil }
 // Teardown is a no-op.
 func (p *Provider) Teardown() error { return nil }
 
+// Validate compiles the script in a sandboxed yaegi interpreter
+// without running Run. Returns nil on success, or the parse/compile
+// error if the source is malformed. Used by the promote pipeline to
+// reject a tool YAML before writing it to disk — landing a broken
+// `type: code` tool helps nobody.
+//
+// Behavior matches what RegisterCode would check, minus the
+// side-effect of stashing the script under a tool name.
+func Validate(src string) error {
+	return validateScript(src)
+}
+
 // RegisterCode validates the script and stashes it for later execution.
 // Validation runs yaegi against the source so syntax errors, missing
 // `Run`, wrong signature, and denied imports all surface here.

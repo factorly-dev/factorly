@@ -28,6 +28,14 @@ type historyEntry struct {
 	Params       map[string]string
 	AgentID      string
 	Workspace    string
+	// SourceSHA is the script hash for factorly.code / type:code calls.
+	// Empty for other tools. Used by the "Save as tool" button to
+	// address this specific run in the promote flow.
+	SourceSHA string
+	// Promotable is true when this entry is a successful factorly.code
+	// call — i.e. the operator can convert this run into a named
+	// type:code tool via /tools/promote.
+	Promotable bool
 }
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +106,11 @@ func readLogsFromPath(path string, max int) []historyEntry {
 	// Read all lines (we'll take the last `max`)
 	var lines []string
 	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 256*1024), 256*1024)
+	// 1MB max line: factorly.code entries embed the full script as a
+	// params value, which can exceed the 256KB default scanner limit
+	// and would silently skip the affected entries (hiding them from
+	// /history). Matches internal/promote's scanner buffer.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 	}
@@ -134,6 +146,8 @@ func readLogsFromPath(path string, max int) []historyEntry {
 			Params:       raw.Params,
 			AgentID:      raw.AgentID,
 			Workspace:    raw.Workspace,
+			SourceSHA:    raw.SourceSHA,
+			Promotable:   raw.Tool == "factorly.code" && raw.Status == "success" && raw.SourceSHA != "",
 		})
 	}
 

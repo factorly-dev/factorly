@@ -164,6 +164,35 @@ Same engine, same SDK. The `params` argument is a JSON object; its keys/values b
 
 The builtin is registered in `stdio` mode only (same gating as `factorly.shell`). HTTP-mode MCP servers don't expose it.
 
+## Promoting a `factorly.code` run to a named tool
+
+When an agent-authored script via `factorly.code` does something useful that you want to keep — instead of having the agent re-write it next time — promote the run into a named `type: code` tool. The source comes from the audit log; the parameter list is inferred from the params the script was invoked with (their run-time values become defaults).
+
+**From the CLI:**
+
+```bash
+# Find the run you want to promote (source_sha shows in `factorly logs`).
+factorly logs --tail 5
+
+# Promote it. The SHA prefix only needs to be unambiguous (>= 4 chars).
+factorly tools promote --from-sha 8e3c --name trello.factorly_cards
+```
+
+Flags:
+- `--from-sha <prefix>` — `source_sha` prefix of the audit entry. Most-recent matching run wins; ambiguous prefixes (multiple distinct scripts share the prefix) error out so you can narrow it.
+- `--name <name>` — the new tool's name. Follow the `category.action` convention.
+- `--description <text>` — optional. Defaults to "Promoted from factorly.code run on YYYY-MM-DD (sha …)".
+- `--overwrite` — replace an existing tool of the same name.
+- `--no-confirm` — opt out of `shadow.confirm: true` (the default for promoted tools).
+
+The promote step **compile-checks the script** before writing the YAML — a broken script never lands as a registered tool. The output is a normal `type: code` tool in `.factorly/<name>.yaml`, ready to edit in the UI like any other.
+
+**From the UI:**
+
+`/history` shows a **Save as tool** button on every successful `factorly.code` row. Clicking it opens a form prefilled with the inferred parameters and source preview. Submit lands you on the new tool's edit page so you can polish the description and parameter docs.
+
+After promotion, calling the script is just `factorly call trello.factorly_cards --board_id …` — and the agent can discover the new tool via `factorly.ListTools()` on its next run.
+
 ## Oversight
 
 Code tools are tool calls, full stop. The shadow layer treats them like any other tool:

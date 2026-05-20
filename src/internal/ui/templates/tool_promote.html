@@ -1,0 +1,96 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+{{define "content"}}
+<div class="max-w-3xl mx-auto">
+  <div class="mb-6">
+    <a href="/history" class="text-xs text-gray-500 hover:text-gray-700">← Back to history</a>
+    <h1 class="text-2xl font-bold mt-2">Save as tool</h1>
+    <p class="text-sm text-gray-500 mt-1">
+      Promote this <code class="px-1 py-0.5 bg-amber-50 text-amber-700 rounded text-xs">factorly.code</code>
+      run into a named, reusable tool.
+    </p>
+  </div>
+
+  <div class="bg-white rounded-lg border border-gray-200 p-6 space-y-5">
+    <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-xs text-gray-500">
+      <div><span class="text-gray-400">Recorded:</span> <span class="font-mono text-gray-700">{{.Timestamp}}</span></div>
+      <div><span class="text-gray-400">SHA:</span> <span class="font-mono text-gray-700">{{.ShortSHA}}</span></div>
+    </div>
+
+    {{if .CompileErr}}
+    <div class="bg-red-50 border border-red-200 rounded p-3 text-sm">
+      <p class="text-red-700 font-medium mb-1">Script does not compile</p>
+      <pre class="text-red-600 text-xs font-mono whitespace-pre-wrap">{{.CompileErr}}</pre>
+      <p class="text-red-600 text-xs mt-2">Promote refuses to write a broken tool. Edit the script in a future run and try again.</p>
+    </div>
+    {{end}}
+
+    <form method="POST" action="/tools/promote" class="space-y-4">
+      <input type="hidden" name="from-sha" value="{{.FromSHA}}">
+
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Tool name</label>
+        <input type="text" name="name" required autofocus
+               placeholder="e.g. trello.factorly_cards"
+               pattern="[a-zA-Z][a-zA-Z0-9_.-]*"
+               class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
+        <p class="text-[11px] text-gray-400 mt-1">Letters, digits, dots, underscores, hyphens. Convention: <code>category.action</code>.</p>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Description</label>
+        <textarea name="description" rows="2"
+                  placeholder="{{.AutoDesc}}"
+                  class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-indigo-200 resize-y"></textarea>
+        <p class="text-[11px] text-gray-400 mt-1">Leave blank to use the auto-generated description.</p>
+      </div>
+
+      {{if .Parameters}}
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Inferred parameters</label>
+        <div class="space-y-1.5">
+          {{range .Parameters}}
+          <div class="flex items-center gap-3 text-xs">
+            <span class="font-mono text-gray-700 w-32 shrink-0">{{.Name}}</span>
+            <span class="text-gray-400">default:</span>
+            <span class="font-mono text-gray-600 truncate">{{.Default}}</span>
+          </div>
+          {{end}}
+        </div>
+        <p class="text-[11px] text-gray-400 mt-2">Edit descriptions and types in the tool's edit page after saving.</p>
+      </div>
+      {{else}}
+      <p class="text-[11px] text-gray-400">No parameters were inferred (the script ran without any).</p>
+      {{end}}
+
+      <div class="space-y-2 pt-2 border-t border-gray-100">
+        <label class="flex items-center gap-2 text-xs text-gray-600">
+          <input type="checkbox" name="confirm" checked class="rounded border-gray-300">
+          Require confirmation before each call (<code class="px-1 py-0.5 bg-gray-100 rounded text-[10px]">shadow.confirm: true</code>)
+        </label>
+        <label class="flex items-center gap-2 text-xs text-gray-600">
+          <input type="checkbox" name="overwrite" class="rounded border-gray-300">
+          Overwrite if a tool with this name already exists
+        </label>
+      </div>
+
+      <div>
+        <h4 class="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Source preview</h4>
+        <pre class="text-[11px] font-mono bg-gray-50 text-gray-700 px-3 py-2.5 rounded border border-gray-100 whitespace-pre-wrap max-h-72 overflow-y-auto">{{.Source}}</pre>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-2">
+        <a href="/history" class="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Cancel</a>
+        <button type="submit"
+                {{if .CompileErr}}disabled title="Cannot save: script does not compile"{{end}}
+                class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">
+          Save as tool
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}

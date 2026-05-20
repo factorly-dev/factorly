@@ -585,7 +585,7 @@ func init() {
 	importOpenAPICmd.Flags().StringVarP(&importOpenAPIPrefix, "prefix", "p", "", "tool name prefix (default: from spec title)")
 	importCmd.AddCommand(importOpenAPICmd)
 
-	toolsCmd.AddCommand(toolsListCmd, toolsShowCmd, addCmd, removeCmd, importCmd, recordCmd, statusCmd)
+	toolsCmd.AddCommand(toolsListCmd, toolsShowCmd, addCmd, removeCmd, importCmd, recordCmd, statusCmd, toolsPromoteCmd)
 	utilsCmd.AddCommand(autocompleteCmd)
 	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, workspacesCmd, authCmd, serveCmd, wrapCmd, execCmd, logsCmd, utilsCmd, uiCmd, blueprintCmd)
 }

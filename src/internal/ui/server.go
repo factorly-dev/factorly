@@ -148,6 +148,7 @@ func New(opts Options) (*Server, error) {
 		"templates/tools.html",
 		"templates/tool_edit.html",
 		"templates/tool_new.html",
+		"templates/tool_promote.html",
 		"templates/import.html",
 		"templates/workflows.html",
 		"templates/workflow_new.html",
@@ -230,6 +231,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /tools", s.handleToolsList)
 	s.mux.HandleFunc("GET /tools/new", s.handleToolNew)
 	s.mux.HandleFunc("GET /tools/_form", s.handleToolFormPartial)
+	// Promote (factorly.code → type:code tool). Registered before the
+	// catch-all /tools/{name} so the literal path wins; Go's ServeMux
+	// resolves by specificity but explicit ordering is documentation.
+	s.mux.HandleFunc("GET /tools/promote", s.handlePromoteForm)
+	s.mux.HandleFunc("POST /tools/promote", s.handlePromoteSubmit)
 	s.mux.HandleFunc("GET /tools/{name}", s.handleToolEdit)
 	s.mux.HandleFunc("POST /tools/_new", s.handleToolCreate)
 	s.mux.HandleFunc("POST /tools/{name}", s.handleToolSave)

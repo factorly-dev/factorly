@@ -24,6 +24,9 @@ factorly blueprint uninstall <name>   # remove an installed blueprint
 factorly tools record                 # create a tool from a pasted curl command
 factorly tools record --curl '...'    # create from inline curl
 factorly tools record --dry-run       # preview YAML without writing
+factorly tools promote --from-sha <prefix> --name <name>   # promote a factorly.code audit entry into a named type:code tool
+factorly tools promote --from-sha 8e3c --name x.y --overwrite  # replace an existing tool of the same name
+factorly tools promote --from-sha 8e3c --name x.y --no-confirm # skip the default shadow.confirm:true
 factorly call <tool> [--param val]  # call a tool (cli, rest, mcp, or workflow)
 factorly sync                       # push MCP config to AI clients
 factorly sync --global              # sync to user-level config (~/.claude/, etc.)

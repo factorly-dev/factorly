@@ -20,6 +20,7 @@ factorly ui
 - **Auth** — configure and refresh OAuth providers
 - **Activity feed** — live SSE stream of all tool calls as they happen
 - **Import** — import tools from OpenAPI specs, or install blueprints from the bundled catalog / GitHub URL / pasted YAML
+- **Promote `factorly.code` runs** — turn a successful agent-authored script from `/history` into a named, reusable `type: code` tool with one click
 
 ## Options
 

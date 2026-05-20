@@ -67,7 +67,27 @@
         <span>{{.TimestampRel}}</span>
       </div>
     </summary>
-    <div class="px-5 pb-4 pt-1 border-t border-gray-50">
+    <div class="px-5 pb-4 pt-3 border-t border-gray-50">
+      {{if .Promotable}}
+      <!--
+        factorly.code entries can be promoted into named type:code
+        tools so the agent (or operator) can call the same script
+        repeatedly without re-pasting the source. The button routes
+        to /tools/promote which compile-checks the script before
+        writing the YAML.
+
+        Surfaced at the top of the expanded card so it's the first
+        thing the operator sees when reviewing a successful agent
+        script — promotion is the primary call-to-action for these
+        rows.
+      -->
+      <div class="mb-3 flex items-center justify-end">
+        <a href="/tools/promote?from-sha={{.SourceSHA}}"
+           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">
+          {{icon "plus"}} Save as tool
+        </a>
+      </div>
+      {{end}}
       <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-3">
         <div><dt class="text-gray-400">Time</dt><dd class="font-mono">{{.Timestamp}}</dd></div>
         <div><dt class="text-gray-400">Interface</dt><dd class="font-mono">{{.Interface}}</dd></div>
