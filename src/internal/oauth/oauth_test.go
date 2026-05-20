@@ -387,20 +387,24 @@ func waitForPort(t *testing.T, port int, timeout time.Duration) {
 	t.Fatalf("port %d not listening after %s", port, timeout)
 }
 
-// waitForCallback polls until capturedURL is set, extracts the callback port
-// from the redirect_uri, waits for it to be listening, and returns the port.
-// This avoids hardcoding port 18019 which causes flaky tests when the port
-// isn't released between test runs.
-func waitForCallback(t *testing.T, capturedURL *string, timeout time.Duration) int {
+// waitForCallback receives the auth URL the LoginFlow goroutine
+// passed to openBrowserFn, extracts the callback port from
+// redirect_uri, waits for it to be listening, and returns both the
+// URL and the port. Returning the URL means the caller doesn't need
+// a separately-synchronized variable to read it back.
+//
+// Channel handoff (not a spin-loop on a shared string) gives the
+// race detector the happens-before edge it needs: the URL string's
+// underlying memory is fully constructed on the sending goroutine
+// before the receive completes.
+func waitForCallback(t *testing.T, urlCh <-chan string, timeout time.Duration) (capturedURL string, port int) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for *capturedURL == "" && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
+	select {
+	case capturedURL = <-urlCh:
+	case <-time.After(timeout):
+		t.Fatal("auth URL was not captured within timeout")
 	}
-	if *capturedURL == "" {
-		t.Fatal("auth URL was not captured")
-	}
-	parsed, err := url.Parse(*capturedURL)
+	parsed, err := url.Parse(capturedURL)
 	if err != nil {
 		t.Fatalf("parsing auth URL: %v", err)
 	}
@@ -412,12 +416,12 @@ func waitForCallback(t *testing.T, capturedURL *string, timeout time.Duration) i
 	if err != nil {
 		t.Fatalf("parsing redirect_uri: %v", err)
 	}
-	port, err := strconv.Atoi(rParsed.Port())
+	port, err = strconv.Atoi(rParsed.Port())
 	if err != nil {
 		t.Fatalf("parsing port from redirect_uri %q: %v", redirectURI, err)
 	}
 	waitForPort(t, port, timeout)
-	return port
+	return capturedURL, port
 }
 
 func TestLoginFlowSuccess(t *testing.T) {
@@ -433,10 +437,14 @@ func TestLoginFlowSuccess(t *testing.T) {
 	}))
 	defer tokenSrv.Close()
 
-	// Capture auth URL to extract state
-	var capturedURL string
+	// Capture auth URL via channel handoff. The buffered channel
+	// gives the race detector the happens-before edge it needs:
+	// the URL string's bytes are fully constructed on the LoginFlow
+	// goroutine before the send, and only visible to the test
+	// goroutine after the receive.
+	urlCh := make(chan string, 1)
 	origFn := openBrowserFn
-	openBrowserFn = func(u string) { capturedURL = u }
+	openBrowserFn = func(u string) { urlCh <- u }
 	defer func() { openBrowserFn = origFn }()
 
 	cfg := ProviderConfig{
@@ -459,8 +467,8 @@ func TestLoginFlowSuccess(t *testing.T) {
 		}
 	}()
 
-	// Wait for callback server to start and extract port
-	port := waitForCallback(t, &capturedURL, 2*time.Second)
+	// Wait for callback server to start and extract port + URL.
+	capturedURL, port := waitForCallback(t, urlCh, 2*time.Second)
 
 	// Extract state from captured auth URL
 	parsed, err := url.Parse(capturedURL)
@@ -496,9 +504,9 @@ func TestLoginFlowSuccess(t *testing.T) {
 }
 
 func TestLoginFlowStateMismatch(t *testing.T) {
-	var capturedURL string
+	urlCh := make(chan string, 1)
 	origFn := openBrowserFn
-	openBrowserFn = func(u string) { capturedURL = u }
+	openBrowserFn = func(u string) { urlCh <- u }
 	defer func() { openBrowserFn = origFn }()
 
 	cfg := ProviderConfig{
@@ -516,7 +524,7 @@ func TestLoginFlowStateMismatch(t *testing.T) {
 		errCh <- err
 	}()
 
-	port := waitForCallback(t, &capturedURL, 2*time.Second)
+	_, port := waitForCallback(t, urlCh, 2*time.Second)
 
 	// Send callback with wrong state
 	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/callback?code=test-code&state=wrong-state", port))
@@ -542,9 +550,9 @@ func TestLoginFlowStateMismatch(t *testing.T) {
 }
 
 func TestLoginFlowMissingCode(t *testing.T) {
-	var capturedURL string
+	urlCh := make(chan string, 1)
 	origFn := openBrowserFn
-	openBrowserFn = func(u string) { capturedURL = u }
+	openBrowserFn = func(u string) { urlCh <- u }
 	defer func() { openBrowserFn = origFn }()
 
 	cfg := ProviderConfig{
@@ -562,7 +570,7 @@ func TestLoginFlowMissingCode(t *testing.T) {
 		errCh <- err
 	}()
 
-	port := waitForCallback(t, &capturedURL, 2*time.Second)
+	capturedURL, port := waitForCallback(t, urlCh, 2*time.Second)
 
 	parsed, _ := url.Parse(capturedURL)
 	state := parsed.Query().Get("state")
@@ -588,9 +596,9 @@ func TestLoginFlowMissingCode(t *testing.T) {
 }
 
 func TestLoginFlowProviderError(t *testing.T) {
-	var capturedURL string
+	urlCh := make(chan string, 1)
 	origFn := openBrowserFn
-	openBrowserFn = func(u string) { capturedURL = u }
+	openBrowserFn = func(u string) { urlCh <- u }
 	defer func() { openBrowserFn = origFn }()
 
 	cfg := ProviderConfig{
@@ -608,7 +616,7 @@ func TestLoginFlowProviderError(t *testing.T) {
 		errCh <- err
 	}()
 
-	port := waitForCallback(t, &capturedURL, 2*time.Second)
+	capturedURL, port := waitForCallback(t, urlCh, 2*time.Second)
 
 	parsed, _ := url.Parse(capturedURL)
 	state := parsed.Query().Get("state")
