@@ -1,3 +1,134 @@
+## [v0.11.0] - 2026-05-19
+
+Workspaces, code tools, and a unified vault layer.
+
+### Added
+
+**Workspaces**
+- Workspaces — named variable and vault overlays via `.factorly/workspaces/<name>.yaml`, selectable via `--workspace`/`-w` flag or `FACTORLY_WORKSPACE`
+- Workspaces UI — top-nav pill selector, `/workspaces` CRUD page, inline vault unlock modal, workspace banners on vault/auth/history pages
+- `factorly workspaces create` and `factorly workspaces delete` CLI subcommands
+- OAuth workspace isolation — per-workspace token bundles land in per-workspace vault files automatically
+- Workspace vars overlay wired into `exec` args and proxy runtime parameter resolver for `{{env:VAR}}` refs
+- `EnvBackendWithOverrides` registered on proxy runtime resolver so `{{env:VAR}}` in call params resolves against workspace vars
+- `factorly init` unconditionally creates `.factorly/workspaces/default.yaml`
+
+**Vault layer**
+- `vault.Manager` — mutex-guarded per-scope backend cache shared by CLI and UI
+- `vault.Secret` type wrapping password `[]byte` with explicit lifecycle (`NewSecret`, `Zero`, `Clone`, `Empty`, `Len`)
+- `vaultTier` abstraction collapsing per-tier function sprawl into `Open`/`ResolvePassword`/`Exists`
+- `errExplicitVaultLocked` sentinel distinguishing `--vault-path` locks from global vault locks
+- `FallbackBackend.EnsureSecondary()` public method to eagerly warm lazy opens
+- `FallbackBackend` `sync.Once` opener serialization preventing double password prompts
+- Shared-password chain for workspace → project → global vault unlock (one prompt unlocks all when passwords match)
+- Startup vault unlock modal fetched on page load; per-session skip via cookie
+- Process-wide shared `bufio.Scanner` in `promptSecret` fixing multi-prompt CLI flows over piped stdin
+- `openWithCandidateOrPrompt` returning the password that actually unlocked a vault for chaining
+- `LocalBackend.Path()` accessor for vault file path classification
+
+**Code tools (`type: code`)**
+- `type: code` tool provider — Go scripts run in a yaegi interpreter, callable via CLI/MCP/UI, with `factorly.Call` re-entering the proxy for full shadow/vault/audit coverage
+- `factorly.code` builtin — agent-authored Go scripts submitted at call time via `code` parameter, reusing the V1 engine
+- `factorly.ListTools()` in-script SDK function returning `ToolInfo`/`ParamInfo` snapshots
+- `Run(ctx, src, params, maxCalls)` entry point on code provider for agent-supplied scripts
+- `SHA(src)` helper exported from code provider for audit stamping of agent-supplied scripts
+- `source_sha` field in audit log entries for code tools (SHA-256 of script body)
+
+**MCP & UI surface**
+- MCP resource registration for tools, workflows, and blueprints (`factorly://` URIs) with `RefreshResources` on UI reload
+- "View YAML" pages for tools, workflows, and installed blueprints in the UI with copy and download support
+- `factorly tools show <name>` CLI subcommand emitting tool YAML
+- `factorly blueprint show <name>` CLI subcommand with fallback to bundled YAML
+- Dirty-state guard for tool and workflow edit pages — Save disabled when clean, Cancel shown when dirty, Run disabled when dirty
+- Env var editor (key/value rows + strict isolation checkbox) on CLI tool create and edit forms
+- Collapsible long descriptions in UI (first paragraph visible, rest behind `<details>` / "Show more")
+- `markdownLead` template function splitting descriptions at first blank line
+- `description_block` partial for reusable collapsible markdown descriptions
+- Markdown rendering for tool/workflow/blueprint descriptions in the UI via goldmark
+
+**Project-scoping**
+- Project-scoped audit log at `<project>/.factorly/audit.jsonl`
+- Project-scoped rate-limit state at `<project>/.factorly/ratelimit.json`
+- Project-scoped workflow run state at `<project>/.factorly/runs/`
+- `internal/projectpath` package with shared `Resolve(cfgPath, basename, globalFallback)` helper
+- `FACTORLY_LOG_PATH` env var to override the audit log path
+- `factorly init` now offers to append `.factorly/` entries to an existing `.gitignore`
+
+**Built-ins & blueprints**
+- Context propagation through built-in handlers (`ExecuteWithContext`) honoring caller deadlines
+- Unix process-group cancellation for shell built-in preventing orphaned child processes
+- Deepgram bundled blueprint
+
+**Tests**
+- Integration tests: workspace overlay, vault chain, OAuth isolation, shared-password unlock, UI inheritance of CLI-typed passwords, code tool list/SHA/end-to-end, exec workspace vars, param env-ref resolution, gitignore flow, project-scoped log path, MCP resources, tool/blueprint YAML show, dirty-state templates
+- `envWithoutHome()` test helper stripping `HOME` and related vars for vault isolation
+
+### Changed
+
+**Vault layer**
+- `ui.Options` shrunk from 12 fields to 5 after `vault.Manager` unification
+- `vaultTokenStore` holds a `getBackend()` closure instead of a static backend, updated on workspace switch
+- `activeTier()` is the single source of truth for vault precedence order
+- `FallbackBackend` memoizes secondary-open failures and surfaces them via `Get`/`Set`/`Delete`/`List` instead of flattening to `ErrNotFound`
+- `EnsureSecondary` returns `(Backend, error)` so callers can log warming failures at the call site
+- `envSource` strictness is a field rather than slice position
+- `workspace.ValidateName` applied everywhere a workspace vault path is constructed, closing a path-traversal seam
+- `ValidateName` tightened to allow single interior dots, rejecting only `..`, leading/trailing `.`, and path separators
+- `stdinScanner` shared process-wide; first `promptSecret` call initializes it
+
+**Config & init**
+- `factorly init` drops from five prompts to three; no longer prompts about tools directory; OpenAPI imports always write to `.factorly/tools/`
+- `config.Load` accepts `LoadOption` variadic; `WithWorkspace(name)` registers workspace var overlay
+- `ShadowConfig` gains `MaxCalls` field; top-level `ToolConfig.MaxCalls` removed
+- Audit log renamed from `calls.jsonl` to `audit.jsonl` in both project and global locations
+- Workflow run state directory changed from cwd-relative `.factorly/workflows/` to project-scoped `.factorly/runs/`
+- `WorkflowProvider` gains opt-in `SetRunsDir(dir)` setter; empty value disables persistence
+
+**MCP & UI**
+- MCP server constructor takes `(reg, p, cfg, cfgPath, agentReg...)` to support resource registration
+- `handleWorkflowSave` returns inline "✓ Saved" fragment for htmx callers, redirects only for plain form posts
+- Save form `hx-on::after-request` filter tightened to `event.detail.elt === this` to prevent bubbled child requests triggering form reload
+- Run panel output clears on each new run
+- `tool_new.html` now uses `{{template "tool_form_cli" .}}` shared partial instead of duplicated inline fields
+
+### Fixed
+
+**Vault layer**
+- Long-latent bug in `deriveKey` zeroing the caller's password slice mid-call, breaking candidate-password chains
+- Workspace-switched UI no longer shows "(locked)" for tiers already opened by the CLI
+- `bufio.Scanner` sharing bug causing second password prompt to see empty input and error silently
+- OAuth token refreshes now write to the active workspace's vault, not the bootstrap-time vault
+- `vault set --workspace ../escape` no longer silently falls through to global vault
+
+**Code tools**
+- Code tool with compile error now returns clear "script failed to compile" message instead of "no provider for tool"
+- Broken code tools no longer dropped from the registry; compile error is stashed and surfaced on invocation
+
+**Workspace var resolution**
+- `{{env:VAR}}` in `factorly call` parameter values now resolves against workspace vars (proxy runtime resolver was missing env backend)
+- `{{env:VAR}}` in `factorly exec` args now resolves against workspace vars
+
+**Tests & flakes**
+- Data race in `TestLoginFlow*` tests replaced spin-loop on shared string with buffered channel handoff
+- Rate-limit buckets no longer shared across projects (was poisoning test isolation)
+- Workflow `TestWorkflowStatePersisted` no longer scribbles into cwd
+- `TestShadowRateLimit` flake caused by shared global rate-limit file
+- `TestLogFilePermissions` latent assertion mismatch fixed by project-scoped log routing
+
+**UI**
+- Delete-step button inside `<details><summary>` no longer races the native toggle (`stopPropagation` added)
+- Removing a param row no longer leaves index gaps that cause subsequent params to be silently dropped on save (JS reindexers added)
+
+### Removed
+- Seven dead `Open*` vault wrapper functions (`OpenProjectVault`, `OpenGlobalVault`, `OpenWorkspaceChain`, etc.)
+- Six pure-delegation `Server` vault methods (`cachedWorkspaceVault`, `openVaultWithPassword`, etc.)
+- `zeroBytes` helper (replaced by `vault.Secret.Zero`)
+- `tryCandidate` helper (folded inline via `Secret.Empty`)
+- `resolveVaultPassword`, `resolveVaultPath`, and dead per-tier wrappers from vault refactor
+- `TestInitWithToolsDir` integration test (tested a removed code path)
+- Tools-directory prompts from `factorly init`
+- "Add example workspaces (dev, prod)?" prompt from `factorly init`
+
 ## [v0.10.1] - 2026-05-13
 
 ### Fixed
