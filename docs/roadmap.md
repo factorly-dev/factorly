@@ -30,15 +30,18 @@
 - [x] **Per-project vault** — `.factorly/vault.enc` with fallback to global, separate passwords, lazy opening
 - [x] **npm distribution** — `npm install -g factorly`
 - [x] **External vault backends** — tool-style config for 1Password, AWS SM, GCP SM, any CLI-based secret manager
+- [x] **Workspaces** — named variable + vault overlays for switching envs (`--workspace staging`, `--workspace prod`); per-workspace OAuth token isolation
+- [x] **`type: workflow`** — sequential tool pipelines with variable passing, persisted state machine, execution trace output
+- [x] **`type: code`** — Go scripts run in a yaegi interpreter; agent-authored scripts via `factorly.code` builtin; re-enters the proxy via `factorly.Call` for full shadow/vault/audit coverage
+- [x] **Web UI** — `factorly ui` localhost browser interface for tools/workflows/blueprints/vault/auth/history; htmx-driven, mountable MCP endpoint
+- [x] **MCP resources** — `factorly://tools/...`, `factorly://workflows/...`, `factorly://blueprints/...` URIs with `notifications/resources/list_changed` on config reload
+- [x] **Command-specific filtering** — per-tool output filter engine with strip/keep lines, match_output short-circuit, regex replace, head/tail, max_lines, json_path, pipe + 27 built-in filters
 
 ## Future?
 
 ### Agent & workflows
 - [ ] **`factorly agent`** — lightweight agent loop with tool calling, oversight, and run summary ([spec](agent-spec.md))
-- [x] **`type: workflow`** — sequential tool pipelines with variable passing, persisted state machine, execution trace output
-- [x] **Command-specific filtering** — per-tool output filter engine with strip/keep lines, match_output short-circuit, regex replace, head/tail, max_lines, json_path, pipe + 27 built-in filters
 - [ ] **PreToolUse hooks** — `factorly hooks install` to intercept agent Bash calls, rewriting them to `factorly exec` for compression and logging without MCP ([spec](hooks-spec.md))
-- [x] **Command-specific filtering** — per-tool output filter engine with strip/keep lines, match_output short-circuit, regex replace, head/tail, max_lines + 10 built-in filters for git, make, npm, go test, cargo, pip
 - [ ] **Response caching** — return cached results for identical tool calls within a configurable window, reducing API quota usage and latency
 
 ### AARM conformance
