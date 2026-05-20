@@ -90,7 +90,7 @@
           <a href="/tools/{{.Name}}"
              class="sidebar-item block px-4 py-2 pl-7 text-xs font-mono truncate {{if eq .Name $.ActiveTool}}active{{end}} {{if .Hidden}}opacity-50{{end}}">
             <span class="inline-block w-2 h-2 rounded-full mr-1.5
-              {{if eq .Type "cli"}}bg-gray-400{{else if eq .Type "rest"}}bg-blue-400{{else if eq .Type "mcp"}}bg-purple-400{{end}}"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-400">⊘</span>{{end}}
+              {{if eq .Type "cli"}}bg-gray-400{{else if eq .Type "rest"}}bg-blue-400{{else if eq .Type "mcp"}}bg-purple-400{{else if eq .Type "code"}}bg-amber-400{{else if eq .Type "builtin"}}bg-emerald-400{{end}}"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-400">⊘</span>{{end}}
           </a>
           {{end}}
         </details>
@@ -99,7 +99,7 @@
         <a href="/tools/{{.Name}}"
            class="sidebar-item block px-4 py-2 text-xs font-mono truncate {{if eq .Name $.ActiveTool}}active{{end}} {{if .Hidden}}opacity-50{{end}}">
           <span class="inline-block w-2 h-2 rounded-full mr-1.5
-            {{if eq .Type "cli"}}bg-gray-400{{else if eq .Type "rest"}}bg-blue-400{{else if eq .Type "mcp"}}bg-purple-400{{end}}"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-400">⊘</span>{{end}}
+            {{if eq .Type "cli"}}bg-gray-400{{else if eq .Type "rest"}}bg-blue-400{{else if eq .Type "mcp"}}bg-purple-400{{else if eq .Type "code"}}bg-amber-400{{else if eq .Type "builtin"}}bg-emerald-400{{end}}"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-400">⊘</span>{{end}}
         </a>
         {{end}}
         {{end}}
