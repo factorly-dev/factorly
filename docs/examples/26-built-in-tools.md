@@ -7,8 +7,8 @@ Factorly ships five governed tools that work out of the box — no YAML needed. 
 | Tool | Description | Implementation |
 |------|-------------|----------------|
 | `factorly.shell` | Run a shell command (confirm required, destructive patterns blocked) | `exec.Command` with 30s timeout |
-| `factorly.read_file` | Read a local file (sensitive paths blocked) | `os.ReadFile`, project-scoped |
-| `factorly.write_file` | Write a local file (confirm required, system paths blocked) | `os.WriteFile`, project-scoped |
+| `factorly.file.read` | Read a local file (sensitive paths blocked) | `os.ReadFile`, project-scoped |
+| `factorly.file.write` | Write a local file (confirm required, system paths blocked) | `os.WriteFile`, project-scoped |
 | `factorly.fetch` | HTTP GET a URL (cloud metadata and private networks blocked) | `net/http`, 1MB limit |
 | `factorly.clipboard` | Copy text to clipboard (confirm required) | Platform-aware (pbcopy/xclip/xsel) |
 
@@ -21,8 +21,8 @@ factorly tools
 
 ```
   factorly.shell       built-in  Run a shell command
-  factorly.read_file   built-in  Read a local file
-  factorly.write_file  built-in  Write a local file
+  factorly.file.read   built-in  Read a local file
+  factorly.file.write  built-in  Write a local file
   factorly.fetch       built-in  HTTP GET a URL
   factorly.clipboard   built-in  Copy text to clipboard
   github.repos         rest      GET /users/{username}/repos
@@ -57,7 +57,7 @@ tools:
     shadow:
       allow_patterns: ["rm -rf ./build"]
 
-  factorly.read_file:
+  factorly.file.read:
     shadow:
       allow_paths: [".env.example", ".env.template"]
 

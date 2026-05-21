@@ -66,7 +66,7 @@ factorly logs --status blocked
 
 ```
   08:02:11  factorly.shell      blocked   0ms
-  08:14:55  factorly.read_file  blocked   0ms
+  08:14:55  factorly.file.read  blocked   0ms
   09:15:50  factorly.shell      blocked   0ms
 ```
 

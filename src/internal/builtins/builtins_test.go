@@ -13,7 +13,7 @@ func TestRegisterStdioMode(t *testing.T) {
 	cfg := &config.Config{Tools: make(map[string]config.ToolConfig)}
 	Register(cfg, Options{Mode: "stdio"})
 
-	expected := []string{"factorly.shell", "factorly.read_file", "factorly.write_file", "factorly.fetch", "factorly.clipboard"}
+	expected := []string{"factorly.shell", "factorly.file.read", "factorly.file.write", "factorly.fetch", "factorly.clipboard"}
 	for _, name := range expected {
 		if _, ok := cfg.Tools[name]; !ok {
 			t.Errorf("expected %s in stdio mode", name)
@@ -30,7 +30,7 @@ func TestRegisterHTTPMode(t *testing.T) {
 		t.Error("expected factorly.fetch in http mode")
 	}
 
-	localOnly := []string{"factorly.shell", "factorly.read_file", "factorly.write_file", "factorly.clipboard"}
+	localOnly := []string{"factorly.shell", "factorly.file.read", "factorly.file.write", "factorly.clipboard"}
 	for _, name := range localOnly {
 		if _, ok := cfg.Tools[name]; ok {
 			t.Errorf("expected %s NOT in http mode", name)
@@ -87,8 +87,8 @@ func TestRegisterDisabledBuiltins(t *testing.T) {
 	if _, ok := cfg.Tools["factorly.clipboard"]; ok {
 		t.Error("factorly.clipboard should be disabled")
 	}
-	if _, ok := cfg.Tools["factorly.read_file"]; !ok {
-		t.Error("factorly.read_file should still be registered")
+	if _, ok := cfg.Tools["factorly.file.read"]; !ok {
+		t.Error("factorly.file.read should still be registered")
 	}
 	if _, ok := cfg.Tools["factorly.fetch"]; !ok {
 		t.Error("factorly.fetch should still be registered")
@@ -99,7 +99,7 @@ func TestRegisterShadowPreserved(t *testing.T) {
 	cfg := &config.Config{Tools: make(map[string]config.ToolConfig)}
 	Register(cfg, Options{Mode: "stdio"})
 
-	// Shell and write_file should have confirm by default
+	// Shell and file.write should have confirm by default
 	shellShadow := cfg.Tools["factorly.shell"].Shadow
 	if shellShadow == nil {
 		t.Fatal("factorly.shell should have shadow config")
@@ -108,17 +108,17 @@ func TestRegisterShadowPreserved(t *testing.T) {
 		t.Error("factorly.shell should have confirm=true")
 	}
 
-	writeShadow := cfg.Tools["factorly.write_file"].Shadow
+	writeShadow := cfg.Tools["factorly.file.write"].Shadow
 	if writeShadow == nil {
-		t.Fatal("factorly.write_file should have shadow config")
+		t.Fatal("factorly.file.write should have shadow config")
 	}
 	if _, all := writeShadow.ConfirmList(); !all {
-		t.Error("factorly.write_file should have confirm=true")
+		t.Error("factorly.file.write should have confirm=true")
 	}
 
-	// read_file should NOT have shadow
-	if cfg.Tools["factorly.read_file"].Shadow != nil {
-		t.Error("factorly.read_file should not have shadow config")
+	// file.read should NOT have shadow
+	if cfg.Tools["factorly.file.read"].Shadow != nil {
+		t.Error("factorly.file.read should not have shadow config")
 	}
 }
 
@@ -170,7 +170,7 @@ func TestReadFileGuardBlocksSensitive(t *testing.T) {
 		"credentials.json",
 	}
 	for _, path := range tests {
-		if err := CheckGuard("factorly.read_file", map[string]string{"path": path}, nil); err == nil {
+		if err := CheckGuard("factorly.file.read", map[string]string{"path": path}, nil); err == nil {
 			t.Errorf("expected guard to block read of %q", path)
 		}
 	}
@@ -183,7 +183,7 @@ func TestReadFileGuardAllowsSafe(t *testing.T) {
 		"/tmp/test.txt",
 	}
 	for _, path := range tests {
-		if err := CheckGuard("factorly.read_file", map[string]string{"path": path}, nil); err != nil {
+		if err := CheckGuard("factorly.file.read", map[string]string{"path": path}, nil); err != nil {
 			t.Errorf("expected guard to allow read of %q, got: %v", path, err)
 		}
 	}
@@ -197,7 +197,7 @@ func TestWriteFileGuardBlocksSystem(t *testing.T) {
 		".env",
 	}
 	for _, path := range tests {
-		if err := CheckGuard("factorly.write_file", map[string]string{"path": path}, nil); err == nil {
+		if err := CheckGuard("factorly.file.write", map[string]string{"path": path}, nil); err == nil {
 			t.Errorf("expected guard to block write to %q", path)
 		}
 	}

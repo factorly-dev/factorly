@@ -70,7 +70,7 @@ func Register(cfg *config.Config, opts Options) {
 		},
 	})
 
-	register("factorly.read_file", config.ToolConfig{
+	register("factorly.file.read", config.ToolConfig{
 		Type:        "builtin",
 		Description: "Read a local file (overseen, logged, compressed)",
 		Compress:    []string{"all"},
@@ -80,7 +80,7 @@ func Register(cfg *config.Config, opts Options) {
 		},
 	})
 
-	register("factorly.write_file", config.ToolConfig{
+	register("factorly.file.write", config.ToolConfig{
 		Type:        "builtin",
 		Description: "Write content to a local file (overseen, logged, confirmable)",
 		Shadow:      &config.ShadowConfig{Confirm: true},

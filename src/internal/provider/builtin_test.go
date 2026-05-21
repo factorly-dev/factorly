@@ -19,7 +19,7 @@ func TestBuiltinReadFile(t *testing.T) {
 	}
 
 	bp := NewBuiltinProvider("stdio", "")
-	result, err := bp.Execute("factorly.read_file", map[string]string{"path": tmp})
+	result, err := bp.Execute("factorly.file.read", map[string]string{"path": tmp})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestBuiltinReadFile(t *testing.T) {
 
 func TestBuiltinReadFile_NotFound(t *testing.T) {
 	bp := NewBuiltinProvider("stdio", "")
-	result, err := bp.Execute("factorly.read_file", map[string]string{"path": "/nonexistent/file.txt"})
+	result, err := bp.Execute("factorly.file.read", map[string]string{"path": "/nonexistent/file.txt"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestBuiltinWriteFile(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "sub", "out.txt")
 
 	bp := NewBuiltinProvider("stdio", "")
-	result, err := bp.Execute("factorly.write_file", map[string]string{
+	result, err := bp.Execute("factorly.file.write", map[string]string{
 		"path":    tmp,
 		"content": "test content",
 	})
@@ -118,9 +118,9 @@ func TestBuiltinProvider_HttpMode(t *testing.T) {
 	}
 
 	// local tools should not be available
-	_, err = bp.Execute("factorly.read_file", map[string]string{"path": "/tmp/x"})
+	_, err = bp.Execute("factorly.file.read", map[string]string{"path": "/tmp/x"})
 	if err == nil {
-		t.Error("read_file should not be available in http mode")
+		t.Error("file.read should not be available in http mode")
 	}
 
 	_, err = bp.Execute("factorly.shell", map[string]string{"command": "echo x"})
@@ -153,7 +153,7 @@ func TestBuiltinReadFile_ScopedToProject(t *testing.T) {
 	bp := NewBuiltinProvider("stdio", root)
 
 	// Should succeed for file inside project
-	result, err := bp.Execute("factorly.read_file", map[string]string{"path": "data.txt"})
+	result, err := bp.Execute("factorly.file.read", map[string]string{"path": "data.txt"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestBuiltinReadFile_ScopedToProject(t *testing.T) {
 	}
 
 	// Should fail for absolute path outside project
-	result, err = bp.Execute("factorly.read_file", map[string]string{"path": outside})
+	result, err = bp.Execute("factorly.file.read", map[string]string{"path": outside})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestBuiltinReadFile_ScopedToProject(t *testing.T) {
 	}
 
 	// Should fail for traversal attempt
-	result, err = bp.Execute("factorly.read_file", map[string]string{"path": "../../../etc/passwd"})
+	result, err = bp.Execute("factorly.file.read", map[string]string{"path": "../../../etc/passwd"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestBuiltinWriteFile_ScopedToProject(t *testing.T) {
 	bp := NewBuiltinProvider("stdio", root)
 
 	// Should succeed within project
-	result, err := bp.Execute("factorly.write_file", map[string]string{
+	result, err := bp.Execute("factorly.file.write", map[string]string{
 		"path":    "output.txt",
 		"content": "hello",
 	})
@@ -200,7 +200,7 @@ func TestBuiltinWriteFile_ScopedToProject(t *testing.T) {
 	}
 
 	// Should fail for path outside project
-	result, err = bp.Execute("factorly.write_file", map[string]string{
+	result, err = bp.Execute("factorly.file.write", map[string]string{
 		"path":    "/tmp/escape.txt",
 		"content": "bad",
 	})
@@ -248,7 +248,7 @@ func TestBuiltinReadFile_PreChecksCtx(t *testing.T) {
 	bp := NewBuiltinProvider("stdio", "")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	result, err := bp.ExecuteWithContext(ctx, "factorly.read_file", map[string]string{"path": tmp})
+	result, err := bp.ExecuteWithContext(ctx, "factorly.file.read", map[string]string{"path": tmp})
 	if err != nil {
 		t.Fatal(err)
 	}

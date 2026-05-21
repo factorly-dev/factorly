@@ -40,10 +40,10 @@ func TestLoopDetectBlocked(t *testing.T) {
 	params := map[string]string{"file": "/etc/passwd"}
 
 	for i := 0; i < 11; i++ {
-		ld.Check("read_file", params)
+		ld.Check("file.read", params)
 	}
 
-	status := ld.Check("read_file", params)
+	status := ld.Check("file.read", params)
 	if status != LoopBlocked {
 		t.Errorf("expected LoopBlocked, got %d", status)
 	}

@@ -290,8 +290,8 @@ Factorly ships with governed alternatives to common agent tools. These are avail
 | Tool | Description | Default oversight |
 |------|-------------|-------------------|
 | `factorly.shell` | Run a shell command | Confirm required, destructive patterns blocked |
-| `factorly.read_file` | Read a local file | Sensitive paths blocked (.env, .ssh, credentials) |
-| `factorly.write_file` | Write a local file | Confirm required, system paths blocked |
+| `factorly.file.read` | Read a local file | Sensitive paths blocked (.env, .ssh, credentials) |
+| `factorly.file.write` | Write a local file | Confirm required, system paths blocked |
 | `factorly.fetch` | HTTP GET a URL | Cloud metadata + private networks blocked |
 | `factorly.clipboard` | Copy text to clipboard | Confirm required |
 
@@ -320,7 +320,7 @@ tools:
     shadow:
       allow_patterns: ["rm -rf ./build"]  # permit this specific command
 
-  factorly.read_file:
+  factorly.file.read:
     shadow:
       allow_paths: [".env.example"]  # permit reading this file
 
@@ -333,7 +333,7 @@ tools:
 
 ```bash
 # Disable specific built-ins
-FACTORLY_DISABLED_TOOLS=factorly.shell,factorly.write_file
+FACTORLY_DISABLED_TOOLS=factorly.shell,factorly.file.write
 ```
 
 Or disable all built-ins in config:

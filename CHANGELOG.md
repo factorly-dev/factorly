@@ -1,3 +1,9 @@
+## [v0.12.1] - 2026-05-21
+
+### Changed
+
+Two tools, `factorly.read_file` and `factorly.write_file` have been renamed for taste to `factorly.file.read` and `factorly.file.write`.
+
 ## [v0.12.0] - 2026-05-21
 
 Agent-writable workspace state primitive, plus a UI consistency pass on the secrets/state pages.

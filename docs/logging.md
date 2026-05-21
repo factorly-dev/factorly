@@ -97,7 +97,7 @@ $ factorly logs stats
 ```
 $ factorly logs --status blocked
   2026-04-17 08:02:11  factorly.shell          blocked     0ms
-  2026-04-17 08:14:55  factorly.read_file      blocked     0ms
+  2026-04-17 08:14:55  factorly.file.read      blocked     0ms
   2026-04-17 09:15:50  factorly.shell          blocked     0ms
 ```
 

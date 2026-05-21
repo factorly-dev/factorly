@@ -42,8 +42,8 @@ func NewBuiltinProvider(mode string, rootDir string) *BuiltinProvider {
 
 	// Local only — stdio mode
 	if mode != "http" {
-		bp.handlers["factorly.read_file"] = bp.builtinReadFile
-		bp.handlers["factorly.write_file"] = bp.builtinWriteFile
+		bp.handlers["factorly.file.read"] = bp.builtinReadFile
+		bp.handlers["factorly.file.write"] = bp.builtinWriteFile
 		bp.handlers["factorly.shell"] = builtinShell
 		bp.handlers["factorly.clipboard"] = builtinClipboard
 	}

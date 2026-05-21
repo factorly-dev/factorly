@@ -1462,7 +1462,7 @@ tools:
 	}
 
 	// Built-ins must still be in cfg.Tools so handlers and the proxy can find them.
-	for _, name := range []string{"factorly.shell", "factorly.fetch", "factorly.read_file"} {
+	for _, name := range []string{"factorly.shell", "factorly.fetch", "factorly.file.read"} {
 		if _, ok := srv.cfg.Tools[name]; !ok {
 			t.Errorf("built-in %q missing from cfg.Tools after reload", name)
 		}

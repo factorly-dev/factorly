@@ -18,9 +18,9 @@ func CheckGuard(toolName string, params map[string]string, allowOverrides []stri
 	switch toolName {
 	case "factorly.shell":
 		return checkShellGuard(params["command"], allowOverrides)
-	case "factorly.read_file":
+	case "factorly.file.read":
 		return checkPathGuard(params["path"], deniedReadPaths, allowOverrides)
-	case "factorly.write_file":
+	case "factorly.file.write":
 		return checkPathGuard(params["path"], deniedWritePaths, allowOverrides)
 	case "factorly.fetch":
 		return checkURLGuard(params["url"], allowOverrides)
