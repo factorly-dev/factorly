@@ -105,7 +105,7 @@ fi
 
 git config user.name "factorly-release-bot"
 git config user.email "release-bot@factorly-dev.users.noreply.github.com"
-git commit --amend -m "factorly ${VERSION}"
-git push origin HEAD -f
+git commit -m "factorly ${VERSION}"
+git push origin HEAD
 
 echo "Pushed factorly ${VERSION} formula to ${TAP_REPO}"
