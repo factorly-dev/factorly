@@ -36,6 +36,75 @@ func (s *Server) handleStore(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleStoreNew renders the dedicated Create Entry page. The form
+// posts to POST /store/new which 303s back to /store on success.
+// (POST /store still exists for the now-removed in-list form;
+// keeping it for parity with vault and as a programmatic endpoint.)
+func (s *Server) handleStoreNew(w http.ResponseWriter, r *http.Request) {
+	s.render(w, "store_new.html", map[string]any{
+		"Title":           "New Store Entry",
+		"Nav":             "store",
+		"Sections":        s.storeSections(r),
+		"ActiveWorkspace": s.requestWorkspace(r),
+	})
+}
+
+// handleStoreNewSubmit writes the new entry and 303s back to the
+// list page. Plain navigation pattern — body-level hx-boost handles
+// the swap. Reuses handleStoreSet's write path by re-dispatching;
+// the only behavioral difference is the redirect-after-write.
+func (s *Server) handleStoreNewSubmit(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	key := strings.TrimSpace(r.FormValue("key"))
+	value := r.FormValue("value")
+	scope := r.FormValue("scope")
+	ttlStr := strings.TrimSpace(r.FormValue("ttl"))
+	if key == "" {
+		http.Error(w, "key is required", http.StatusBadRequest)
+		return
+	}
+	if !validStoreScope(scope) {
+		http.Error(w, "invalid scope", http.StatusBadRequest)
+		return
+	}
+	if s.storeOpener == nil {
+		http.Error(w, "store not available", http.StatusServiceUnavailable)
+		return
+	}
+	backend, err := s.storeOpener(scope)
+	if err != nil {
+		http.Error(w, "opening store: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if backend == nil {
+		http.Error(w, "store not available", http.StatusServiceUnavailable)
+		return
+	}
+	writeErr := func() error {
+		defer backend.Close()
+		ttl, hasTTL, parseErr := parseStoreTTLValue(ttlStr)
+		if parseErr != nil {
+			return parseErr
+		}
+		if hasTTL {
+			lb, ok := backend.(*store.LocalBackend)
+			if !ok {
+				return errors.New("TTL not supported by this backend")
+			}
+			return lb.SetWithTTL(key, value, ttl)
+		}
+		return backend.Set(key, value)
+	}()
+	if writeErr != nil {
+		http.Error(w, writeErr.Error(), http.StatusBadRequest)
+		return
+	}
+	http.Redirect(w, r, "/store", http.StatusSeeOther)
+}
+
 // storeSections gathers the per-tier views the /store page renders.
 // Ordering matches the vault page: workspace (when active) →
 // project (when a project dir exists) → global (always). Each tier
@@ -246,8 +315,8 @@ func (s *Server) renderStoreKeys(w http.ResponseWriter, r *http.Request) {
 	sections := s.storeSections(r)
 	for _, sec := range sections {
 		scope := html.EscapeString(sec.Scope)
-		fmt.Fprintf(w, `<div class="border-b border-gray-200 last:border-b-0">
-			<div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide">%s <span class="text-gray-300">(%d keys)</span></div>`,
+		fmt.Fprintf(w, `<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+			<div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide border-b border-gray-200">%s <span class="text-gray-300">(%d keys)</span></div>`,
 			html.EscapeString(sec.Label), len(sec.Keys))
 		if len(sec.Keys) == 0 {
 			fmt.Fprint(w, `<div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>`)
@@ -255,7 +324,7 @@ func (s *Server) renderStoreKeys(w http.ResponseWriter, r *http.Request) {
 			for _, k := range sec.Keys {
 				ek := html.EscapeString(k)
 				eq := url.QueryEscape(k)
-				fmt.Fprintf(w, `<div class="px-5 py-2.5">
+				fmt.Fprintf(w, `<div class="px-5 py-2.5 border-b border-gray-100 last:border-b-0">
 					<div class="flex items-center justify-between">
 						<a href="/store/entry?scope=%s&key=%s" class="font-mono text-sm hover:text-indigo-600">%s</a>
 						<div class="flex items-center gap-3">

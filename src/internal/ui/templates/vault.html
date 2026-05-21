@@ -4,7 +4,27 @@
 -->
 
 {{define "content"}}
-<h1 class="text-2xl font-bold mb-2">Vault</h1>
+<div class="flex items-center justify-between mb-2">
+  <h1 class="flex items-center gap-2 text-2xl font-bold">
+    Vault
+    <details class="text-sm font-normal text-gray-400">
+      <summary class="cursor-pointer hover:text-gray-600 list-none flex items-center" aria-label="What is the vault?">{{icon "info"}}</summary>
+      <div class="absolute z-10 mt-2 w-96 p-3 bg-white border border-gray-200 rounded-lg shadow-lg text-sm text-gray-600 space-y-2">
+        <p>
+          Encrypted user-managed secrets. API keys, tokens, passwords — anything
+          tools need to reference via <code class="bg-gray-100 px-1 rounded">{{"{{vault:KEY}}"}}</code>.
+        </p>
+        <p>
+          Each tier (workspace, project, global) has its own encrypted file.
+          Reads cascade from the active workspace down; writes target the
+          tier you pick on the create page.
+        </p>
+      </div>
+    </details>
+  </h1>
+  <a href="/vault/new"
+     class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">{{icon "plus"}} Create New Secret</a>
+</div>
 {{if .ActiveWorkspace}}
 <div class="mb-6 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded text-xs text-indigo-700">
   Active workspace: <span class="font-mono font-semibold">{{.ActiveWorkspace}}</span> —
@@ -21,74 +41,45 @@
 </div>
 {{else}}
 
-<!-- Add secret form -->
-<div class="bg-white rounded-lg border border-gray-200 p-5 mb-6">
-  <h2 class="font-semibold mb-3 text-sm">Add Secret</h2>
-  <form hx-post="/vault" hx-target="#vault-keys" hx-swap="innerHTML" hx-on::after-request="if(event.detail.successful) this.reset()" class="flex gap-3 items-end">
-    <div class="flex-1">
-      <label class="block text-[10px] text-gray-400 uppercase mb-1">Key</label>
-      <input type="text" name="key" required placeholder="API_KEY"
-             class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+<!-- Per-scope cards. #vault-keys is the htmx swap target for the
+     fragment-mode delete buttons; renderVaultKeys emits one card
+     per section so the visual stays consistent after a swap. -->
+<div id="vault-keys" class="space-y-4">
+  {{range $section := .Sections}}
+  <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide border-b border-gray-200">
+      {{$section.Label}}
+      {{if $section.Locked}}<span class="text-amber-500">(locked)</span>
+      {{else}}<span class="text-gray-300">({{len $section.Keys}} keys)</span>{{end}}
     </div>
-    <div class="flex-1">
-      <label class="block text-[10px] text-gray-400 uppercase mb-1">Value</label>
-      <input type="password" name="value" required placeholder="secret value"
-             class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
+    {{if $section.Locked}}
+    <div class="px-5 py-3">
+      <button type="button" hx-post="/vault/unlock-form" hx-target="#vault-keys" hx-swap="innerHTML" hx-vals='{"scope":"{{$section.Scope}}"}'
+              class="text-xs text-indigo-600 hover:text-indigo-800">Unlock to view secrets</button>
     </div>
-    <div class="w-32">
-      <label class="block text-[10px] text-gray-400 uppercase mb-1">Store in</label>
-      <select name="scope" class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
-        {{range .Sections}}
-        <option value="{{.Scope}}">{{.Label}}</option>
-        {{end}}
-      </select>
-    </div>
-    <button type="submit"
-            class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shrink-0">
-      Set
-    </button>
-  </form>
-</div>
-
-<!-- Key list -->
-<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-  <div id="vault-keys">
-    {{range .Sections}}
-    <div class="border-b border-gray-200 last:border-b-0">
-      <div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide">
-        {{.Label}}
-        {{if .Locked}}<span class="text-amber-500">(locked)</span>
-        {{else}}<span class="text-gray-300">({{len .Keys}} keys)</span>{{end}}
-      </div>
-      {{if .Locked}}
-      <div class="px-5 py-3">
-        <button type="button" hx-post="/vault/unlock-form" hx-target="#vault-keys" hx-swap="innerHTML" hx-vals='{"scope":"{{.Scope}}"}'
-                class="text-xs text-indigo-600 hover:text-indigo-800">Unlock to view secrets</button>
-      </div>
-      {{else if not .Keys}}
-      <div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>
-      {{else}}
-      {{range .Keys}}
-      <div class="px-5 py-2.5">
-        <div class="flex items-center justify-between">
-          <span class="font-mono text-sm">{{.}}</span>
-          <div class="flex items-center gap-3">
-            <span class="text-gray-300 text-sm">••••••••</span>
-            <button type="button" onclick="showReplace(this, '{{.}}', '{{$.Scope}}')"
-                    class="text-indigo-400 hover:text-indigo-600 text-xs">replace</button>
-            <button hx-delete="/vault/{{.}}?scope={{$.Scope}}"
-                    hx-target="#vault-keys"
-                    hx-swap="innerHTML"
-                    hx-confirm="Delete secret '{{.}}'?"
-                    class="text-red-400 hover:text-red-600 text-xs">delete</button>
-          </div>
+    {{else if not $section.Keys}}
+    <div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>
+    {{else}}
+    {{range $section.Keys}}
+    <div class="px-5 py-2.5 border-b border-gray-100 last:border-b-0">
+      <div class="flex items-center justify-between">
+        <span class="font-mono text-sm">{{.}}</span>
+        <div class="flex items-center gap-3">
+          <span class="text-gray-300 text-sm">••••••••</span>
+          <button type="button" onclick="showReplace(this, '{{.}}', '{{$section.Scope}}')"
+                  class="text-indigo-400 hover:text-indigo-600 text-xs">replace</button>
+          <button hx-delete="/vault/{{.}}?scope={{$section.Scope}}"
+                  hx-target="#vault-keys"
+                  hx-swap="innerHTML"
+                  hx-confirm="Delete secret '{{.}}'?"
+                  class="text-red-400 hover:text-red-600 text-xs">delete</button>
         </div>
       </div>
-      {{end}}
-      {{end}}
     </div>
     {{end}}
+    {{end}}
   </div>
+  {{end}}
 </div>
 
 <script>

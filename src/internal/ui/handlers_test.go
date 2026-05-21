@@ -339,6 +339,25 @@ func TestHandleWorkflowDelete(t *testing.T) {
 
 // --- Auth handler tests ---
 
+// TestHandleAuthNew confirms the dedicated Create-Provider page
+// renders with the form action pointing at /auth/_new (which is
+// where the existing create handler lives).
+func TestHandleAuthNew(t *testing.T) {
+	srv, _ := testServer(t, nil)
+	req := httptest.NewRequest("GET", "/auth/new", nil)
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	for _, want := range []string{"Create OAuth Provider", `action="/auth/_new"`, "← Back to Auth Providers"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page missing %q", want)
+		}
+	}
+}
+
 func TestHandleAuthCreate(t *testing.T) {
 	srv, cfgPath := testServer(t, nil)
 
@@ -356,8 +375,8 @@ func TestHandleAuthCreate(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusFound {
-		t.Fatalf("expected 302, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d: %s", w.Code, w.Body.String())
 	}
 
 	p, ok := srv.cfg.OAuthProviders["github"]
@@ -887,8 +906,8 @@ func TestHandleAuthCreate_EmptyScopes(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusFound {
-		t.Fatalf("expected 302, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d: %s", w.Code, w.Body.String())
 	}
 
 	p := srv.cfg.OAuthProviders["minimal"]

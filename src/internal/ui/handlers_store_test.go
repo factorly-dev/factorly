@@ -279,6 +279,60 @@ func TestStoreEntryDelete(t *testing.T) {
 	}
 }
 
+// TestStoreNewPageRenders confirms GET /store/new returns the
+// create-entry form with the scope dropdown populated from the
+// usual storeSections enumeration. The form's action targets
+// /store/new (the redirect handler) — guarded so a future refactor
+// can't accidentally point it back at /store (which is the
+// fragment-mode endpoint).
+func TestStoreNewPageRenders(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+	req := httptest.NewRequest(http.MethodGet, "/store/new", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"Create Store Entry", `action="/store/new"`, "Global store"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page missing %q", want)
+		}
+	}
+}
+
+// TestStoreNewSubmitRedirects exercises the navigation-mode submit:
+// write, then 303 back to /store. Mirrors the detail-page update
+// flow's contract.
+func TestStoreNewSubmitRedirects(t *testing.T) {
+	srv, _ := testServerWithProxy(t, nil)
+	path := seedStoreFile(t, nil)
+	srv.storeOpener = scopedOpener(map[string]string{"global": path})
+
+	form := url.Values{}
+	form.Set("scope", "global")
+	form.Set("key", "new-key")
+	form.Set("value", "new-value")
+	req := httptest.NewRequest(http.MethodPost, "/store/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 redirect, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "/store" {
+		t.Errorf("redirect Location = %q, want /store", loc)
+	}
+	got, err := inspectStore(t, path, "new-key")
+	if err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+	if got != "new-value" {
+		t.Errorf("value = %q, want new-value", got)
+	}
+}
+
 // TestStoreEntryDeleteRejectsBadScope guards against arbitrary scope
 // strings sneaking deletes into unexpected places.
 func TestStoreEntryDeleteRejectsBadScope(t *testing.T) {

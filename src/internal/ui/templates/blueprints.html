@@ -5,7 +5,23 @@
 
 {{define "content"}}
 <div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold">Blueprints</h1>
+  <h1 class="flex items-center gap-2 text-2xl font-bold">
+    Blueprints
+    <details class="text-sm font-normal text-gray-400">
+      <summary class="cursor-pointer hover:text-gray-600 list-none flex items-center" aria-label="What are blueprints?">{{icon "info"}}</summary>
+      <div class="absolute z-10 mt-2 w-96 p-3 bg-white border border-gray-200 rounded-lg shadow-lg text-sm text-gray-600 space-y-2">
+        <p>
+          Sharable tool / workflow bundles. A blueprint installs one or more
+          pre-configured tools (Trello, GitHub, Slack, …) plus any vault and
+          auth scaffolding they need.
+        </p>
+        <p>
+          Browse the catalog for bundled integrations, or install from a
+          GitHub repo or local YAML file.
+        </p>
+      </div>
+    </details>
+  </h1>
   <div class="flex items-center gap-2">
     <a href="/blueprints/browse"
        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50 transition-colors">{{icon "package"}} Browse Catalog</a>

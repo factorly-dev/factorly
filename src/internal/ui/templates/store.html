@@ -4,18 +4,24 @@
 -->
 
 {{define "content"}}
-<h1 class="text-2xl font-bold mb-2">Store</h1>
-<p class="text-sm text-gray-500 mb-4">
-  Agent-writable workspace state.
-</p>
-<p class="text-sm text-gray-500 mb-4">
-Cross-run scratchpad for things like
-  "I researched these URLs," "user prefers brief responses," "last
-  deployment SHA."
-</p>
-<p class="text-sm text-gray-500 mb-4">
-  Default TTL is 30d with refresh-on-read.
-</p>
+<div class="flex items-center justify-between mb-2">
+  <h1 class="flex items-center gap-2 text-2xl font-bold">
+    Store
+    <details class="text-sm font-normal text-gray-400">
+      <summary class="cursor-pointer hover:text-gray-600 list-none flex items-center" aria-label="What is the store?">{{icon "info"}}</summary>
+      <div class="absolute z-10 mt-2 w-96 p-3 bg-white border border-gray-200 rounded-lg shadow-lg text-sm text-gray-600 space-y-2">
+        <p>Agent-writable workspace state.</p>
+        <p>
+          Cross-run scratchpad for things like "I researched these URLs," "user
+          prefers brief responses," "last deployment SHA."
+        </p>
+        <p>Default TTL is 30d with refresh-on-read.</p>
+      </div>
+    </details>
+  </h1>
+  <a href="/store/new"
+     class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">{{icon "plus"}} Create New Entry</a>
+</div>
 {{if .ActiveWorkspace}}
 <div class="mb-6 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded text-xs text-indigo-700">
   Active workspace: <span class="font-mono font-semibold">{{.ActiveWorkspace}}</span> —
@@ -26,81 +32,37 @@ Cross-run scratchpad for things like
 <div class="mb-6"></div>
 {{end}}
 
-<!-- Add entry form -->
-<div class="bg-white rounded-lg border border-gray-200 p-5 mb-6">
-  <h2 class="font-semibold mb-3 text-sm">Save Entry</h2>
-  <form hx-post="/store" hx-target="#store-keys" hx-swap="innerHTML" hx-on::after-request="if(event.detail.successful) this.reset()" class="space-y-3">
-    <div class="flex gap-3 items-end">
-      <div class="flex-1">
-        <label class="block text-[10px] text-gray-400 uppercase mb-1">Key</label>
-        <input type="text" name="key" required placeholder="research:url:example.com"
-               class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
-      </div>
-      <div class="w-32">
-        <label class="block text-[10px] text-gray-400 uppercase mb-1">TTL</label>
-        <input type="text" name="ttl" placeholder="30d"
-               class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
-      </div>
-      <div class="w-40">
-        <label class="block text-[10px] text-gray-400 uppercase mb-1">Save in</label>
-        <select name="scope" class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
-          {{range .Sections}}
-          <option value="{{.Scope}}">{{.Label}}</option>
-          {{end}}
-        </select>
-      </div>
+<!-- Per-scope cards. #store-keys is the htmx swap target for the
+     fragment-mode delete buttons; renderStoreKeys emits one card
+     per section so the visual stays consistent after a swap. -->
+<div id="store-keys" class="space-y-4">
+  {{range $section := .Sections}}
+  <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide border-b border-gray-200">
+      {{$section.Label}}
+      <span class="text-gray-300">({{len $section.Keys}} keys)</span>
     </div>
-    <div>
-      <label class="block text-[10px] text-gray-400 uppercase mb-1">Value</label>
-      <textarea name="value" required rows="3" placeholder="value"
-                class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200"></textarea>
-    </div>
-    <div class="flex items-center justify-between">
-      <p class="text-[11px] text-gray-400">
-        TTL examples: <code class="bg-gray-100 px-1 rounded">7d</code>,
-        <code class="bg-gray-100 px-1 rounded">24h</code>,
-        <code class="bg-gray-100 px-1 rounded">30m</code>,
-        <code class="bg-gray-100 px-1 rounded">0</code> = never expire.
-      </p>
-      <button type="submit"
-              class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shrink-0">
-        Save
-      </button>
-    </div>
-  </form>
-</div>
-
-<!-- Key list -->
-<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-  <div id="store-keys">
-    {{range $section := .Sections}}
-    <div class="border-b border-gray-200 last:border-b-0">
-      <div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide">
-        {{$section.Label}}
-        <span class="text-gray-300">({{len $section.Keys}} keys)</span>
-      </div>
-      {{if not $section.Keys}}
-      <div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>
-      {{else}}
-      {{range $section.Keys}}
-      <div class="px-5 py-2.5">
-        <div class="flex items-center justify-between">
-          <a href="/store/entry?scope={{$section.Scope}}&key={{.}}" class="font-mono text-sm hover:text-indigo-600">{{.}}</a>
-          <div class="flex items-center gap-3">
-            <a href="/store/entry?scope={{$section.Scope}}&key={{.}}" class="text-indigo-500 hover:text-indigo-700 text-xs">view</a>
-            <button hx-delete="/store/{{.}}?scope={{$section.Scope}}"
-                    hx-target="#store-keys"
-                    hx-swap="innerHTML"
-                    hx-confirm="Delete store entry '{{.}}'?"
-                    class="text-red-400 hover:text-red-600 text-xs">delete</button>
-          </div>
+    {{if not $section.Keys}}
+    <div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>
+    {{else}}
+    {{range $section.Keys}}
+    <div class="px-5 py-2.5 border-b border-gray-100 last:border-b-0">
+      <div class="flex items-center justify-between">
+        <a href="/store/entry?scope={{$section.Scope}}&key={{.}}" class="font-mono text-sm hover:text-indigo-600">{{.}}</a>
+        <div class="flex items-center gap-3">
+          <a href="/store/entry?scope={{$section.Scope}}&key={{.}}" class="text-indigo-500 hover:text-indigo-700 text-xs">view</a>
+          <button hx-delete="/store/{{.}}?scope={{$section.Scope}}"
+                  hx-target="#store-keys"
+                  hx-swap="innerHTML"
+                  hx-confirm="Delete store entry '{{.}}'?"
+                  class="text-red-400 hover:text-red-600 text-xs">delete</button>
         </div>
       </div>
-      {{end}}
-      {{end}}
     </div>
     {{end}}
+    {{end}}
   </div>
+  {{end}}
 </div>
 
 {{end}}

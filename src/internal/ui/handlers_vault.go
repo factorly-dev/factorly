@@ -33,6 +33,63 @@ func (s *Server) handleVault(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleVaultNew renders the dedicated Create Secret page. Form posts
+// to POST /vault/new which 303s back to /vault on success, or
+// surfaces the unlock prompt full-page when the target tier is
+// locked. Distinct from POST /vault (fragment swap for in-list
+// edits / the "replace" button).
+func (s *Server) handleVaultNew(w http.ResponseWriter, r *http.Request) {
+	s.render(w, "vault_new.html", map[string]any{
+		"Title":    "Create Vault Secret",
+		"Nav":      "vault",
+		"Sections": s.vaultSections(r),
+	})
+}
+
+// handleVaultNewSubmit writes a new secret and 303s back to the
+// list page. Locked vault: render the unlock prompt inline as a
+// full page (preserves the key+value so the user doesn't lose
+// their work to a password prompt).
+func (s *Server) handleVaultNewSubmit(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	key := r.FormValue("key")
+	value := r.FormValue("value")
+	scope := r.FormValue("scope")
+	if key == "" || value == "" {
+		http.Error(w, "key and value required", http.StatusBadRequest)
+		return
+	}
+	backend, err := s.resolveVaultBackend(scope)
+	if err != nil {
+		if isVaultLockedErr(err) {
+			// Locked: render the unlock partial as a full page so the
+			// user gets the layout and nav back. The partial carries
+			// the key/value forward through the unlock flow.
+			s.renderVaultUnlockPartial(w, vaultUnlockData{
+				Scope: scope,
+				Key:   key,
+				Value: value,
+				Op:    "set",
+			})
+			return
+		}
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	if backend == nil {
+		http.Error(w, "vault not available", http.StatusServiceUnavailable)
+		return
+	}
+	if err := backend.Set(key, value); err != nil {
+		http.Error(w, fmt.Sprintf("vault set: %v", err), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/vault", http.StatusSeeOther)
+}
+
 // vaultSections collects every vault tier the user can read from or
 // write to. Each entry shows up as both a "Store in" choice and a
 // listed section on the page.
@@ -338,8 +395,8 @@ func (s *Server) renderVaultKeys(w http.ResponseWriter, r *http.Request) {
 		if sec.Locked {
 			header = fmt.Sprintf("%s <span class=\"text-amber-500\">(locked)</span>", html.EscapeString(sec.Label))
 		}
-		fmt.Fprintf(w, `<div class="border-b border-gray-200 last:border-b-0">
-			<div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide">%s</div>`, header)
+		fmt.Fprintf(w, `<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+			<div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide border-b border-gray-200">%s</div>`, header)
 		if sec.Locked {
 			fmt.Fprintf(w, `<div class="px-5 py-3">
 				<button type="button" hx-post="/vault/unlock-form" hx-target="#vault-keys" hx-swap="innerHTML" hx-vals='{"scope":"%s"}'
@@ -350,7 +407,7 @@ func (s *Server) renderVaultKeys(w http.ResponseWriter, r *http.Request) {
 		} else {
 			for _, key := range sec.Keys {
 				esc := html.EscapeString(key)
-				fmt.Fprintf(w, `<div class="px-5 py-2.5 flex items-center justify-between">
+				fmt.Fprintf(w, `<div class="px-5 py-2.5 flex items-center justify-between border-b border-gray-100 last:border-b-0">
 					<span class="font-mono text-sm">%s</span>
 					<div class="flex items-center gap-3">
 						<span class="text-gray-300 text-sm">••••••••</span>

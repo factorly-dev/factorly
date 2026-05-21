@@ -177,9 +177,12 @@ func New(opts Options) (*Server, error) {
 		"templates/workflow_edit.html",
 		"templates/history.html",
 		"templates/auth.html",
+		"templates/auth_new.html",
 		"templates/vault.html",
 		"templates/store.html",
 		"templates/store_entry.html",
+		"templates/store_new.html",
+		"templates/vault_new.html",
 		"templates/blueprints.html",
 		"templates/blueprints_browse.html",
 		"templates/blueprint_browse_detail.html",
@@ -308,6 +311,7 @@ func (s *Server) routes() {
 
 	// Auth
 	s.mux.HandleFunc("GET /auth", s.handleAuth)
+	s.mux.HandleFunc("GET /auth/new", s.handleAuthNew)
 	s.mux.HandleFunc("POST /auth/_new", s.handleAuthCreate)
 	s.mux.HandleFunc("POST /auth/{provider}", s.handleAuthUpdate)
 	s.mux.HandleFunc("POST /auth/{provider}/refresh", s.handleAuthRefresh)
@@ -318,12 +322,22 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /vault", s.handleVault)
 	s.mux.HandleFunc("POST /vault", s.handleVaultSet)
 	s.mux.HandleFunc("DELETE /vault/{key}", s.handleVaultDelete)
+	// /vault/new — dedicated full-page Create Secret form. Submits as a
+	// navigation (POST → 303 → /vault) rather than the fragment
+	// swap that POST /vault uses for in-list edits.
+	s.mux.HandleFunc("GET /vault/new", s.handleVaultNew)
+	s.mux.HandleFunc("POST /vault/new", s.handleVaultNewSubmit)
 
 	// Store page — agent-writable workspace state. No unlock dance
 	// (store has no password), just browse / save / delete / view.
 	s.mux.HandleFunc("GET /store", s.handleStore)
 	s.mux.HandleFunc("POST /store", s.handleStoreSet)
 	s.mux.HandleFunc("DELETE /store/{key}", s.handleStoreDelete)
+	// /store/new — dedicated full-page Create Entry form. Submits
+	// as a navigation (POST → 303 → /store) rather than the
+	// fragment swap that POST /store uses.
+	s.mux.HandleFunc("GET /store/new", s.handleStoreNew)
+	s.mux.HandleFunc("POST /store/new", s.handleStoreNewSubmit)
 	// Detail page for a single entry — value + TTL + inline edit.
 	// Scope + key are query params (workspace scopes contain ":"
 	// which would tangle URL-path scopes).
@@ -853,6 +867,7 @@ func templateFuncs() template.FuncMap {
 				"lock":          `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
 				"package":       `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>`,
 				"external-link": `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>`,
+				"info":          `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`,
 			}
 			if svg, ok := icons[name]; ok {
 				return template.HTML(svg)

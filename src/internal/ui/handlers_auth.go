@@ -41,6 +41,17 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleAuthNew renders the dedicated Create OAuth Provider page.
+// The form posts to /auth/_new (handleAuthCreate), which 303s back
+// to /auth on success. List page's "+ Create New Provider" header
+// link drops users here.
+func (s *Server) handleAuthNew(w http.ResponseWriter, r *http.Request) {
+	s.render(w, "auth_new.html", map[string]any{
+		"Title": "Create OAuth Provider",
+		"Nav":   "auth",
+	})
+}
+
 func (s *Server) handleAuthCreate(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -78,7 +89,7 @@ func (s *Server) handleAuthCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.cfg.OAuthProviders[name] = p
 
-	http.Redirect(w, r, "/auth", http.StatusFound)
+	http.Redirect(w, r, "/auth", http.StatusSeeOther)
 }
 
 func (s *Server) handleAuthUpdate(w http.ResponseWriter, r *http.Request) {
