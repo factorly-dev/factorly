@@ -1,3 +1,52 @@
+## [v0.12.0] - 2026-05-21
+
+Agent-writable workspace state primitive, plus a UI consistency pass on the secrets/state pages.
+
+### Added
+
+**Store** — fourth workspace data primitive (alongside vault, env, auth)
+
+CLI:
+- `factorly store {set,get,list,search,delete,history}` — mirrors `factorly vault`'s shape minus password/encryption machinery
+- `--global` persistent flag pins operations to `~/.config/factorly/store.db` even from inside a project (precedence: `--global` > `--workspace` > project default > global fallback)
+- `--ttl` on `set` accepts durations (`7d`, `24h`, `30m`, `0` = never-expire); default is 30d with refresh-on-read so frequently-touched entries stay alive
+
+Agent surface:
+- `factorly.store.{save,search,list,delete}` built-ins for `factorly.code` scripts and MCP clients
+- `{{store:KEY}}` template reference syntax — store-resolved values flow into tool configs the same way `{{vault:KEY}}` and `{{env:VAR}}` do
+
+Storage:
+- Per-scope bbolt files at `.factorly/store.db`, `.factorly/workspaces/<name>/store.db`, `~/.config/factorly/store.db` — pure Go (no CGO), mmap-backed, ACID
+- Workspace cascade for reads (workspace → project); writes target exactly one tier
+- Per-operation open/close lifecycle: every CLI command, builtin handler, UI request, and `{{store:KEY}}` substitution opens fresh and closes immediately. Two factorly processes (e.g. CLI + MCP server) never block each other on bbolt's file lock.
+- Audit log entries for save/delete (get/search aren't logged — high-frequency, low-value)
+- `go.etcd.io/bbolt` dependency added (pure Go, stdlib-only deps)
+
+UI:
+- `/store` list page with per-tier cards (workspace / project / global), info popover, "+ Create New Entry" header button
+- `/store/new` dedicated create page
+- `/store/entry` detail page — full value view, inline edit, TTL/created/last-read metadata, delete
+- `Store` top-nav link
+
+### Changed
+
+UI consistency across `/store`, `/vault`, `/auth`, `/blueprints`:
+- "Create" forms moved off list pages onto dedicated `/store/new`, `/vault/new`, `/auth/new` pages (blueprints keeps its modal install flow — different shape). List pages are now uncluttered browse views.
+- Headers use a unified shape: title + small text-indigo outlined "+ Create New X" button (matches the existing auth-page style); page descriptions tucked behind a hover info icon instead of always-on paragraphs
+- Per-tier sections on `/store` and `/vault` render as separate rounded cards with vertical spacing (was one card with hairline dividers)
+- Nav reordered: Tools · Workflows · **Vault · Auth · Store** · Blueprints · History — secrets/state group in dependency order; Blueprints moved to setup-tools cluster on the right
+
+Resolver:
+- `vault.HasVaultRefs` now excludes `{{store:KEY}}` and `{{expr:...}}` (not just `{{env:VAR}}`) — calls with only those refs no longer trigger a vault password prompt
+- `factorly call` parameter resolution uses the cached resolver (vault opened lazily on demand) instead of building a vault-only resolver — `{{store:KEY}}`, `{{env:VAR}}`, and `{{expr:...}}` refs in CLI args now resolve consistently with tool YAML defaults
+
+Audit log:
+- `cmd/factorly/audit.go` extracts shared `logKVOp` helper, used by both `logVaultOp` and `logStoreOp`
+- `logVaultOp` direct-CLI fallback now routes through `resolveLogPath` (project audit log) instead of `NewJSONL("")` (global default) — `factorly vault set` from a project directory now lands in `.factorly/audit.jsonl` like every other tool
+
+### Fixed
+- `factorly vault set` invoked before any other factorly command no longer writes audit entries to `~/.config/factorly/audit.jsonl` when a project-scoped log exists
+
 ## [v0.11.2] - 2026-05-20
 
 ### Added
