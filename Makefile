@@ -126,8 +126,10 @@ changelog:
 release: clean build
 	@mkdir -p $(OUTDIR)
 	cd $(SRCDIR) && GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o ../$(OUTDIR)/$(BINARY)-$(VERSION)-linux-amd64 ./cmd/factorly
+	cd $(SRCDIR) && GOOS=linux   GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o ../$(OUTDIR)/$(BINARY)-$(VERSION)-linux-arm64 ./cmd/factorly
 	cd $(SRCDIR) && GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o ../$(OUTDIR)/$(BINARY)-$(VERSION)-darwin-amd64 ./cmd/factorly
 	cd $(SRCDIR) && GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o ../$(OUTDIR)/$(BINARY)-$(VERSION)-darwin-arm64 ./cmd/factorly
 	cd $(SRCDIR) && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o ../$(OUTDIR)/$(BINARY)-$(VERSION)-windows-amd64.exe ./cmd/factorly
-	@echo "Built $(VERSION) binaries:"
-	@ls -lh $(OUTDIR)/$(BINARY)-*
+	@cd $(OUTDIR) && sha256sum $(BINARY)-$(VERSION)-* > checksums.txt
+	@echo "Built $(VERSION) binaries + checksums:"
+	@ls -lh $(OUTDIR)/$(BINARY)-* $(OUTDIR)/checksums.txt

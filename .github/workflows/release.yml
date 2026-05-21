@@ -44,9 +44,11 @@ jobs:
           make_latest: true
           files: |
             build/factorly-${{ steps.version.outputs.version }}-linux-amd64
+            build/factorly-${{ steps.version.outputs.version }}-linux-arm64
             build/factorly-${{ steps.version.outputs.version }}-darwin-amd64
             build/factorly-${{ steps.version.outputs.version }}-darwin-arm64
             build/factorly-${{ steps.version.outputs.version }}-windows-amd64.exe
+            build/checksums.txt
 
       - uses: actions/setup-node@v4
         with:
@@ -85,3 +87,19 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+
+      - name: Update Homebrew tap
+        # Skip when BREW_TAP_TOKEN isn't configured yet — keeps existing
+        # releases from breaking before the tap repo is set up. The
+        # secret name is checked indirectly: GitHub Actions exposes
+        # secrets only via the secrets context; the script itself
+        # decides whether it has enough config to proceed.
+        env:
+          BREW_TAP_TOKEN: ${{ secrets.BREW_TAP_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ -z "$BREW_TAP_TOKEN" ]; then
+            echo "BREW_TAP_TOKEN not set, skipping Homebrew tap update"
+            exit 0
+          fi
+          ./brew/update-tap.sh

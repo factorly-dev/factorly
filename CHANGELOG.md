@@ -1,3 +1,15 @@
+## [v0.13.0] - 2026-05-21
+
+### Added
+
+- **Homebrew distribution.** Install with `brew install factorly-dev/tap/factorly`. Formula lives at [factorly-dev/homebrew-tap](https://github.com/factorly-dev/homebrew-tap); released versions push automatically.
+- **`linux/arm64` release binary** — previously missing. Anyone on Raspberry Pi, aarch64 cloud VMs, or M-series Macs running Linux in Docker can now install via any channel (brew, npm, pip).
+- **`checksums.txt`** attached to every GitHub Release, with sha256s for all 5 release binaries.
+
+### Changed
+
+- `make release` now produces 5 binaries (added linux/arm64) and a `checksums.txt` alongside them.
+
 ## [v0.12.1] - 2026-05-21
 
 ### Changed

@@ -3,6 +3,10 @@
 ## Install
 
 ```bash
+brew install factorly-dev/tap/factorly
+```
+
+```bash
 npm install -g factorly
 ```
 

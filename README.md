@@ -36,7 +36,8 @@ Factorly is a local runtime for agent tool chains. It manages tool calls, inject
 Install with your package manager of choice:
 
 ```bash
-npm install -g factorly
+brew install factorly-dev/tap/factorly
+  # or: npm install -g factorly
   # or: pip install factorly
   # or: go install github.com/factorly-dev/factorly@latest
 ```
