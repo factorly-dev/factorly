@@ -14,18 +14,44 @@ set -euo pipefail
 : "${BREW_TAP_TOKEN:?BREW_TAP_TOKEN env var is required}"
 : "${VERSION:?VERSION env var is required}"
 
-CHECKSUMS="build/checksums.txt"
+# CHECKSUMS_SOURCE: "local" (default; uses build/checksums.txt from
+# the runner's `make release`) or "release" (downloads the published
+# checksums.txt from the GitHub Release). Use "release" when running
+# this script locally to regenerate the formula — your local
+# `make release` produces different shas than CI's (Go binaries are
+# not bit-for-bit reproducible across hosts).
+CHECKSUMS_SOURCE="${CHECKSUMS_SOURCE:-local}"
 TEMPLATE="brew/factorly.rb.tmpl"
 TAP_REPO="factorly-dev/homebrew-tap"
+RELEASE_BASE="https://github.com/factorly-dev/factorly/releases/download/v${VERSION}"
 
-if [ ! -f "$CHECKSUMS" ]; then
-    echo "error: $CHECKSUMS not found — run 'make release' first" >&2
-    exit 1
-fi
 if [ ! -f "$TEMPLATE" ]; then
     echo "error: $TEMPLATE not found" >&2
     exit 1
 fi
+
+case "$CHECKSUMS_SOURCE" in
+    local)
+        CHECKSUMS="build/checksums.txt"
+        if [ ! -f "$CHECKSUMS" ]; then
+            echo "error: $CHECKSUMS not found — run 'make release' first" >&2
+            echo "       (or run with CHECKSUMS_SOURCE=release to fetch from GitHub)" >&2
+            exit 1
+        fi
+        ;;
+    release)
+        CHECKSUMS="$(mktemp)"
+        echo "Fetching checksums.txt from release v${VERSION}..." >&2
+        if ! curl -fsSL "$RELEASE_BASE/checksums.txt" -o "$CHECKSUMS"; then
+            echo "error: failed to download $RELEASE_BASE/checksums.txt" >&2
+            exit 1
+        fi
+        ;;
+    *)
+        echo "error: CHECKSUMS_SOURCE must be 'local' or 'release', got '$CHECKSUMS_SOURCE'" >&2
+        exit 1
+        ;;
+esac
 
 # Pull each sha out of checksums.txt. Layout is:
 #   <sha256>  factorly-<version>-<platform>-<arch>[.exe]
@@ -65,16 +91,21 @@ sed \
 
 cd "$WORKDIR/tap"
 
+# Stage first so that `git diff --cached` covers both modified files
+# AND brand-new ones (Formula/factorly.rb might not exist yet on a
+# fresh tap repo). A plain `git diff --quiet` would miss the
+# untracked-file case and silently no-op the first release.
+git add Formula/factorly.rb
+
 # No-op if nothing changed (e.g., re-run for the same version).
-if git diff --quiet; then
+if git diff --cached --quiet; then
     echo "Homebrew tap already up to date for v${VERSION}, nothing to push"
     exit 0
 fi
 
 git config user.name "factorly-release-bot"
 git config user.email "release-bot@factorly-dev.users.noreply.github.com"
-git add Formula/factorly.rb
-git commit -m "factorly ${VERSION}"
-git push origin HEAD
+git commit --amend -m "factorly ${VERSION}"
+git push origin HEAD -f
 
 echo "Pushed factorly ${VERSION} formula to ${TAP_REPO}"
