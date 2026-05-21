@@ -419,6 +419,15 @@ func (p *RESTProvider) Execute(toolName string, params map[string]string) (*Resu
 		}, nil
 	}
 
+	// Surface the response body on error so the user can see what the
+	// server actually said. The 4xx body almost always carries the
+	// specific message (Anthropic's "invalid tool_choice", GitHub's
+	// "Bad credentials", etc.) — without it the operator is left
+	// guessing. Truncated to 4KB to keep stderr usable.
+	if p.Verbose && resp.StatusCode >= 400 {
+		fmt.Fprintf(os.Stderr, "[rest]   response body: %s\n", truncateForLog(string(body), 4096))
+	}
+
 	result := &Result{
 		Output:   string(body),
 		Duration: duration,
@@ -529,4 +538,15 @@ func defaultParamLocation(method string) string {
 	default:
 		return "query"
 	}
+}
+
+// truncateForLog clips a string to n bytes for stderr logging,
+// appending an ellipsis marker so the operator knows the log was
+// cut. Used by the verbose error-body path — we want the start of
+// the JSON error payload, not every byte of a 1MB HTML 500 page.
+func truncateForLog(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "... [truncated]"
 }
