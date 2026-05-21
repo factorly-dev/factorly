@@ -1,6 +1,6 @@
 name: trello
 display_name: Trello
-version: 1.0.0
+version: 1.0.1
 description: Kanban boards, cards, and task management
 category: business
 author: factorly
@@ -48,6 +48,7 @@ tools:
     base_url: "https://api.trello.com/1"
     method: POST
     path: /cards
+    body_type: json
     auth:
       type: header
       header: Authorization
@@ -56,17 +57,17 @@ tools:
       - name: idList
         description: List ID to add the card to
         required: true
-        in: query
+        in: body
       - name: name
         description: Card name
         required: true
-        in: query
+        in: body
       - name: desc
         description: Card description
-        in: query
+        in: body
       - name: pos
         description: "Position (top, bottom, or a number)"
-        in: query
+        in: body
     shadow:
       confirm: true
 
@@ -91,6 +92,7 @@ tools:
     base_url: "https://api.trello.com/1"
     method: PUT
     path: "/cards/{{card_id}}"
+    body_type: json
     auth:
       type: header
       header: Authorization
@@ -102,13 +104,13 @@ tools:
         in: path
       - name: name
         description: Card name
-        in: query
+        in: body
       - name: desc
         description: Card description
-        in: query
+        in: body
       - name: closed
         description: Archive card (true/false)
-        in: query
+        in: body
     shadow:
       confirm: true
 
@@ -118,6 +120,7 @@ tools:
     base_url: "https://api.trello.com/1"
     method: PUT
     path: "/cards/{{card_id}}"
+    body_type: json
     auth:
       type: header
       header: Authorization
@@ -130,10 +133,10 @@ tools:
       - name: idList
         description: Target list ID
         required: true
-        in: query
+        in: body
       - name: pos
         description: "Position in list (top, bottom)"
-        in: query
+        in: body
     shadow:
       confirm: true
 
@@ -181,6 +184,7 @@ tools:
     base_url: "https://api.trello.com/1"
     method: PUT
     path: "/cards/{{card_id}}"
+    body_type: json
     auth:
       type: header
       header: Authorization
@@ -193,6 +197,6 @@ tools:
       - name: idLabels
         description: "Comma-separated list of label IDs (empty string clears all labels)"
         required: true
-        in: query
+        in: body
     shadow:
       confirm: true
