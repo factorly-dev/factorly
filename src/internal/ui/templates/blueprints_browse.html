@@ -16,7 +16,7 @@
 </div>
 
 {{if not .Cards}}
-<div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-400">
+<div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-600">
   <p class="text-lg mb-2">No bundled blueprints</p>
   <p class="text-sm">Check your build — bundled blueprints should be embedded.</p>
 </div>
@@ -37,7 +37,7 @@
       <span class="px-2 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600">{{.Header.Category}}</span>
       {{end}}
       {{if .Header.AuthType}}
-      <span class="text-[10px] text-gray-400">{{.Header.AuthType}}</span>
+      <span class="text-[10px] text-gray-600">{{.Header.AuthType}}</span>
       {{end}}
     </div>
   </a>

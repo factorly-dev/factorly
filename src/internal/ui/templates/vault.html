@@ -7,8 +7,8 @@
 <div class="flex items-center justify-between mb-2">
   <h1 class="flex items-center gap-2 text-2xl font-bold">
     Vault
-    <details class="text-sm font-normal text-gray-400">
-      <summary class="cursor-pointer hover:text-gray-600 list-none flex items-center" aria-label="What is the vault?">{{icon "info"}}</summary>
+    <details class="text-sm font-normal text-gray-500">
+      <summary class="cursor-pointer hover:text-gray-700 list-none flex items-center" aria-label="What is the vault?">{{icon "info"}}</summary>
       <div class="absolute z-10 mt-2 w-96 p-3 bg-white border border-gray-200 rounded-lg shadow-lg text-sm text-gray-600 space-y-2">
         <p>
           Encrypted user-managed secrets. API keys, tokens, passwords — anything
@@ -47,10 +47,10 @@
 <div id="vault-keys" class="space-y-4">
   {{range $section := .Sections}}
   <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-    <div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide border-b border-gray-200">
+    <div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-600 uppercase tracking-wide border-b border-gray-200">
       {{$section.Label}}
-      {{if $section.Locked}}<span class="text-amber-500">(locked)</span>
-      {{else}}<span class="text-gray-300">({{len $section.Keys}} keys)</span>{{end}}
+      {{if $section.Locked}}<span class="text-amber-600">(locked)</span>
+      {{else}}<span class="text-gray-500">({{len $section.Keys}} keys)</span>{{end}}
     </div>
     {{if $section.Locked}}
     <div class="px-5 py-3">
@@ -58,21 +58,21 @@
               class="text-xs text-indigo-600 hover:text-indigo-800">Unlock to view secrets</button>
     </div>
     {{else if not $section.Keys}}
-    <div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>
+    <div class="px-5 py-4 text-center text-gray-600 text-xs">empty</div>
     {{else}}
     {{range $section.Keys}}
     <div class="px-5 py-2.5 border-b border-gray-100 last:border-b-0">
       <div class="flex items-center justify-between">
         <span class="font-mono text-sm">{{.}}</span>
         <div class="flex items-center gap-3">
-          <span class="text-gray-300 text-sm">••••••••</span>
+          <span class="text-gray-500 text-sm">••••••••</span>
           <button type="button" onclick="showReplace(this, '{{.}}', '{{$section.Scope}}')"
-                  class="text-indigo-400 hover:text-indigo-600 text-xs">replace</button>
+                  class="text-indigo-600 hover:text-indigo-700 text-xs">replace</button>
           <button hx-delete="/vault/{{.}}?scope={{$section.Scope}}"
                   hx-target="#vault-keys"
                   hx-swap="innerHTML"
                   hx-confirm="Delete secret '{{.}}'?"
-                  class="text-red-400 hover:text-red-600 text-xs">delete</button>
+                  class="text-red-600 hover:text-red-700 text-xs">delete</button>
         </div>
       </div>
     </div>
@@ -99,7 +99,7 @@ function showReplace(btn, key, scope) {
     <input type="password" name="value" placeholder="new value" required autofocus
            class="flex-1 px-2 py-1 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
     <button type="submit" class="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700">Save</button>
-    <button type="button" onclick="this.closest('.replace-form').remove()" class="px-2 py-1 text-gray-400 hover:text-gray-600 text-xs">Cancel</button>
+    <button type="button" onclick="this.closest('.replace-form').remove()" class="px-2 py-1 text-gray-600 hover:text-gray-800 text-xs">Cancel</button>
   `;
   // htmx needs to process the new form
   row.appendChild(form);

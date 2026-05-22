@@ -316,10 +316,10 @@ func (s *Server) renderStoreKeys(w http.ResponseWriter, r *http.Request) {
 	for _, sec := range sections {
 		scope := html.EscapeString(sec.Scope)
 		fmt.Fprintf(w, `<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-			<div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide border-b border-gray-200">%s <span class="text-gray-300">(%d keys)</span></div>`,
+			<div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-600 uppercase tracking-wide border-b border-gray-200">%s <span class="text-gray-500">(%d keys)</span></div>`,
 			html.EscapeString(sec.Label), len(sec.Keys))
 		if len(sec.Keys) == 0 {
-			fmt.Fprint(w, `<div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>`)
+			fmt.Fprint(w, `<div class="px-5 py-4 text-center text-gray-600 text-xs">empty</div>`)
 		} else {
 			for _, k := range sec.Keys {
 				ek := html.EscapeString(k)
@@ -328,8 +328,8 @@ func (s *Server) renderStoreKeys(w http.ResponseWriter, r *http.Request) {
 					<div class="flex items-center justify-between">
 						<a href="/store/entry?scope=%s&key=%s" class="font-mono text-sm hover:text-indigo-600">%s</a>
 						<div class="flex items-center gap-3">
-							<a href="/store/entry?scope=%s&key=%s" class="text-indigo-500 hover:text-indigo-700 text-xs">view</a>
-							<button hx-delete="/store/%s?scope=%s" hx-target="#store-keys" hx-swap="innerHTML" hx-confirm="Delete store entry '%s'?" class="text-red-400 hover:text-red-600 text-xs">delete</button>
+							<a href="/store/entry?scope=%s&key=%s" class="text-indigo-600 hover:text-indigo-700 text-xs">view</a>
+							<button hx-delete="/store/%s?scope=%s" hx-target="#store-keys" hx-swap="innerHTML" hx-confirm="Delete store entry '%s'?" class="text-red-600 hover:text-red-700 text-xs">delete</button>
 						</div>
 					</div>
 				</div>`, scope, eq, ek, scope, eq, eq, scope, ek)

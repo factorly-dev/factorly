@@ -18,12 +18,12 @@
 <form method="POST" action="/store/new" class="bg-white rounded-lg border border-gray-200 p-5">
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
     <div>
-      <label class="block text-[10px] text-gray-400 uppercase mb-1">Key</label>
+      <label class="block text-[10px] text-gray-600 uppercase mb-1">Key</label>
       <input type="text" name="key" required autofocus placeholder="research:url:example.com"
              class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
     </div>
     <div>
-      <label class="block text-[10px] text-gray-400 uppercase mb-1">Save in</label>
+      <label class="block text-[10px] text-gray-600 uppercase mb-1">Save in</label>
       <select name="scope" class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
         {{range .Sections}}
         <option value="{{.Scope}}">{{.Label}}</option>
@@ -33,18 +33,18 @@
   </div>
 
   <div class="mb-4">
-    <label class="block text-[10px] text-gray-400 uppercase mb-1">Value</label>
+    <label class="block text-[10px] text-gray-600 uppercase mb-1">Value</label>
     <textarea name="value" required rows="6" placeholder="value"
               class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200"></textarea>
   </div>
 
   <div class="flex items-end gap-3">
     <div class="w-32">
-      <label class="block text-[10px] text-gray-400 uppercase mb-1">TTL</label>
+      <label class="block text-[10px] text-gray-600 uppercase mb-1">TTL</label>
       <input type="text" name="ttl" placeholder="30d"
              class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200">
     </div>
-    <p class="text-[11px] text-gray-400 flex-1 pb-2">
+    <p class="text-[11px] text-gray-600 flex-1 pb-2">
       TTL examples: <code class="bg-gray-100 px-1 rounded">7d</code>,
       <code class="bg-gray-100 px-1 rounded">24h</code>,
       <code class="bg-gray-100 px-1 rounded">30m</code>,

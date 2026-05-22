@@ -365,7 +365,7 @@ func (s *Server) findToolsUsingProvider(providerName string) []string {
 
 func (s *Server) renderAuthList(w http.ResponseWriter, providers []authProviderView) {
 	if len(providers) == 0 {
-		fmt.Fprint(w, `<div class="px-5 py-8 text-center text-gray-400 text-sm">No OAuth providers configured.</div>`)
+		fmt.Fprint(w, `<div class="px-5 py-8 text-center text-gray-600 text-sm">No OAuth providers configured.</div>`)
 		return
 	}
 
@@ -391,10 +391,10 @@ func (s *Server) renderAuthList(w http.ResponseWriter, providers []authProviderV
 			p.StatusColor, p.StatusColor, icon, escName, p.StatusColor, escLabel)
 
 		if !p.HasToken {
-			fmt.Fprintf(w, `<span class="text-[10px] text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded border border-gray-200 select-all">factorly auth login %s</span>`, escName)
+			fmt.Fprintf(w, `<span class="text-[10px] text-gray-600 font-mono bg-gray-50 px-2 py-1 rounded border border-gray-200 select-all">factorly auth login %s</span>`, escName)
 		}
 		if p.HasToken {
-			fmt.Fprintf(w, `<button hx-delete="/auth/%s/token" hx-target="#auth-list" hx-swap="innerHTML" hx-confirm="Logout from %s?" class="text-gray-400 hover:text-red-600 text-xs">logout</button>`, escName, escName)
+			fmt.Fprintf(w, `<button hx-delete="/auth/%s/token" hx-target="#auth-list" hx-swap="innerHTML" hx-confirm="Logout from %s?" class="text-gray-600 hover:text-red-700 text-xs">logout</button>`, escName, escName)
 		}
 
 		fmt.Fprint(w, `</div></div>`)

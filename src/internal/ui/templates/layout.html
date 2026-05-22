@@ -59,7 +59,7 @@
       <div id="ws-dropdown-anchor"></div>
     </div>
     <button hx-post="/reload" hx-target="#reload-status" hx-swap="innerHTML"
-            class="px-2.5 py-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors" title="Reload config from disk">
+            class="px-2.5 py-1.5 text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100 transition-colors" title="Reload config from disk">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
     </button>
     <span id="reload-status"></span>
@@ -85,13 +85,13 @@
         <details class="tool-group" open>
           <summary class="px-4 py-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:bg-gray-50 flex items-center justify-between">
             <span>{{.Prefix}}</span>
-            <span class="text-gray-300 font-normal">{{len .Tools}}</span>
+            <span class="text-gray-500 font-normal">{{len .Tools}}</span>
           </summary>
           {{range .Tools}}
           <a href="/tools/{{.Name}}"
              class="sidebar-item block px-4 py-2 pl-7 text-xs font-mono truncate {{if eq .Name $.ActiveTool}}active{{end}} {{if .Hidden}}opacity-50{{end}}">
             <span class="inline-block w-2 h-2 rounded-full mr-1.5
-              {{if eq .Type "cli"}}bg-gray-400{{else if eq .Type "rest"}}bg-blue-400{{else if eq .Type "mcp"}}bg-purple-400{{else if eq .Type "code"}}bg-amber-400{{else if eq .Type "builtin"}}bg-emerald-400{{end}}"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-400">⊘</span>{{end}}
+              {{if eq .Type "cli"}}bg-gray-400{{else if eq .Type "rest"}}bg-blue-400{{else if eq .Type "mcp"}}bg-purple-400{{else if eq .Type "code"}}bg-amber-400{{else if eq .Type "builtin"}}bg-emerald-400{{end}}"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-500">⊘</span>{{end}}
           </a>
           {{end}}
         </details>
@@ -100,7 +100,7 @@
         <a href="/tools/{{.Name}}"
            class="sidebar-item block px-4 py-2 text-xs font-mono truncate {{if eq .Name $.ActiveTool}}active{{end}} {{if .Hidden}}opacity-50{{end}}">
           <span class="inline-block w-2 h-2 rounded-full mr-1.5
-            {{if eq .Type "cli"}}bg-gray-400{{else if eq .Type "rest"}}bg-blue-400{{else if eq .Type "mcp"}}bg-purple-400{{else if eq .Type "code"}}bg-amber-400{{else if eq .Type "builtin"}}bg-emerald-400{{end}}"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-400">⊘</span>{{end}}
+            {{if eq .Type "cli"}}bg-gray-400{{else if eq .Type "rest"}}bg-blue-400{{else if eq .Type "mcp"}}bg-purple-400{{else if eq .Type "code"}}bg-amber-400{{else if eq .Type "builtin"}}bg-emerald-400{{end}}"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-500">⊘</span>{{end}}
         </a>
         {{end}}
         {{end}}
@@ -124,12 +124,12 @@
         <details class="tool-group" open>
           <summary class="px-4 py-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:bg-gray-50 flex items-center justify-between">
             <span>{{.Prefix}}</span>
-            <span class="text-gray-300 font-normal">{{len .Tools}}</span>
+            <span class="text-gray-500 font-normal">{{len .Tools}}</span>
           </summary>
           {{range .Tools}}
           <a href="/workflows/{{.Name}}"
              class="sidebar-item block px-4 py-2 pl-7 text-xs font-mono truncate {{if eq .Name $.ActiveTool}}active{{end}} {{if .Hidden}}opacity-50{{end}}">
-            <span class="inline-block w-2 h-2 rounded-full mr-1.5 bg-green-400"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-400">⊘</span>{{end}}
+            <span class="inline-block w-2 h-2 rounded-full mr-1.5 bg-green-400"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-500">⊘</span>{{end}}
           </a>
           {{end}}
         </details>
@@ -137,7 +137,7 @@
         {{range .Tools}}
         <a href="/workflows/{{.Name}}"
            class="sidebar-item block px-4 py-2 text-xs font-mono truncate {{if eq .Name $.ActiveTool}}active{{end}} {{if .Hidden}}opacity-50{{end}}">
-          <span class="inline-block w-2 h-2 rounded-full mr-1.5 bg-green-400"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-400">⊘</span>{{end}}
+          <span class="inline-block w-2 h-2 rounded-full mr-1.5 bg-green-400"></span>{{.Name}}{{if .Hidden}} <span class="text-[9px] text-gray-500">⊘</span>{{end}}
         </a>
         {{end}}
         {{end}}
@@ -167,15 +167,15 @@
           </span>
         </div>
         <div class="flex items-center gap-2">
-          <span id="drawer-count" class="text-[10px] text-gray-400">0 calls</span>
-          <button onclick="clearActivity()" class="text-[10px] text-gray-400 hover:text-gray-600">clear</button>
-          <button onclick="toggleActivity()" class="text-gray-400 hover:text-gray-600">
+          <span id="drawer-count" class="text-[10px] text-gray-600">0 calls</span>
+          <button onclick="clearActivity()" class="text-[10px] text-gray-600 hover:text-gray-800">clear</button>
+          <button onclick="toggleActivity()" class="text-gray-600 hover:text-gray-800">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
         </div>
       </div>
       <div id="activity-feed" class="flex-1 overflow-y-auto">
-        <div id="activity-empty" class="px-4 py-12 text-center text-gray-400 text-xs">
+        <div id="activity-empty" class="px-4 py-12 text-center text-gray-600 text-xs">
           Waiting for agent activity...
         </div>
       </div>

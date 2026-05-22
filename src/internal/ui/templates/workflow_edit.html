@@ -12,7 +12,7 @@
         <h1 class="text-2xl font-bold font-mono">{{.Name}}</h1>
         <span class="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700">workflow</span>
         <button type="button" onclick="document.getElementById('wf-header-static').classList.add('hidden');document.getElementById('wf-header-edit').classList.remove('hidden');"
-                class="text-gray-400 hover:text-indigo-600 ml-1" title="Edit name & description">
+                class="text-gray-600 hover:text-indigo-700 ml-1" title="Edit name & description">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
         </button>
       </div>
@@ -36,12 +36,12 @@
   </div>
   <div class="flex items-center gap-3">
     <a href="/workflows/{{.Name}}/yaml" hx-boost="false"
-       class="text-gray-400 hover:text-indigo-600 text-sm">View YAML</a>
+       class="text-gray-600 hover:text-indigo-700 text-sm">View YAML</a>
     <button hx-post="/workflows/{{.Name}}/duplicate"
-            class="text-gray-400 hover:text-indigo-600 text-sm">Duplicate</button>
+            class="text-gray-600 hover:text-indigo-700 text-sm">Duplicate</button>
     <button hx-delete="/workflows/{{.Name}}"
             hx-confirm="Delete workflow '{{.Name}}'?"
-            class="text-red-400 hover:text-red-600 text-sm">Delete</button>
+            class="text-red-600 hover:text-red-700 text-sm">Delete</button>
   </div>
 </div>
 
@@ -63,7 +63,7 @@
         </div>
         <div id="wf-params-list" class="p-4 space-y-2">
           {{if not .Params}}
-          <p id="wf-params-empty" class="text-xs text-gray-400 text-center py-2">No input parameters. Agents will call this workflow without arguments.</p>
+          <p id="wf-params-empty" class="text-xs text-gray-600 text-center py-2">No input parameters. Agents will call this workflow without arguments.</p>
           {{end}}
           {{range $i, $p := .Params}}
           <div class="wf-param-row flex items-start gap-2">
@@ -90,7 +90,7 @@
                        class="flex-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white">
               </div>
             </div>
-            <button type="button" onclick="this.closest('.wf-param-row').remove(); reindexWfParams(); document.getElementById('tool-edit-area').dataset.dirty='1'" class="text-gray-300 hover:text-red-500 text-xs mt-1">✕</button>
+            <button type="button" onclick="this.closest('.wf-param-row').remove(); reindexWfParams(); document.getElementById('tool-edit-area').dataset.dirty='1'" class="text-gray-400 hover:text-red-600 text-xs mt-1">✕</button>
           </div>
           {{end}}
         </div>
@@ -110,7 +110,7 @@
 
         <div id="steps-list">
           {{if not .Steps}}
-          <div class="px-4 py-8 text-center text-gray-400 text-sm" id="empty-state">
+          <div class="px-4 py-8 text-center text-gray-600 text-sm" id="empty-state">
             No steps. Click "+ Add" to start.
           </div>
           {{end}}
@@ -118,7 +118,7 @@
           {{range $i, $step := .Steps}}
           <details class="step-row border-b border-gray-100 last:border-b-0" data-index="{{$i}}">
             <summary class="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-gray-50 transition-colors">
-              <span class="step-num text-[10px] font-bold text-gray-400 w-4 text-right shrink-0">{{inc $i}}</span>
+              <span class="step-num text-[10px] font-bold text-gray-600 w-4 text-right shrink-0">{{inc $i}}</span>
 
               {{if $step.Tool}}
               <span class="text-sm font-mono font-medium text-gray-800 flex-1 truncate">{{$step.Tool}}</span>
@@ -127,7 +127,7 @@
               {{end}}
 
               {{if $step.Store}}
-              <span class="text-[10px] text-gray-300 shrink-0">→</span>
+              <span class="text-[10px] text-gray-500 shrink-0">→</span>
               <span class="text-[11px] font-mono text-indigo-600 shrink-0">{{$step.Store}}</span>
               {{end}}
 
@@ -135,16 +135,16 @@
               {{if $step.Require}}<span class="text-[9px] px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded shrink-0">req</span>{{end}}
 
               <span class="flex gap-0.5 shrink-0 ml-1">
-                <button type="button" onclick="event.preventDefault(); event.stopPropagation(); moveStep(this, -1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move up">▲</button>
-                <button type="button" onclick="event.preventDefault(); event.stopPropagation(); moveStep(this, 1)" class="text-gray-300 hover:text-gray-600 text-[10px] px-0.5" title="Move down">▼</button>
+                <button type="button" onclick="event.preventDefault(); event.stopPropagation(); moveStep(this, -1)" class="text-gray-400 hover:text-gray-700 text-[10px] px-0.5" title="Move up">▲</button>
+                <button type="button" onclick="event.preventDefault(); event.stopPropagation(); moveStep(this, 1)" class="text-gray-400 hover:text-gray-700 text-[10px] px-0.5" title="Move down">▼</button>
               </span>
-              <button type="button" onclick="event.preventDefault(); event.stopPropagation(); removeStep(this)" class="text-gray-300 hover:text-red-500 text-xs shrink-0">✕</button>
+              <button type="button" onclick="event.preventDefault(); event.stopPropagation(); removeStep(this)" class="text-gray-400 hover:text-red-600 text-xs shrink-0">✕</button>
             </summary>
 
             <div class="px-4 pb-4 pt-1 pl-11 space-y-3 bg-gray-50/50">
               <!-- Tool -->
               <div>
-                <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Tool</label>
+                <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Tool</label>
                 <select name="step_tool_{{$i}}" class="step-tool w-full px-2 py-1.5 text-sm font-mono border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200"
                         hx-get="/workflows/{{$.Name}}/step-params"
                         hx-vals="js:{tool: event.target.value, index: event.target.closest('.step-row').dataset.index}"
@@ -159,28 +159,28 @@
 
               <!-- Store -->
               <div>
-                <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Store output as</label>
+                <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Store output as</label>
                 <input type="text" name="step_store_{{$i}}" value="{{$step.Store}}" placeholder="variable name"
                        class="step-store w-full px-2 py-1.5 text-sm font-mono border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200">
               </div>
 
               <!-- If condition -->
               <div>
-                <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">If (skip when false)</label>
+                <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">If (skip when false)</label>
                 <input type="text" name="step_if_{{$i}}" value="{{$step.If}}" placeholder="e.g. changes != ''"
                        class="w-full px-2 py-1.5 text-sm font-mono border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200">
               </div>
 
               <!-- Require condition -->
               <div>
-                <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Require (stop when false)</label>
+                <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Require (stop when false)</label>
                 <input type="text" name="step_require_{{$i}}" value="{{$step.Require}}" placeholder="e.g. contains(output, 'PASS')"
                        class="w-full px-2 py-1.5 text-sm font-mono border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200">
               </div>
 
               <!-- Params -->
               <div>
-                <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Params</label>
+                <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Params</label>
                 <div id="step-params-{{$i}}" class="space-y-1 step-params" data-index="{{$i}}">
                   {{range $k, $v := $step.Params}}
                   <div class="param-row flex gap-1">
@@ -188,11 +188,11 @@
                            class="w-1/3 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
                     <input type="text" name="step_param_val_{{$i}}[]" value="{{$v}}" placeholder="value"
                            class="flex-1 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
-                    <button type="button" onclick="this.closest('.param-row').remove(); document.getElementById('tool-edit-area').dataset.dirty='1'" class="text-gray-300 hover:text-red-500 text-xs px-1">✕</button>
+                    <button type="button" onclick="this.closest('.param-row').remove(); document.getElementById('tool-edit-area').dataset.dirty='1'" class="text-gray-400 hover:text-red-600 text-xs px-1">✕</button>
                   </div>
                   {{end}}
                 </div>
-                <button type="button" onclick="addParam(this)" class="mt-1 inline-flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700">{{icon "plus"}} param</button>
+                <button type="button" onclick="addParam(this)" class="mt-1 inline-flex items-center gap-1 text-[10px] text-indigo-600 hover:text-indigo-700">{{icon "plus"}} param</button>
               </div>
             </div>
           </details>
@@ -204,15 +204,15 @@
       <div class="bg-white rounded-lg border border-gray-200 overflow-hidden mt-4">
         <details>
           <summary class="px-4 py-2.5 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors flex items-center gap-2">
-            <svg class="chevron w-3 h-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            <svg class="chevron w-3 h-3 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Oversight</span>
           </summary>
           <div class="p-4 space-y-3">
             <div>
-              <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Deny (comma-separated)</label>
+              <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Deny (comma-separated)</label>
               <input type="text" name="shadow_deny" value="{{if .Tool.Shadow}}{{joinList .Tool.Shadow.Deny}}{{end}}" placeholder="e.g. delete_repo, drop_table"
                      class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
-              <p class="text-[9px] text-gray-400 mt-0.5">Block calls where any parameter value contains these strings. The tool call will be rejected immediately.</p>
+              <p class="text-[9px] text-gray-600 mt-0.5">Block calls where any parameter value contains these strings. The tool call will be rejected immediately.</p>
             </div>
             <div>
               <label class="flex items-center gap-2 text-xs text-gray-600">
@@ -221,7 +221,7 @@
               </label>
             </div>
             <div>
-              <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Rate limit</label>
+              <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Rate limit</label>
               <input type="text" name="shadow_rate_limit" value="{{if .Tool.Shadow}}{{.Tool.Shadow.RateLimit}}{{end}}" placeholder="e.g. 100/hour"
                      class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
             </div>
@@ -233,51 +233,51 @@
       <div class="bg-white rounded-lg border border-gray-200 overflow-hidden mt-4">
         <details>
           <summary class="px-4 py-2.5 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors flex items-center gap-2">
-            <svg class="chevron w-3 h-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            <svg class="chevron w-3 h-3 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Output Filter</span>
           </summary>
           <div class="p-4 space-y-3">
             <div>
-              <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">JSONPath</label>
+              <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">JSONPath</label>
               <input type="text" name="filter_json_path" value="{{if .Tool.Filter}}{{.Tool.Filter.JSONPath}}{{end}}" placeholder="$.data.items"
                      class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
-              <p class="text-[9px] text-gray-400 mt-0.5">Extract a specific field from JSON output.</p>
+              <p class="text-[9px] text-gray-600 mt-0.5">Extract a specific field from JSON output.</p>
             </div>
             <div class="flex gap-2">
               <div class="flex-1">
-                <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Head lines</label>
+                <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Head lines</label>
                 <input type="number" name="filter_head_lines" value="{{if and .Tool.Filter .Tool.Filter.HeadLines}}{{.Tool.Filter.HeadLines}}{{end}}" placeholder=""
                        class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
               </div>
               <div class="flex-1">
-                <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Tail lines</label>
+                <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Tail lines</label>
                 <input type="number" name="filter_tail_lines" value="{{if and .Tool.Filter .Tool.Filter.TailLines}}{{.Tool.Filter.TailLines}}{{end}}" placeholder=""
                        class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
               </div>
               <div class="flex-1">
-                <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Max lines</label>
+                <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Max lines</label>
                 <input type="number" name="filter_max_lines" value="{{if and .Tool.Filter .Tool.Filter.MaxLines}}{{.Tool.Filter.MaxLines}}{{end}}" placeholder=""
                        class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
               </div>
             </div>
             <div>
-              <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Keep lines (regex, comma-separated)</label>
+              <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Keep lines (regex, comma-separated)</label>
               <input type="text" name="filter_keep_lines" value="{{if .Tool.Filter}}{{joinList .Tool.Filter.KeepLines}}{{end}}" placeholder="^ERROR, ^WARN"
                      class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
-              <p class="text-[9px] text-gray-400 mt-0.5">Only keep lines matching these patterns.</p>
+              <p class="text-[9px] text-gray-600 mt-0.5">Only keep lines matching these patterns.</p>
             </div>
             <div>
-              <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Strip lines (regex, comma-separated)</label>
+              <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Strip lines (regex, comma-separated)</label>
               <input type="text" name="filter_strip_lines" value="{{if .Tool.Filter}}{{joinList .Tool.Filter.StripLines}}{{end}}" placeholder="^DEBUG, ^#"
                      class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
-              <p class="text-[9px] text-gray-400 mt-0.5">Remove lines matching these patterns.</p>
+              <p class="text-[9px] text-gray-600 mt-0.5">Remove lines matching these patterns.</p>
             </div>
             <div>
-              <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Replace (pattern→replacement, one per line)</label>
+              <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Replace (pattern→replacement, one per line)</label>
               <textarea name="filter_replace" rows="2" placeholder="password=.*→password=***"
                         class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">{{if .Tool.Filter}}{{range .Tool.Filter.Replace}}{{.Pattern}}→{{.Replacement}}
 {{end}}{{end}}</textarea>
-              <p class="text-[9px] text-gray-400 mt-0.5">Regex pattern→replacement, one per line. Use → (arrow) as separator.</p>
+              <p class="text-[9px] text-gray-600 mt-0.5">Regex pattern→replacement, one per line. Use → (arrow) as separator.</p>
             </div>
           </div>
         </details>
@@ -287,32 +287,32 @@
       <div class="bg-white rounded-lg border border-gray-200 overflow-hidden mt-4">
         <details>
           <summary class="px-4 py-2.5 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors flex items-center gap-2">
-            <svg class="chevron w-3 h-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            <svg class="chevron w-3 h-3 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Advanced</span>
           </summary>
           <div class="p-4 space-y-3">
             <div class="flex gap-2">
               <div class="flex-1">
-                <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Timeout</label>
+                <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Timeout</label>
                 <input type="text" name="timeout" value="{{.Tool.Timeout}}" placeholder="e.g. 30s, 5m"
                        class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
               </div>
               <div class="flex-1">
-                <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Max output (bytes)</label>
+                <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Max output (bytes)</label>
                 <input type="number" name="max_output" value="{{if .Tool.MaxOutput}}{{.Tool.MaxOutput}}{{end}}" placeholder="50000"
                        class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
               </div>
             </div>
             <div>
-              <label class="block text-[10px] font-medium text-gray-400 uppercase mb-1">Compress</label>
+              <label class="block text-[10px] font-medium text-gray-600 uppercase mb-1">Compress</label>
               <input type="text" name="compress" value="{{joinList .Tool.Compress}}" placeholder="all, json, logs"
                      class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
             </div>
             <label class="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" name="hidden" {{if .Tool.Hidden}}checked{{end}}
                      class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-200">
-              <span class="text-[10px] font-medium text-gray-400 uppercase">Hidden</span>
-              <span class="text-[9px] text-gray-400">— not listed in MCP or tools, but callable directly and by workflows</span>
+              <span class="text-[10px] font-medium text-gray-600 uppercase">Hidden</span>
+              <span class="text-[9px] text-gray-600">— not listed in MCP or tools, but callable directly and by workflows</span>
             </label>
           </div>
         </details>
@@ -333,7 +333,7 @@
     <div class="bg-white rounded-lg border border-gray-200 p-5 sticky top-6">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xs font-medium text-gray-500 uppercase tracking-wide">Try It</h2>
-        <span class="text-[10px] text-gray-400 font-mono">{{.Name}}</span>
+        <span class="text-[10px] text-gray-600 font-mono">{{.Name}}</span>
       </div>
 
       <div id="run-panel">
@@ -341,7 +341,7 @@
       </div>
 
       <div id="run-steps" class="mt-4 hidden">
-        <div class="text-[10px] font-medium text-gray-400 uppercase mb-1.5">Running</div>
+        <div class="text-[10px] font-medium text-gray-600 uppercase mb-1.5">Running</div>
         <div id="run-steps-list" class="space-y-1 border border-gray-200 rounded p-2 bg-gray-50"></div>
       </div>
 
@@ -375,14 +375,14 @@
 
     var key = 'step-' + data.run_id + '-' + data.index;
     var row = document.getElementById(key);
-    var dur = data.duration_ms ? '<span class="font-mono text-[10px] text-gray-400">' + data.duration_ms + 'ms</span>' : '';
+    var dur = data.duration_ms ? '<span class="font-mono text-[10px] text-gray-600">' + data.duration_ms + 'ms</span>' : '';
     var err = data.error ? '<div class="mt-1 text-[10px] text-red-600 font-mono">' + escapeHtml(data.error) + '</div>' : '';
     var html =
       '<div class="flex items-center gap-2 text-xs">' +
         statusBadge(data.status) +
-        '<span class="text-gray-400 font-mono text-[10px]">' + data.index + '/' + data.total + '</span>' +
+        '<span class="text-gray-600 font-mono text-[10px]">' + data.index + '/' + data.total + '</span>' +
         '<span class="font-mono text-gray-700 flex-1 truncate">' + escapeHtml(data.tool) + '</span>' +
-        '<span class="text-[10px] text-gray-400">' + data.status + '</span>' +
+        '<span class="text-[10px] text-gray-600">' + data.status + '</span>' +
         dur +
       '</div>' + err;
 
@@ -457,7 +457,7 @@ function addWorkflowParam() {
         <input type="text" name="wf_param_desc_${count}" placeholder="description" class="flex-1 px-2 py-1 text-xs border border-gray-200 rounded bg-white">
       </div>
     </div>
-    <button type="button" onclick="this.closest('.wf-param-row').remove(); reindexWfParams(); document.getElementById('tool-edit-area').dataset.dirty='1'" class="text-gray-300 hover:text-red-500 text-xs mt-1">✕</button>
+    <button type="button" onclick="this.closest('.wf-param-row').remove(); reindexWfParams(); document.getElementById('tool-edit-area').dataset.dirty='1'" class="text-gray-400 hover:text-red-600 text-xs mt-1">✕</button>
   `;
   list.appendChild(row);
 }

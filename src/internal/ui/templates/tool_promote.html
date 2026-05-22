@@ -16,8 +16,8 @@
 
   <div class="bg-white rounded-lg border border-gray-200 p-6 space-y-5">
     <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-xs text-gray-500">
-      <div><span class="text-gray-400">Recorded:</span> <span class="font-mono text-gray-700">{{.Timestamp}}</span></div>
-      <div><span class="text-gray-400">SHA:</span> <span class="font-mono text-gray-700">{{.ShortSHA}}</span></div>
+      <div><span class="text-gray-500">Recorded:</span> <span class="font-mono text-gray-700">{{.Timestamp}}</span></div>
+      <div><span class="text-gray-500">SHA:</span> <span class="font-mono text-gray-700">{{.ShortSHA}}</span></div>
     </div>
 
     {{if .CompileErr}}
@@ -37,7 +37,7 @@
                placeholder="e.g. trello.factorly_cards"
                pattern="[a-zA-Z][a-zA-Z0-9_.-]*"
                class="w-full px-3 py-2 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
-        <p class="text-[11px] text-gray-400 mt-1">Letters, digits, dots, underscores, hyphens. Convention: <code>category.action</code>.</p>
+        <p class="text-[11px] text-gray-600 mt-1">Letters, digits, dots, underscores, hyphens. Convention: <code>category.action</code>.</p>
       </div>
 
       <div>
@@ -45,7 +45,7 @@
         <textarea name="description" rows="2"
                   placeholder="{{.AutoDesc}}"
                   class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-indigo-200 resize-y"></textarea>
-        <p class="text-[11px] text-gray-400 mt-1">Leave blank to use the auto-generated description.</p>
+        <p class="text-[11px] text-gray-600 mt-1">Leave blank to use the auto-generated description.</p>
       </div>
 
       {{if .Parameters}}
@@ -55,15 +55,15 @@
           {{range .Parameters}}
           <div class="flex items-center gap-3 text-xs">
             <span class="font-mono text-gray-700 w-32 shrink-0">{{.Name}}</span>
-            <span class="text-gray-400">default:</span>
+            <span class="text-gray-500">default:</span>
             <span class="font-mono text-gray-600 truncate">{{.Default}}</span>
           </div>
           {{end}}
         </div>
-        <p class="text-[11px] text-gray-400 mt-2">Edit descriptions and types in the tool's edit page after saving.</p>
+        <p class="text-[11px] text-gray-600 mt-2">Edit descriptions and types in the tool's edit page after saving.</p>
       </div>
       {{else}}
-      <p class="text-[11px] text-gray-400">No parameters were inferred (the script ran without any).</p>
+      <p class="text-[11px] text-gray-600">No parameters were inferred (the script ran without any).</p>
       {{end}}
 
       <div class="space-y-2 pt-2 border-t border-gray-100">
@@ -78,7 +78,7 @@
       </div>
 
       <div>
-        <h4 class="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Source preview</h4>
+        <h4 class="text-[10px] text-gray-600 uppercase tracking-wide mb-2">Source preview</h4>
         <pre class="text-[11px] font-mono bg-gray-50 text-gray-700 px-3 py-2.5 rounded border border-gray-100 whitespace-pre-wrap max-h-72 overflow-y-auto">{{.Source}}</pre>
       </div>
 

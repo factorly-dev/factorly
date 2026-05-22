@@ -7,8 +7,8 @@
 <div class="flex items-center justify-between mb-2">
   <h1 class="flex items-center gap-2 text-2xl font-bold">
     Store
-    <details class="text-sm font-normal text-gray-400">
-      <summary class="cursor-pointer hover:text-gray-600 list-none flex items-center" aria-label="What is the store?">{{icon "info"}}</summary>
+    <details class="text-sm font-normal text-gray-500">
+      <summary class="cursor-pointer hover:text-gray-700 list-none flex items-center" aria-label="What is the store?">{{icon "info"}}</summary>
       <div class="absolute z-10 mt-2 w-96 p-3 bg-white border border-gray-200 rounded-lg shadow-lg text-sm text-gray-600 space-y-2">
         <p>Agent-writable workspace state.</p>
         <p>
@@ -38,24 +38,24 @@
 <div id="store-keys" class="space-y-4">
   {{range $section := .Sections}}
   <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-    <div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-500 uppercase tracking-wide border-b border-gray-200">
+    <div class="px-5 py-2 bg-gray-50 text-[10px] font-medium text-gray-600 uppercase tracking-wide border-b border-gray-200">
       {{$section.Label}}
-      <span class="text-gray-300">({{len $section.Keys}} keys)</span>
+      <span class="text-gray-500">({{len $section.Keys}} keys)</span>
     </div>
     {{if not $section.Keys}}
-    <div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>
+    <div class="px-5 py-4 text-center text-gray-600 text-xs">empty</div>
     {{else}}
     {{range $section.Keys}}
     <div class="px-5 py-2.5 border-b border-gray-100 last:border-b-0">
       <div class="flex items-center justify-between">
         <a href="/store/entry?scope={{$section.Scope}}&key={{.}}" class="font-mono text-sm hover:text-indigo-600">{{.}}</a>
         <div class="flex items-center gap-3">
-          <a href="/store/entry?scope={{$section.Scope}}&key={{.}}" class="text-indigo-500 hover:text-indigo-700 text-xs">view</a>
+          <a href="/store/entry?scope={{$section.Scope}}&key={{.}}" class="text-indigo-600 hover:text-indigo-700 text-xs">view</a>
           <button hx-delete="/store/{{.}}?scope={{$section.Scope}}"
                   hx-target="#store-keys"
                   hx-swap="innerHTML"
                   hx-confirm="Delete store entry '{{.}}'?"
-                  class="text-red-400 hover:text-red-600 text-xs">delete</button>
+                  class="text-red-600 hover:text-red-700 text-xs">delete</button>
         </div>
       </div>
     </div>

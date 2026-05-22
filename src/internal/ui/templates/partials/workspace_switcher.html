@@ -5,7 +5,7 @@
 
 {{define "workspace_switcher"}}
 <div class="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50" id="ws-dropdown">
-  <div class="px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100">
+  <div class="px-3 py-2 text-[10px] font-semibold text-gray-600 uppercase tracking-wide border-b border-gray-100">
     Workspaces
   </div>
   {{if .Workspaces}}
@@ -21,7 +21,7 @@
     {{end}}
   </div>
   {{else}}
-  <div class="px-3 py-3 text-xs text-gray-400">No workspaces defined.</div>
+  <div class="px-3 py-3 text-xs text-gray-600">No workspaces defined.</div>
   {{end}}
   <div class="border-t border-gray-100 py-1">
     <a href="/workspaces" class="block px-3 py-2 text-xs text-indigo-600 hover:bg-indigo-50">Manage workspaces →</a>

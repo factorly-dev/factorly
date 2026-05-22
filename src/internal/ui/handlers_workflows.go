@@ -161,7 +161,7 @@ func (s *Server) handleWorkflowStepParams(w http.ResponseWriter, r *http.Request
 			       class="w-1/3 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
 			<input type="text" name="step_param_val_%s[]" value="%s" placeholder="value"
 			       class="flex-1 px-2 py-1 text-xs font-mono border border-gray-200 rounded bg-white">
-			<button type="button" onclick="this.closest('.param-row').remove()" class="text-gray-300 hover:text-red-500 text-xs px-1">✕</button>
+			<button type="button" onclick="this.closest('.param-row').remove()" class="text-gray-400 hover:text-red-600 text-xs px-1">✕</button>
 		</div>`, stepIdx, template.HTMLEscapeString(p.Name), stepIdx, template.HTMLEscapeString(p.Default))
 	}
 }
@@ -439,7 +439,7 @@ func (s *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<div class="rounded-lg border border-red-200 bg-red-50 p-4">
 			<div class="flex items-center gap-2 mb-2">
 				<span class="text-red-600 font-medium text-sm">Failed</span>
-				<span class="text-gray-400 text-xs">%dms</span>
+				<span class="text-gray-600 text-xs">%dms</span>
 			</div>
 			<pre class="text-red-700 text-xs whitespace-pre-wrap">%s</pre>
 		</div>`, duration.Milliseconds(), template.HTMLEscapeString(execErr.Error()))
@@ -486,7 +486,7 @@ func (s *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) {
       <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-%s-100 text-%s-600 text-xs font-bold">%s</span>
       <span class="text-%s-700 font-medium text-sm">%s</span>
     </div>
-    <span class="text-gray-400 text-xs font-mono">%dms</span>
+    <span class="text-gray-600 text-xs font-mono">%dms</span>
   </div>
   <div class="bg-white px-4 py-3 space-y-1.5">`,
 		statusColor, statusColor, statusColor, statusColor, statusIcon, statusColor, wfResult.Status, duration.Milliseconds())
@@ -509,7 +509,7 @@ func (s *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) {
     <div class="flex items-center gap-2.5">
       <span class="inline-flex items-center justify-center w-4 h-4 rounded-full %s text-[9px] font-bold shrink-0">%s</span>
       <span class="font-mono text-xs text-gray-700 flex-1">%s</span>
-      <span class="text-[10px] text-gray-400 font-mono">%s</span>
+      <span class="text-[10px] text-gray-600 font-mono">%s</span>
     </div>`, iconBg, icon, template.HTMLEscapeString(step.Tool), dur)
 		if step.Error != "" {
 			fmt.Fprintf(w, `

@@ -4,9 +4,9 @@
     <div class="flex items-center gap-2">
       <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-600 text-xs font-bold">✗</span>
       <span class="text-red-700 font-medium text-sm">blocked</span>
-      <span class="text-red-400 text-xs font-mono">{{.Tool}}</span>
+      <span class="text-red-700 text-xs font-mono">{{.Tool}}</span>
     </div>
-    <span class="text-gray-400 text-xs font-mono">{{.DurationMs}}ms</span>
+    <span class="text-gray-600 text-xs font-mono">{{.DurationMs}}ms</span>
   </div>
   <div class="bg-gray-900 p-4">
     <pre class="text-red-300 text-xs font-mono whitespace-pre-wrap">{{.Error}}</pre>
@@ -20,11 +20,11 @@
     <div class="flex items-center gap-2">
       <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-{{.StatusColor}}-100 text-{{.StatusColor}}-600 text-xs font-bold">{{.Icon}}</span>
       <span class="text-{{.StatusColor}}-700 font-medium text-sm">{{.Status}}</span>
-      <span class="text-{{.StatusColor}}-400 text-xs font-mono">{{.Tool}}</span>
+      <span class="text-{{.StatusColor}}-700 text-xs font-mono">{{.Tool}}</span>
     </div>
     <div class="flex items-center gap-3">
-      <span class="text-gray-400 text-xs font-mono">{{.DurationMs}}ms</span>
-      <span class="text-gray-300 text-[10px]">{{.OutputSize}}b</span>
+      <span class="text-gray-600 text-xs font-mono">{{.DurationMs}}ms</span>
+      <span class="text-gray-500 text-[10px]">{{.OutputSize}}b</span>
     </div>
   </div>
 

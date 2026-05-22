@@ -7,8 +7,8 @@
 <div class="flex items-center justify-between mb-2">
   <h1 class="flex items-center gap-2 text-2xl font-bold">
     Auth Providers
-    <details class="text-sm font-normal text-gray-400">
-      <summary class="cursor-pointer hover:text-gray-600 list-none flex items-center" aria-label="What are auth providers?">{{icon "info"}}</summary>
+    <details class="text-sm font-normal text-gray-500">
+      <summary class="cursor-pointer hover:text-gray-700 list-none flex items-center" aria-label="What are auth providers?">{{icon "info"}}</summary>
       <div class="absolute z-10 mt-2 w-96 p-3 bg-white border border-gray-200 rounded-lg shadow-lg text-sm text-gray-600 space-y-2">
         <p>
           OAuth 2.0 providers (with PKCE + auto-refresh). Each provider has a
@@ -38,7 +38,7 @@
 {{end}}
 
 {{if not .Providers}}
-<div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-400">
+<div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-600">
   <p class="text-lg mb-2">No OAuth providers configured</p>
   <p class="text-sm">Click "+ Create New Provider" above to add one.</p>
 </div>
@@ -62,26 +62,26 @@
         </div>
         <div class="flex items-center gap-2">
           {{if not .HasToken}}
-          <span class="text-[10px] text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded border border-gray-200 select-all">factorly auth login {{.Name}}</span>
+          <span class="text-[10px] text-gray-600 font-mono bg-gray-50 px-2 py-1 rounded border border-gray-200 select-all">factorly auth login {{.Name}}</span>
           {{end}}
           {{if eq .Status "expired_refreshable"}}
           <button hx-post="/auth/{{.Name}}/refresh"
                   hx-target="#auth-list"
                   hx-swap="innerHTML"
-                  class="text-indigo-500 hover:text-indigo-700 text-xs font-medium">refresh</button>
+                  class="text-indigo-600 hover:text-indigo-700 text-xs font-medium">refresh</button>
           {{end}}
           {{if .HasToken}}
           <button hx-delete="/auth/{{.Name}}/token"
                   hx-target="#auth-list"
                   hx-swap="innerHTML"
                   hx-confirm="Logout from {{.Name}}?"
-                  class="text-gray-400 hover:text-red-600 text-xs">logout</button>
+                  class="text-gray-600 hover:text-red-700 text-xs">logout</button>
           {{end}}
           <button type="button" onclick="this.closest('.auth-provider').querySelector('.auth-edit').classList.toggle('hidden')"
-                  class="text-gray-400 hover:text-indigo-600 text-xs">edit</button>
+                  class="text-gray-600 hover:text-indigo-700 text-xs">edit</button>
           <button hx-delete="/auth/{{.Name}}"
                   hx-confirm="Delete provider '{{.Name}}' and its token?"
-                  class="text-gray-300 hover:text-red-500 text-xs">delete</button>
+                  class="text-gray-600 hover:text-red-700 text-xs">delete</button>
         </div>
       </div>
 
@@ -96,7 +96,7 @@
       {{if .Scopes}}
       <div class="flex flex-wrap gap-1 mt-1">
         {{range .Scopes}}
-        <span class="text-[10px] text-gray-400 px-1.5 py-0.5 rounded border border-gray-100">{{.}}</span>
+        <span class="text-[10px] text-gray-600 px-1.5 py-0.5 rounded border border-gray-200">{{.}}</span>
         {{end}}
       </div>
       {{end}}
@@ -105,30 +105,30 @@
       <form method="POST" action="/auth/{{.Name}}" class="auth-edit hidden mt-3 pt-3 border-t border-gray-100 space-y-2">
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <label class="block text-[10px] font-medium text-gray-400 uppercase mb-0.5">Client ID</label>
+            <label class="block text-[10px] font-medium text-gray-600 uppercase mb-0.5">Client ID</label>
             <input type="text" name="client_id" value="{{.ClientID}}"
                    class="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
           </div>
           <div>
-            <label class="block text-[10px] font-medium text-gray-400 uppercase mb-0.5">Client Secret</label>
+            <label class="block text-[10px] font-medium text-gray-600 uppercase mb-0.5">Client Secret</label>
             <input type="text" name="client_secret" value="{{.ClientSecret}}"
                    class="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
           </div>
         </div>
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <label class="block text-[10px] font-medium text-gray-400 uppercase mb-0.5">Auth URL</label>
+            <label class="block text-[10px] font-medium text-gray-600 uppercase mb-0.5">Auth URL</label>
             <input type="text" name="auth_url" value="{{.AuthURL}}"
                    class="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
           </div>
           <div>
-            <label class="block text-[10px] font-medium text-gray-400 uppercase mb-0.5">Token URL</label>
+            <label class="block text-[10px] font-medium text-gray-600 uppercase mb-0.5">Token URL</label>
             <input type="text" name="token_url" value="{{.TokenURL}}"
                    class="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
           </div>
         </div>
         <div>
-          <label class="block text-[10px] font-medium text-gray-400 uppercase mb-0.5">Scopes</label>
+          <label class="block text-[10px] font-medium text-gray-600 uppercase mb-0.5">Scopes</label>
           <input type="text" name="scopes" value="{{joinList .Scopes}}"
                  class="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200">
         </div>

@@ -386,12 +386,12 @@ func (s *Server) renderVaultKeys(w http.ResponseWriter, r *http.Request) {
 	sections := s.vaultSections(r)
 
 	if len(sections) == 0 {
-		fmt.Fprint(w, `<div class="px-5 py-8 text-center text-gray-400 text-sm">No secrets stored.</div>`)
+		fmt.Fprint(w, `<div class="px-5 py-8 text-center text-gray-600 text-sm">No secrets stored.</div>`)
 		return
 	}
 
 	for _, sec := range sections {
-		header := fmt.Sprintf("%s <span class=\"text-gray-300\">(%d keys)</span>", html.EscapeString(sec.Label), len(sec.Keys))
+		header := fmt.Sprintf("%s <span class=\"text-gray-500\">(%d keys)</span>", html.EscapeString(sec.Label), len(sec.Keys))
 		if sec.Locked {
 			header = fmt.Sprintf("%s <span class=\"text-amber-500\">(locked)</span>", html.EscapeString(sec.Label))
 		}
@@ -403,19 +403,19 @@ func (s *Server) renderVaultKeys(w http.ResponseWriter, r *http.Request) {
 				        class="text-xs text-indigo-600 hover:text-indigo-800">Unlock to view secrets</button>
 			</div>`, html.EscapeString(sec.Scope))
 		} else if len(sec.Keys) == 0 {
-			fmt.Fprint(w, `<div class="px-5 py-4 text-center text-gray-300 text-xs">empty</div>`)
+			fmt.Fprint(w, `<div class="px-5 py-4 text-center text-gray-600 text-xs">empty</div>`)
 		} else {
 			for _, key := range sec.Keys {
 				esc := html.EscapeString(key)
 				fmt.Fprintf(w, `<div class="px-5 py-2.5 flex items-center justify-between border-b border-gray-100 last:border-b-0">
 					<span class="font-mono text-sm">%s</span>
 					<div class="flex items-center gap-3">
-						<span class="text-gray-300 text-sm">••••••••</span>
+						<span class="text-gray-500 text-sm">••••••••</span>
 						<button hx-delete="/vault/%s?scope=%s"
 								hx-target="#vault-keys"
 								hx-swap="innerHTML"
 								hx-confirm="Delete secret &#39;%s&#39;?"
-								class="text-red-400 hover:text-red-600 text-xs">delete</button>
+								class="text-red-600 hover:text-red-700 text-xs">delete</button>
 					</div>
 				</div>`, esc, esc, html.EscapeString(sec.Scope), esc)
 			}

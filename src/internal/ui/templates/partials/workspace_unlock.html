@@ -5,7 +5,7 @@
 
 {{define "workspace_unlock"}}
 <div class="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-3" id="ws-dropdown">
-  <div class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+  <div class="text-[10px] font-semibold text-gray-600 uppercase tracking-wide mb-2">
     Unlock {{.Name}} vault
   </div>
   <form hx-post="/workspaces/unlock" hx-target="#ws-dropdown" hx-swap="outerHTML" class="space-y-2">

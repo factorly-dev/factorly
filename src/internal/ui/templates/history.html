@@ -40,7 +40,7 @@
 </div>
 
 {{if not .Groups}}
-<div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-400">
+<div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-600">
   <p class="text-lg mb-2">No history yet</p>
   <p class="text-sm">Tool calls will appear here after you run them.</p>
 </div>
@@ -71,7 +71,7 @@
         <span class="px-1.5 py-0.5 text-[10px] rounded bg-yellow-50 text-yellow-700" title="A step inside this run matches the filter">filter hit in step</span>
         {{end}}
       </div>
-      <div class="flex items-center gap-3 text-xs text-gray-400">
+      <div class="flex items-center gap-3 text-xs text-gray-600">
         <span class="font-mono">{{.Lead.DurationMs}}ms</span>
         <span>{{.Lead.TimestampRel}}</span>
       </div>
@@ -127,7 +127,7 @@
                 </span>
                 <span class="font-mono">{{.Tool}}</span>
               </div>
-              <div class="flex items-center gap-2 text-gray-400">
+              <div class="flex items-center gap-2 text-gray-600">
                 <span class="font-mono">{{.DurationMs}}ms</span>
                 <span>{{.TimestampRel}}</span>
               </div>
@@ -186,18 +186,18 @@
   </div>
   {{end}}
   <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-3">
-    <div><dt class="text-gray-400">Time</dt><dd class="font-mono">{{.Timestamp}}</dd></div>
-    <div><dt class="text-gray-400">Interface</dt><dd class="font-mono">{{.Interface}}</dd></div>
-    <div><dt class="text-gray-400">Status</dt><dd class="font-mono">{{.Status}}</dd></div>
-    <div><dt class="text-gray-400">Duration</dt><dd class="font-mono">{{.DurationMs}}ms</dd></div>
-    {{if .Workspace}}<div><dt class="text-gray-400">Workspace</dt><dd class="font-mono">{{.Workspace}}</dd></div>{{end}}
-    {{if .AgentID}}<div><dt class="text-gray-400">Agent</dt><dd class="font-mono">{{.AgentID}}</dd></div>{{end}}
-    {{if .ShadowAction}}<div><dt class="text-gray-400">Shadow</dt><dd class="font-mono">{{.ShadowAction}}</dd></div>{{end}}
+    <div><dt class="text-gray-500">Time</dt><dd class="font-mono">{{.Timestamp}}</dd></div>
+    <div><dt class="text-gray-500">Interface</dt><dd class="font-mono">{{.Interface}}</dd></div>
+    <div><dt class="text-gray-500">Status</dt><dd class="font-mono">{{.Status}}</dd></div>
+    <div><dt class="text-gray-500">Duration</dt><dd class="font-mono">{{.DurationMs}}ms</dd></div>
+    {{if .Workspace}}<div><dt class="text-gray-500">Workspace</dt><dd class="font-mono">{{.Workspace}}</dd></div>{{end}}
+    {{if .AgentID}}<div><dt class="text-gray-500">Agent</dt><dd class="font-mono">{{.AgentID}}</dd></div>{{end}}
+    {{if .ShadowAction}}<div><dt class="text-gray-500">Shadow</dt><dd class="font-mono">{{.ShadowAction}}</dd></div>{{end}}
   </dl>
 
   {{if .Params}}
   <div class="mb-3">
-    <h4 class="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Parameters</h4>
+    <h4 class="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Parameters</h4>
     <div class="space-y-2">
       {{range $k, $v := .Params}}
       <div>
