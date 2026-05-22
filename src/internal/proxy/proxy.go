@@ -22,6 +22,18 @@ import (
 	"github.com/factorly-dev/factorly/internal/vault"
 )
 
+// contextKey is the unexported base type for typed context keys this
+// package exposes. Using a typed key (rather than a bare string)
+// prevents collisions with other packages stashing values on the
+// same context.
+type contextKey struct{ name string }
+
+// ReplayedFromKey is the context key set by the /history replay
+// handler before invoking the proxy. The proxy reads it and stamps
+// the resulting audit entry's ReplayedFrom field so the new call
+// can be traced back to the entry it was replayed from.
+var ReplayedFromKey = contextKey{"replayed_from"}
+
 // Option configures a Proxy.
 type Option func(*Proxy)
 
@@ -342,6 +354,9 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 	if validationResult != nil && validationResult.WasModified() {
 		entry.ShadowAction = string(shadow.ActionModified)
 		entry.OriginalParams = validationResult.Modified
+	}
+	if src, _ := ctx.Value(ReplayedFromKey).(string); src != "" {
+		entry.ReplayedFrom = src
 	}
 	if p.shadow != nil {
 		if logParams := p.shadow.LogParamsFor(toolName); len(logParams) > 0 {

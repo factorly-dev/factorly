@@ -98,6 +98,23 @@ func (s *Server) handleToolEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ?prefill=<hash> — populate the try-form with the params from a
+	// past audit-log entry. The /history page's "Edit & Replay" link
+	// drops users here so they can tweak one value and re-fire the
+	// call through the normal /tools/{name}/try path. Silently
+	// degrades when the hash is unknown: form renders with declared
+	// defaults, no error UI (the Replay flow proper surfaces 404).
+	params := tc.Parameters
+	if hash := r.URL.Query().Get("prefill"); hash != "" {
+		if entry, err := findAuditEntryByHash(s.cfgPath, hash); err == nil && entry != nil {
+			src := entry.Params
+			if len(entry.OriginalParams) > 0 {
+				src = entry.OriginalParams
+			}
+			params = applyPrefill(tc.Parameters, src)
+		}
+	}
+
 	// Combine tool config name with struct for template
 	type toolView struct {
 		Name string
@@ -109,7 +126,7 @@ func (s *Server) handleToolEdit(w http.ResponseWriter, r *http.Request) {
 		"Nav":        "tools",
 		"ActiveTool": name,
 		"Tool":       toolView{Name: name, ToolConfig: tc},
-		"Params":     tc.Parameters,
+		"Params":     params,
 		"IsBuiltin":  tc.Type == "builtin",
 	})
 }
@@ -121,10 +138,46 @@ func (s *Server) handleToolTryPanel(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// ?prefill=<hash> — populate the form with the params from a past
+	// audit-log entry. Used by the "Edit & Replay" link on /history.
+	// Silently degrades if the hash is unknown: form renders with the
+	// tool's normal defaults, no error UI. The Replay flow proper
+	// (POST /history/{hash}/replay) is responsible for surfacing
+	// "not found" — the prefill path is best-effort enhancement.
+	params := tc.Parameters
+	if hash := r.URL.Query().Get("prefill"); hash != "" {
+		if entry, err := findAuditEntryByHash(s.cfgPath, hash); err == nil && entry != nil {
+			src := entry.Params
+			if len(entry.OriginalParams) > 0 {
+				src = entry.OriginalParams
+			}
+			params = applyPrefill(tc.Parameters, src)
+		}
+	}
 	s.renderPartial(w, "try_panel", map[string]any{
 		"Name":   name,
-		"Params": tc.Parameters,
+		"Params": params,
 	})
+}
+
+// applyPrefill returns a copy of the tool's declared parameters with
+// each one's Default field overridden by the matching value in src
+// (when present). Params not in src keep their declared default; src
+// values for params not declared by the tool are ignored (the form
+// has no field to put them in). Pure function — no mutation of the
+// caller's slice.
+func applyPrefill(declared []config.ParamConfig, src map[string]string) []config.ParamConfig {
+	if len(src) == 0 {
+		return declared
+	}
+	out := make([]config.ParamConfig, len(declared))
+	for i, p := range declared {
+		out[i] = p
+		if v, ok := src[p.Name]; ok {
+			out[i].Default = v
+		}
+	}
+	return out
 }
 
 // handleToolYAML renders the tool's YAML definition. ?download=1 returns

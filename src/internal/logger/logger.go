@@ -49,6 +49,11 @@ type Entry struct {
 	// Workspace is the name of the active workspace overlay (if any).
 	// Empty when the call ran outside a workspace context.
 	Workspace string `json:"workspace,omitempty"`
+	// ReplayedFrom is the Hash of the original audit entry when this
+	// entry was produced by a /history replay action. Empty for fresh
+	// calls. Surfaced in the UI so replayed rows can be visually
+	// distinguished from organic ones and traced back to their source.
+	ReplayedFrom string `json:"replayed_from,omitempty"`
 }
 
 type Logger interface {
