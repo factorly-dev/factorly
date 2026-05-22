@@ -54,6 +54,21 @@ type Entry struct {
 	// calls. Surfaced in the UI so replayed rows can be visually
 	// distinguished from organic ones and traced back to their source.
 	ReplayedFrom string `json:"replayed_from,omitempty"`
+	// WorkflowRunID groups the audit entries of a single workflow run
+	// (the parent workflow call plus every child-step call) under one
+	// identifier. Generated as an 8-char UUID prefix by the workflow
+	// provider; threaded into the proxy via proxy.WorkflowRunIDKey on
+	// the call context. Empty for any call not made as part of a
+	// workflow run. Enables /history and /dashboard to coalesce a
+	// run into a single expandable row.
+	WorkflowRunID string `json:"workflow_run_id,omitempty"`
+	// WorkflowName is the name of the workflow whose run this entry
+	// belongs to (the parent workflow tool's registered name). Same
+	// across every child-step entry of a run. Empty for non-workflow
+	// calls. Surfaced so /history's coalesced row can show "workflow
+	// <name> · N steps" without having to back-resolve which workflow
+	// produced these step entries from the workflow config.
+	WorkflowName string `json:"workflow_name,omitempty"`
 }
 
 type Logger interface {
@@ -190,6 +205,118 @@ func ComputeHash(prevHash string, payload []byte) string {
 
 // ReadLastHash reads the last entry's hash from the log file.
 // Returns ZeroHash if the file doesn't exist, is empty, or the last entry has no hash.
+// FindByHash scans the audit log for the entry whose Hash matches.
+// Returns (nil, nil) when the hash isn't present so the caller can
+// 404 cleanly. Linear sequential scan from oldest to newest —
+// cheap on any reasonable log; if the log ever grows past a few
+// hundred MB and this becomes a hot path, a sidecar index is the
+// follow-up.
+//
+// Supports short-prefix matching: if the supplied hash is between
+// 4 and 63 chars, it's treated as a prefix. Returns an error if
+// the prefix is ambiguous (two or more entries match). Full
+// 64-char hashes always match exactly.
+func FindByHash(path, hash string) (*Entry, error) {
+	if hash == "" {
+		return nil, fmt.Errorf("hash is required")
+	}
+	if len(hash) < 4 {
+		return nil, fmt.Errorf("hash prefix too short (need at least 4 chars): %q", hash)
+	}
+	f, err := os.Open(path) // #nosec G304 -- audit log path is operator-supplied
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	exact := len(hash) == 64
+	var match *Entry
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var e Entry
+		if json.Unmarshal([]byte(line), &e) != nil {
+			continue
+		}
+		if exact {
+			if e.Hash == hash {
+				return &e, nil
+			}
+			continue
+		}
+		// Prefix match. Stash the latest hit and keep scanning so we
+		// can detect ambiguity.
+		if strings.HasPrefix(e.Hash, hash) {
+			if match != nil && match.Hash != e.Hash {
+				return nil, fmt.Errorf("hash prefix %q is ambiguous (matches at least %s and %s)", hash, match.Hash[:12], e.Hash[:12])
+			}
+			ec := e
+			match = &ec
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return match, nil
+}
+
+// MostRecentMatch scans the audit log and returns the Nth most recent
+// entry (1 = most recent) for which the predicate returns true.
+// Returns (nil, nil) when fewer than N matches exist.
+//
+// Used by `factorly logs replay --last [N]` and
+// --last-of <tool> to address an entry without making the user
+// look up the hash. The predicate is the filter — pass a
+// function that always returns true for "Nth most recent overall."
+func MostRecentMatch(path string, n int, match func(*Entry) bool) (*Entry, error) {
+	if n < 1 {
+		n = 1
+	}
+	f, err := os.Open(path) // #nosec G304 -- audit log path is operator-supplied
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	// Collect all matching entries, then take the Nth-from-the-end.
+	// Cheap because we only retain matches, not every entry.
+	var matches []Entry
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var e Entry
+		if json.Unmarshal([]byte(line), &e) != nil {
+			continue
+		}
+		if match == nil || match(&e) {
+			matches = append(matches, e)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if len(matches) < n {
+		return nil, nil
+	}
+	// matches is in chronological (oldest-first) order; the Nth most
+	// recent is at len-n.
+	idx := len(matches) - n
+	out := matches[idx]
+	return &out, nil
+}
+
 func ReadLastHash(path string) string {
 	f, err := os.Open(path)
 	if err != nil {

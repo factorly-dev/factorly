@@ -16,6 +16,33 @@ import (
 	"github.com/google/uuid"
 )
 
+// workflowRunCtxKey is the unexported key type for stashing the
+// current workflow's run ID on a context. The exported var below
+// is the only handle anything else can use to read or write it,
+// which prevents collisions with other context values.
+type workflowRunCtxKey struct{}
+
+// workflowNameCtxKey is the analogous key type for the workflow's
+// registered tool name. Together with WorkflowRunIDKey it gives
+// the proxy enough context to tag each child-step audit entry
+// with both "which run" and "which workflow."
+type workflowNameCtxKey struct{}
+
+// WorkflowRunIDKey is the context key the workflow provider sets
+// before dispatching each child-step call through the executor.
+// The proxy reads it and stamps the resulting audit entry's
+// WorkflowRunID field so every entry in one run shares the same
+// ID and the UI can coalesce them into one logical row.
+var WorkflowRunIDKey workflowRunCtxKey
+
+// WorkflowNameKey is the context key carrying the registered name
+// of the workflow that's running. The proxy reads it and stamps
+// the audit entry's WorkflowName field so /history's coalesced
+// view can label the run ("workflow daily-prep · N steps")
+// without having to back-resolve the name from a child step's
+// tool config.
+var WorkflowNameKey workflowNameCtxKey
+
 // WorkflowExecutor executes a tool call through the proxy.
 // Defined as an interface to avoid import cycle with proxy.
 type WorkflowExecutor interface {
@@ -137,6 +164,14 @@ func (p *WorkflowProvider) ExecuteWithContext(ctx context.Context, toolName stri
 	}
 
 	runID := uuid.New().String()[:8]
+	// Stamp the run ID + workflow name onto the context so every
+	// child-step call dispatched via p.executor.ExecuteWithContext
+	// below inherits both. The proxy reads them via
+	// provider.WorkflowRunIDKey / WorkflowNameKey and records them
+	// on the audit entry, which is how /history (and later
+	// /dashboard) coalesce a run's step entries into one row.
+	ctx = context.WithValue(ctx, WorkflowRunIDKey, runID)
+	ctx = context.WithValue(ctx, WorkflowNameKey, toolName)
 	state := &WorkflowState{
 		WorkflowName: toolName,
 		RunID:        runID,

@@ -884,3 +884,155 @@ func TestProjectLogPathDotFactorlyDirConfig(t *testing.T) {
 		t.Errorf(".factorly cfg: got %q, want %q", got, want)
 	}
 }
+
+// seedJSONL writes the given entries as JSONL to a fresh temp file
+// and returns the path. Helper for the FindByHash / MostRecentMatch
+// tests.
+func seedJSONL(t *testing.T, entries []Entry) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc := json.NewEncoder(f)
+	for _, e := range entries {
+		if err := enc.Encode(&e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = f.Close()
+	return path
+}
+
+// TestFindByHash_ExactAndPrefix covers the two address modes: a
+// full 64-char hash matches exactly, and a 4-63 char prefix
+// matches when unambiguous. Anything shorter than 4 chars errors;
+// no matches yields (nil, nil).
+func TestFindByHash_ExactAndPrefix(t *testing.T) {
+	path := seedJSONL(t, []Entry{
+		{Tool: "a", Hash: "aaaa1111000000000000000000000000000000000000000000000000000000aa"},
+		{Tool: "b", Hash: "bbbb2222000000000000000000000000000000000000000000000000000000bb"},
+		{Tool: "c", Hash: "aaaa3333000000000000000000000000000000000000000000000000000000cc"},
+	})
+
+	// Full-hash exact match.
+	got, err := FindByHash(path, "bbbb2222000000000000000000000000000000000000000000000000000000bb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.Tool != "b" {
+		t.Errorf("exact match: got %+v, want tool=b", got)
+	}
+
+	// Unambiguous prefix.
+	got, err = FindByHash(path, "bbbb2222")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.Tool != "b" {
+		t.Errorf("unambiguous prefix: got %+v, want tool=b", got)
+	}
+
+	// Ambiguous prefix — two entries start with "aaaa".
+	if _, err := FindByHash(path, "aaaa"); err == nil {
+		t.Error("ambiguous prefix should error")
+	}
+
+	// No match — return (nil, nil), not an error.
+	got, err = FindByHash(path, "deadbeef")
+	if err != nil {
+		t.Fatalf("missing hash should not error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("missing hash should be nil, got %+v", got)
+	}
+
+	// Too short.
+	if _, err := FindByHash(path, "abc"); err == nil {
+		t.Error("3-char prefix should error")
+	}
+
+	// Empty.
+	if _, err := FindByHash(path, ""); err == nil {
+		t.Error("empty hash should error")
+	}
+}
+
+// TestMostRecentMatch exercises the "Nth most recent matching X"
+// flow used by `factorly logs replay --last`. Entries in the JSONL
+// are chronological (oldest-first); the function returns the
+// Nth-from-the-end matching the predicate.
+func TestMostRecentMatch(t *testing.T) {
+	now := time.Now()
+	path := seedJSONL(t, []Entry{
+		{Tool: "a", Hash: "h1", Timestamp: now.Add(-3 * time.Hour)},
+		{Tool: "b", Hash: "h2", Timestamp: now.Add(-2 * time.Hour)},
+		{Tool: "a", Hash: "h3", Timestamp: now.Add(-1 * time.Hour)},
+		{Tool: "c", Hash: "h4", Timestamp: now},
+	})
+
+	// Newest overall: tool "c", hash h4.
+	got, err := MostRecentMatch(path, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.Hash != "h4" {
+		t.Errorf("newest: got %+v, want h4", got)
+	}
+
+	// 2nd newest overall: h3.
+	got, err = MostRecentMatch(path, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.Hash != "h3" {
+		t.Errorf("2nd newest: got %+v, want h3", got)
+	}
+
+	// Filtered: newest entry where Tool == "a" — that's h3.
+	got, err = MostRecentMatch(path, 1, func(e *Entry) bool { return e.Tool == "a" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.Hash != "h3" {
+		t.Errorf("newest tool=a: got %+v, want h3", got)
+	}
+
+	// Filtered + Nth: 2nd-newest tool=a — that's h1.
+	got, err = MostRecentMatch(path, 2, func(e *Entry) bool { return e.Tool == "a" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.Hash != "h1" {
+		t.Errorf("2nd newest tool=a: got %+v, want h1", got)
+	}
+
+	// N exceeds matches → (nil, nil).
+	got, err = MostRecentMatch(path, 99, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Errorf("N too big: expected nil, got %+v", got)
+	}
+
+	// Predicate matching nothing.
+	got, err = MostRecentMatch(path, 1, func(e *Entry) bool { return false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Errorf("no matches: expected nil, got %+v", got)
+	}
+
+	// Missing log file → (nil, nil), not an error (helps the CLI
+	// surface a friendly "no entries" rather than "file not found").
+	got, err = MostRecentMatch("/nonexistent/path", 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Errorf("missing file: expected nil, got %+v", got)
+	}
+}

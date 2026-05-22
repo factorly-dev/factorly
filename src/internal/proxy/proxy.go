@@ -358,6 +358,12 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 	if src, _ := ctx.Value(ReplayedFromKey).(string); src != "" {
 		entry.ReplayedFrom = src
 	}
+	if runID, _ := ctx.Value(provider.WorkflowRunIDKey).(string); runID != "" {
+		entry.WorkflowRunID = runID
+	}
+	if name, _ := ctx.Value(provider.WorkflowNameKey).(string); name != "" {
+		entry.WorkflowName = name
+	}
 	if p.shadow != nil {
 		if logParams := p.shadow.LogParamsFor(toolName); len(logParams) > 0 {
 			entry.HighlightParams = filterParams(params, logParams)

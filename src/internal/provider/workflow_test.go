@@ -925,3 +925,101 @@ func TestWorkflowExprMixedWithVars(t *testing.T) {
 		t.Errorf("expected 'hello world WORLD', got %q", capturedParams["msg"])
 	}
 }
+
+// ctxCapturingExecutor records the context that each child-step
+// call ran with, so a test can assert the workflow provider
+// stamped WorkflowRunIDKey + WorkflowNameKey on it before
+// dispatching. The default mock executor ignores its context,
+// so we need a separate variant here.
+type ctxCapturingExecutor struct {
+	contexts []context.Context
+}
+
+func (m *ctxCapturingExecutor) ExecuteWithContext(ctx context.Context, toolName string, _ map[string]string, _ string) (*Result, error) {
+	m.contexts = append(m.contexts, ctx)
+	return &Result{Output: toolName + " ok"}, nil
+}
+
+// TestWorkflowStampsRunIDAndNameOnContext is the workflow-side half
+// of the audit-coalescing round trip. The provider must call
+// context.WithValue with both WorkflowRunIDKey (an 8-char run ID)
+// and WorkflowNameKey (the workflow's registered name) before
+// dispatching each child step. The proxy then reads those keys to
+// stamp the audit entry. This test catches the silent failure mode
+// where someone deletes one of the two context.WithValue lines in
+// workflow.go — unit-level coverage on workflow.go itself, since
+// the proxy_test counterpart only verifies the *read* side.
+func TestWorkflowStampsRunIDAndNameOnContext(t *testing.T) {
+	exec := &ctxCapturingExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("my-wf", []WorkflowStep{
+		{Tool: "step1"},
+		{Tool: "step2"},
+	})
+	_ = wp.Setup()
+
+	if _, err := wp.ExecuteWithContext(context.Background(), "my-wf", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.contexts) != 2 {
+		t.Fatalf("expected 2 child-step calls captured, got %d", len(exec.contexts))
+	}
+
+	// Each child must have BOTH keys set. The run ID must be the
+	// same across steps (one ID per workflow run), 8 chars long.
+	// The workflow name must equal the registered workflow's name.
+	var firstRunID string
+	for i, ctx := range exec.contexts {
+		runID, ok := ctx.Value(WorkflowRunIDKey).(string)
+		if !ok || runID == "" {
+			t.Errorf("step %d: WorkflowRunIDKey missing or wrong type on context", i)
+			continue
+		}
+		if len(runID) != 8 {
+			t.Errorf("step %d: run ID length = %d, want 8 (truncated UUID)", i, len(runID))
+		}
+		if i == 0 {
+			firstRunID = runID
+		} else if runID != firstRunID {
+			t.Errorf("step %d: run ID %q differs from step 0's %q (must be stable across one run)", i, runID, firstRunID)
+		}
+
+		name, ok := ctx.Value(WorkflowNameKey).(string)
+		if !ok || name == "" {
+			t.Errorf("step %d: WorkflowNameKey missing or wrong type on context", i)
+		}
+		if name != "my-wf" {
+			t.Errorf("step %d: workflow name = %q, want my-wf", i, name)
+		}
+	}
+}
+
+// TestWorkflowDistinctRunsHaveDistinctIDs guards against any code
+// path that could accidentally share the run ID across separate
+// workflow invocations (e.g., a static-variable refactor). Each
+// run must generate a fresh UUID.
+func TestWorkflowDistinctRunsHaveDistinctIDs(t *testing.T) {
+	exec := &ctxCapturingExecutor{}
+	wp := NewWorkflowProvider(exec, false)
+	wp.RegisterWorkflow("my-wf", []WorkflowStep{{Tool: "step1"}})
+	_ = wp.Setup()
+
+	if _, err := wp.ExecuteWithContext(context.Background(), "my-wf", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wp.ExecuteWithContext(context.Background(), "my-wf", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(exec.contexts) != 2 {
+		t.Fatalf("expected 2 child calls (one per run), got %d", len(exec.contexts))
+	}
+
+	id1 := exec.contexts[0].Value(WorkflowRunIDKey).(string)
+	id2 := exec.contexts[1].Value(WorkflowRunIDKey).(string)
+	if id1 == "" || id2 == "" {
+		t.Fatalf("missing run ID(s): id1=%q id2=%q", id1, id2)
+	}
+	if id1 == id2 {
+		t.Errorf("distinct runs produced same run ID %q — must be fresh per invocation", id1)
+	}
+}

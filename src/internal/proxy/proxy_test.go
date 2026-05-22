@@ -175,6 +175,67 @@ func TestProxyPassesParams(t *testing.T) {
 	}
 }
 
+// TestProxyStampsWorkflowRunIDFromContext verifies the proxy reads
+// provider.WorkflowRunIDKey + WorkflowNameKey from the call context
+// and stamps the resulting audit entry's WorkflowRunID and
+// WorkflowName fields. This is what makes /history coalescing
+// possible — every step call in a workflow run inherits the same
+// run ID, so the UI can group entries.
+//
+// Also covers the negative case: a call without the keys produces
+// an entry with empty WorkflowRunID and WorkflowName. (Non-workflow
+// calls must not pick up stale identifiers from an outer context.)
+func TestProxyStampsWorkflowRunIDFromContext(t *testing.T) {
+	reg := registry.New()
+	reg.Register(&registry.Tool{Name: "test.tool", ProviderKey: "mock"})
+	mock := &mockProvider{result: &provider.Result{Duration: time.Millisecond}}
+	log := &capturingLogger{}
+	p := New(reg, map[string]provider.Provider{"mock": mock}, log)
+
+	// With both keys set — entry should carry both.
+	ctx := context.WithValue(context.Background(), provider.WorkflowRunIDKey, "run-abc123")
+	ctx = context.WithValue(ctx, provider.WorkflowNameKey, "daily-prep")
+	if _, err := p.ExecuteWithContext(ctx, "test.tool", map[string]string{}, "workflow"); err != nil {
+		t.Fatal(err)
+	}
+	if len(log.entries) != 1 {
+		t.Fatalf("expected 1 log entry, got %d", len(log.entries))
+	}
+	if got := log.entries[0].WorkflowRunID; got != "run-abc123" {
+		t.Errorf("WorkflowRunID = %q, want run-abc123", got)
+	}
+	if got := log.entries[0].WorkflowName; got != "daily-prep" {
+		t.Errorf("WorkflowName = %q, want daily-prep", got)
+	}
+
+	// With only WorkflowRunIDKey (no name) — name should be empty,
+	// run ID should still propagate. Defensive: workflow.go always
+	// sets both today, but the proxy should tolerate either alone.
+	log.entries = nil
+	ctx = context.WithValue(context.Background(), provider.WorkflowRunIDKey, "run-xyz")
+	if _, err := p.ExecuteWithContext(ctx, "test.tool", map[string]string{}, "workflow"); err != nil {
+		t.Fatal(err)
+	}
+	if got := log.entries[0].WorkflowRunID; got != "run-xyz" {
+		t.Errorf("WorkflowRunID = %q, want run-xyz", got)
+	}
+	if got := log.entries[0].WorkflowName; got != "" {
+		t.Errorf("WorkflowName should be empty when not set, got %q", got)
+	}
+
+	// Neither key set — both fields must be empty.
+	log.entries = nil
+	if _, err := p.Execute("test.tool", map[string]string{}, "cli"); err != nil {
+		t.Fatal(err)
+	}
+	if got := log.entries[0].WorkflowRunID; got != "" {
+		t.Errorf("WorkflowRunID should be empty for non-workflow call, got %q", got)
+	}
+	if got := log.entries[0].WorkflowName; got != "" {
+		t.Errorf("WorkflowName should be empty for non-workflow call, got %q", got)
+	}
+}
+
 func TestProxyLoopDetectionBlocks(t *testing.T) {
 	reg := registry.New()
 	reg.Register(&registry.Tool{

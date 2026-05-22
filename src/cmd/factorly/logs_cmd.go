@@ -18,6 +18,8 @@ import (
 
 	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/logger"
+	"github.com/factorly-dev/factorly/internal/proxy"
+	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/spf13/cobra"
 )
 
@@ -96,6 +98,215 @@ func init() {
 	logsCmd.AddCommand(logsStatsCmd)
 	logsCmd.AddCommand(logsVerifyCmd)
 	logsCmd.AddCommand(logsRepairCmd)
+
+	logsReplayCmd.Flags().BoolVar(&logsReplayLast, "last", false,
+		"replay the most recent call (or Nth-most-recent when --last-n is set)")
+	logsReplayCmd.Flags().IntVar(&logsReplayLastN, "last-n", 1,
+		"with --last, choose the Nth most recent (1 = newest, default)")
+	logsReplayCmd.Flags().StringVar(&logsReplayLastOf, "last-of", "",
+		"replay the most recent call of the named tool")
+	logsReplayCmd.Flags().StringArrayVar(&logsReplayOverrides, "param", nil,
+		"override a recorded param (repeatable): --param key=value")
+	logsReplayCmd.Flags().BoolVar(&logsReplayShow, "show", false,
+		"print the call that would be replayed without firing it")
+	logsCmd.AddCommand(logsReplayCmd)
+}
+
+var (
+	logsReplayLast      bool
+	logsReplayLastN     int
+	logsReplayLastOf    string
+	logsReplayOverrides []string
+	logsReplayShow      bool
+)
+
+var logsReplayCmd = &cobra.Command{
+	Use:   "replay [hash]",
+	Short: "Re-run a previously logged call",
+	Long: `Re-run a previously logged tool call. The replay fires through the
+same proxy as a fresh call — vault refs re-resolve, shadow rules
+re-apply, the audit log gets a new entry whose replayed_from links
+back to the source hash.
+
+Selection:
+  factorly logs replay <hash>                # full or short-prefix hash
+  factorly logs replay --last                # most recent call
+  factorly logs replay --last --last-n 3     # 3rd most recent
+  factorly logs replay --last-of github.fetch
+                                             # most recent call of that tool
+
+Other:
+  --param key=value   override one recorded param (repeatable)
+  --show              dry-run; print what would be replayed
+`,
+	RunE: runLogsReplay,
+}
+
+func runLogsReplay(cmd *cobra.Command, args []string) error {
+	if err := checkCommandAllowed("logs"); err != nil {
+		return err
+	}
+
+	// Selection mode validation. Exactly one of: positional hash,
+	// --last, --last-of. Mixing two is a user error worth surfacing
+	// loudly rather than silently picking one.
+	modes := 0
+	if len(args) > 0 {
+		modes++
+	}
+	if logsReplayLast {
+		modes++
+	}
+	if logsReplayLastOf != "" {
+		modes++
+	}
+	if modes == 0 {
+		return fmt.Errorf("specify a hash, --last, or --last-of <tool>")
+	}
+	if modes > 1 {
+		return fmt.Errorf("selection flags (hash, --last, --last-of) are mutually exclusive")
+	}
+
+	logPath := resolveLogPath()
+	var entry *logger.Entry
+	var err error
+	switch {
+	case len(args) > 0:
+		entry, err = logger.FindByHash(logPath, args[0])
+		if err != nil {
+			return err
+		}
+	case logsReplayLast:
+		entry, err = logger.MostRecentMatch(logPath, logsReplayLastN, func(e *logger.Entry) bool {
+			// Skip entries without a Hash — they can't be addressed
+			// for replay-from anyway, and they're rare (only
+			// pre-chain entries).
+			return e.Hash != ""
+		})
+		if err != nil {
+			return err
+		}
+	case logsReplayLastOf != "":
+		want := logsReplayLastOf
+		entry, err = logger.MostRecentMatch(logPath, 1, func(e *logger.Entry) bool {
+			return e.Hash != "" && e.Tool == want
+		})
+		if err != nil {
+			return err
+		}
+	}
+	if entry == nil {
+		return fmt.Errorf("no matching audit entry found")
+	}
+
+	// Eligibility: matches the UI handler's rules (logger.Entry must
+	// have a Hash and a Tool). Workflow steps are accepted; the
+	// replay re-fires the step's tool as a standalone call.
+	if entry.Hash == "" || entry.Tool == "" {
+		return fmt.Errorf("entry is not replayable (missing chain hash or tool name)")
+	}
+
+	// Pick params (validation-modified original preferred when
+	// present, otherwise the as-recorded params).
+	params := entry.Params
+	if len(entry.OriginalParams) > 0 {
+		params = entry.OriginalParams
+	}
+	// Layer --param key=value overrides on top. Copy first so we
+	// don't mutate the parsed audit entry.
+	if len(logsReplayOverrides) > 0 {
+		copied := make(map[string]string, len(params))
+		for k, v := range params {
+			copied[k] = v
+		}
+		for _, ov := range logsReplayOverrides {
+			eq := strings.IndexByte(ov, '=')
+			if eq < 1 {
+				return fmt.Errorf("--param must be key=value (got %q)", ov)
+			}
+			copied[ov[:eq]] = ov[eq+1:]
+		}
+		params = copied
+	}
+
+	if logsReplayShow {
+		fmt.Printf("would replay: tool=%s workspace=%s interface=%s\n", entry.Tool, entry.Workspace, entry.Interface)
+		if entry.Hash != "" {
+			fmt.Printf("  source_hash: %s\n", entry.Hash)
+		}
+		if len(params) == 0 {
+			fmt.Println("  (no params)")
+		} else {
+			keys := make([]string, 0, len(params))
+			for k := range params {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Printf("  %s=%s\n", k, params[k])
+			}
+		}
+		return nil
+	}
+
+	// Load config + bootstrap the proxy. Same recipe `factorly call`
+	// uses, so vault unlock prompts / blueprint loading / shadow
+	// policy / etc. all behave identically.
+	cfg, reg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	if _, ok := cfg.Tools[entry.Tool]; !ok {
+		return fmt.Errorf("tool %q is no longer registered", entry.Tool)
+	}
+	p, err := bootstrapProviders(cfg, reg)
+	if err != nil {
+		return err
+	}
+	_ = reg // already validated above
+
+	// Resolve {{prefix:KEY}} refs in the (possibly-overridden)
+	// params before dispatch — same lazy-vault-open path call_cmd
+	// uses. A replay with --param --token={{vault:NEW_TOKEN}}
+	// should re-resolve at fire time.
+	resolver := getCachedResolver()
+	if resolver != nil {
+		needsVault := false
+		for _, v := range params {
+			if vault.HasVaultRefs(v) {
+				needsVault = true
+				break
+			}
+		}
+		if needsVault {
+			backend, err := getCachedVault()
+			if err != nil {
+				return fmt.Errorf("resolving vault refs in params: %w", err)
+			}
+			resolver.Register("vault", backend)
+		}
+		for k, pv := range params {
+			params[k] = resolveVaultRef(resolver, pv)
+		}
+	}
+
+	// Stamp ReplayedFromKey on the context so the proxy chains the
+	// new audit entry's ReplayedFrom field back to the source hash.
+	ctx := context.WithValue(context.Background(), proxy.ReplayedFromKey, entry.Hash)
+	result, execErr := p.ExecuteWithContext(ctx, entry.Tool, params, "cli")
+	if execErr != nil {
+		return execErr
+	}
+	if result.Output != "" {
+		fmt.Print(result.Output)
+	}
+	if result.IsError() {
+		if result.Error != "" {
+			fmt.Fprintln(os.Stderr, result.Error)
+		}
+		os.Exit(result.ExitCode)
+	}
+	return nil
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {

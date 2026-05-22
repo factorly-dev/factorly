@@ -4344,6 +4344,525 @@ func TestCodeToolListsRegisteredTools(t *testing.T) {
 	}
 }
 
+// TestWorkflowStampsRunIDAndNameInAuditLog is the end-to-end guard
+// for /history workflow coalescing. Running a multi-step workflow
+// against the real binary must produce audit-log entries where:
+//
+//  1. Every child-step entry carries the same workflow_run_id (an
+//     8-char hex string).
+//  2. Every child-step entry carries the workflow_name field equal
+//     to the workflow's registered tool name.
+//  3. The run_id is unique per invocation — running the same
+//     workflow twice produces two distinct IDs.
+//  4. Standalone (non-workflow) calls have empty workflow_run_id
+//     and workflow_name (the proxy must not pick up stale values
+//     from elsewhere).
+//
+// Catches the regression class where someone deletes a
+// context.WithValue line in workflow.go OR a ctx.Value read in
+// proxy.go — both would silently break /history coalescing, and
+// unit tests on either side alone wouldn't catch the disconnect.
+func TestWorkflowStampsRunIDAndNameInAuditLog(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["{{message}}"]
+    parameters:
+      - name: message
+        required: true
+  echo-twice:
+    type: workflow
+    steps:
+      - tool: echo
+        params:
+          message: "first"
+      - tool: echo
+        params:
+          message: "second"
+`,
+	})
+
+	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
+
+	runWithLog := func(args ...string) int {
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"FACTORLY_LOG_PATH="+logPath,
+			"FACTORLY_NO_UPDATE_CHECK=1",
+		)
+		var out, errb strings.Builder
+		cmd.Stdout = &out
+		cmd.Stderr = &errb
+		err := cmd.Run()
+		code := 0
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				code = ee.ExitCode()
+			} else {
+				t.Fatalf("run %v: %v\nstderr: %s", args, err, errb.String())
+			}
+		}
+		return code
+	}
+
+	// 1) Standalone call — must NOT pick up workflow tags.
+	if code := runWithLog("call", "echo", "--message", "standalone"); code != 0 {
+		t.Fatalf("standalone call failed: exit %d", code)
+	}
+	// 2) First workflow run — produces two child step entries.
+	if code := runWithLog("call", "echo-twice"); code != 0 {
+		t.Fatalf("first workflow run failed: exit %d", code)
+	}
+	// 3) Second workflow run — must use a different run ID.
+	if code := runWithLog("call", "echo-twice"); code != 0 {
+		t.Fatalf("second workflow run failed: exit %d", code)
+	}
+
+	f, err := os.Open(logPath)
+	if err != nil {
+		t.Fatalf("open log: %v", err)
+	}
+	defer f.Close()
+	var all []workflowAuditEntry
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		var e workflowAuditEntry
+		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+			t.Fatalf("parse log line: %v\nline: %s", err, scanner.Text())
+		}
+		all = append(all, e)
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan log: %v", err)
+	}
+
+	// Split entries:
+	//   - standalones    = no run_id at all (CLI call to echo, plus
+	//                       the two outer workflow tool calls that
+	//                       the proxy logs without the run-id stamp,
+	//                       since the workflow provider sets ctx
+	//                       *after* the proxy's outer-call entry is
+	//                       constructed)
+	//   - workflowSteps  = entries with run_id, grouped by run_id
+	var standalones []workflowAuditEntry
+	stepsByRun := map[string][]workflowAuditEntry{}
+	for _, e := range all {
+		if e.WorkflowRunID == "" {
+			standalones = append(standalones, e)
+			continue
+		}
+		stepsByRun[e.WorkflowRunID] = append(stepsByRun[e.WorkflowRunID], e)
+	}
+
+	// Standalone count: 1 (the actual standalone) + 2 (the outer
+	// workflow tool calls). The outer-workflow calls don't carry the
+	// stamp; this is by design today — children carry it, and the UI
+	// suppresses the duplicate parent row via tool-name matching.
+	if len(standalones) != 3 {
+		t.Errorf("expected 3 entries without workflow_run_id (1 standalone + 2 outer workflow calls), got %d", len(standalones))
+		for i, e := range standalones {
+			t.Logf("  standalone[%d]: tool=%q iface=%q", i, e.Tool, e.Interface)
+		}
+	}
+
+	// Two workflow runs → two distinct run IDs in the map.
+	if len(stepsByRun) != 2 {
+		t.Fatalf("expected 2 distinct workflow_run_ids (one per run), got %d: keys=%v", len(stepsByRun), keysOfWorkflowRuns(stepsByRun))
+	}
+
+	// Each run must have exactly 2 step entries, all tagged with the
+	// workflow's registered name and an 8-char run ID.
+	for runID, steps := range stepsByRun {
+		if len(runID) != 8 {
+			t.Errorf("run_id %q length = %d, want 8 (truncated UUID)", runID, len(runID))
+		}
+		// Hex-ish — UUID truncation produces lowercase hex.
+		for _, c := range runID {
+			isHex := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')
+			if !isHex {
+				t.Errorf("run_id %q has non-hex char %q", runID, c)
+				break
+			}
+		}
+		if len(steps) != 2 {
+			t.Errorf("run %q: expected 2 step entries, got %d", runID, len(steps))
+		}
+		for _, s := range steps {
+			if s.WorkflowName != "echo-twice" {
+				t.Errorf("run %q step: workflow_name = %q, want echo-twice", runID, s.WorkflowName)
+			}
+			if s.Interface != "workflow" {
+				t.Errorf("run %q step: interface = %q, want workflow", runID, s.Interface)
+			}
+			if s.Status != "success" {
+				t.Errorf("run %q step: status = %q, want success", runID, s.Status)
+			}
+		}
+	}
+
+	// The truly-standalone echo call must not have any workflow tags
+	// stuck to it.
+	var sawEchoStandalone bool
+	for _, e := range standalones {
+		if e.Tool == "echo" && e.Interface == "cli" {
+			sawEchoStandalone = true
+			if e.WorkflowRunID != "" || e.WorkflowName != "" {
+				t.Errorf("standalone echo picked up stale workflow tags: run_id=%q name=%q", e.WorkflowRunID, e.WorkflowName)
+			}
+		}
+	}
+	if !sawEchoStandalone {
+		t.Error("did not find the standalone echo entry — log shape unexpected")
+	}
+}
+
+// workflowAuditEntry is the audit-log shape used by the workflow
+// coalescing integration test. Named to avoid colliding with the
+// local `entry` type declared inside TestCodeToolStampsSourceSHA.
+type workflowAuditEntry struct {
+	Tool          string `json:"tool"`
+	Interface     string `json:"interface"`
+	Status        string `json:"status"`
+	WorkflowRunID string `json:"workflow_run_id"`
+	WorkflowName  string `json:"workflow_name"`
+}
+
+// keysOfWorkflowRuns returns the sorted keys of a
+// map[string][]workflowAuditEntry for stable error messages.
+func keysOfWorkflowRuns(m map[string][]workflowAuditEntry) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	// Light sort — deterministic test output.
+	for i := 1; i < len(keys); i++ {
+		for j := i; j > 0 && keys[j-1] > keys[j]; j-- {
+			keys[j-1], keys[j] = keys[j], keys[j-1]
+		}
+	}
+	return keys
+}
+
+// TestLogsReplay_HappyPath runs a call, then replays it from the
+// CLI using a hash prefix, and verifies the replay actually
+// produced a new audit entry whose replayed_from points back at
+// the original. End-to-end coverage for the replay surface:
+// hash-prefix lookup → proxy dispatch → audit entry stamping.
+func TestLogsReplay_HappyPath(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["{{message}}"]
+    parameters:
+      - name: message
+        required: true
+`,
+	})
+	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
+
+	runWithLog := func(args ...string) (string, int) {
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"FACTORLY_LOG_PATH="+logPath,
+			"FACTORLY_NO_UPDATE_CHECK=1",
+		)
+		var out, errb strings.Builder
+		cmd.Stdout = &out
+		cmd.Stderr = &errb
+		err := cmd.Run()
+		code := 0
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				code = ee.ExitCode()
+			} else {
+				t.Fatalf("run %v: %v\nstderr: %s", args, err, errb.String())
+			}
+		}
+		return out.String(), code
+	}
+
+	// 1) Fire the original call.
+	if _, code := runWithLog("call", "echo", "--message", "hello-world"); code != 0 {
+		t.Fatalf("original call: exit %d", code)
+	}
+
+	// 2) Grab the hash of that entry.
+	originalHash := readLastHashFromLog(t, logPath)
+	if originalHash == "" {
+		t.Fatal("no hash recorded for original call")
+	}
+	prefix := originalHash[:12] // short-prefix replay
+
+	// 3) Replay by short prefix.
+	if _, code := runWithLog("logs", "replay", prefix); code != 0 {
+		t.Fatalf("replay: exit %d", code)
+	}
+
+	// 4) Verify the new audit entry exists and links back via
+	//    replayed_from.
+	type replayEntry struct {
+		Tool         string            `json:"tool"`
+		Params       map[string]string `json:"params"`
+		Hash         string            `json:"hash"`
+		ReplayedFrom string            `json:"replayed_from"`
+	}
+	all := readAllEntries[replayEntry](t, logPath)
+	if len(all) != 2 {
+		t.Fatalf("expected 2 entries (original + replay), got %d", len(all))
+	}
+	last := all[len(all)-1]
+	if last.Tool != "echo" {
+		t.Errorf("replay tool = %q, want echo", last.Tool)
+	}
+	if last.Params["message"] != "hello-world" {
+		t.Errorf("replay params message = %q, want hello-world", last.Params["message"])
+	}
+	if last.ReplayedFrom != originalHash {
+		t.Errorf("replayed_from = %q, want %q", last.ReplayedFrom, originalHash)
+	}
+}
+
+// TestLogsReplay_LastFlag exercises --last selection: after several
+// calls, `logs replay --last` re-fires the most recent one.
+func TestLogsReplay_LastFlag(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["{{message}}"]
+    parameters:
+      - name: message
+        required: true
+`,
+	})
+	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
+
+	runWithLog := func(args ...string) int {
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"FACTORLY_LOG_PATH="+logPath,
+			"FACTORLY_NO_UPDATE_CHECK=1",
+		)
+		var out, errb strings.Builder
+		cmd.Stdout = &out
+		cmd.Stderr = &errb
+		err := cmd.Run()
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				return ee.ExitCode()
+			}
+			t.Fatalf("run %v: %v\nstderr: %s", args, err, errb.String())
+		}
+		return 0
+	}
+
+	for _, msg := range []string{"first", "second", "third"} {
+		if code := runWithLog("call", "echo", "--message", msg); code != 0 {
+			t.Fatalf("call %s: exit %d", msg, code)
+		}
+	}
+
+	if code := runWithLog("logs", "replay", "--last"); code != 0 {
+		t.Fatalf("replay --last: exit %d", code)
+	}
+
+	type replayEntry struct {
+		Params       map[string]string `json:"params"`
+		ReplayedFrom string            `json:"replayed_from"`
+	}
+	all := readAllEntries[replayEntry](t, logPath)
+	if len(all) != 4 {
+		t.Fatalf("expected 4 entries (3 originals + 1 replay), got %d", len(all))
+	}
+	last := all[len(all)-1]
+	if last.Params["message"] != "third" {
+		t.Errorf("replay --last picked %q, want third", last.Params["message"])
+	}
+	if last.ReplayedFrom == "" {
+		t.Error("replayed_from should be set on a replay")
+	}
+}
+
+// TestLogsReplay_ParamOverride confirms --param key=value lets the
+// user tweak one recorded value before re-firing.
+func TestLogsReplay_ParamOverride(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["{{message}}"]
+    parameters:
+      - name: message
+        required: true
+`,
+	})
+	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
+
+	runWithLog := func(args ...string) int {
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"FACTORLY_LOG_PATH="+logPath,
+			"FACTORLY_NO_UPDATE_CHECK=1",
+		)
+		var out, errb strings.Builder
+		cmd.Stdout = &out
+		cmd.Stderr = &errb
+		err := cmd.Run()
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				return ee.ExitCode()
+			}
+			t.Fatalf("run %v: %v\nstderr: %s", args, err, errb.String())
+		}
+		return 0
+	}
+
+	if code := runWithLog("call", "echo", "--message", "before"); code != 0 {
+		t.Fatalf("original call: exit %d", code)
+	}
+	if code := runWithLog("logs", "replay", "--last", "--param", "message=after"); code != 0 {
+		t.Fatalf("replay --param: exit %d", code)
+	}
+
+	type pe struct {
+		Params map[string]string `json:"params"`
+	}
+	all := readAllEntries[pe](t, logPath)
+	if len(all) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(all))
+	}
+	if all[1].Params["message"] != "after" {
+		t.Errorf("replayed message = %q, want after (override should win)", all[1].Params["message"])
+	}
+}
+
+// TestLogsReplay_ShowDoesNotFire confirms --show prints the call
+// info without dispatching: no new audit entry is written.
+func TestLogsReplay_ShowDoesNotFire(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools:
+  echo:
+    type: cli
+    command: echo
+    args: ["{{message}}"]
+    parameters:
+      - name: message
+        required: true
+`,
+	})
+	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
+
+	runWithLog := func(args ...string) (string, int) {
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"FACTORLY_LOG_PATH="+logPath,
+			"FACTORLY_NO_UPDATE_CHECK=1",
+		)
+		var out, errb strings.Builder
+		cmd.Stdout = &out
+		cmd.Stderr = &errb
+		err := cmd.Run()
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				return out.String(), ee.ExitCode()
+			}
+			t.Fatalf("run %v: %v\nstderr: %s", args, err, errb.String())
+		}
+		return out.String(), 0
+	}
+
+	if _, code := runWithLog("call", "echo", "--message", "hi"); code != 0 {
+		t.Fatalf("original call: exit %d", code)
+	}
+	out, code := runWithLog("logs", "replay", "--last", "--show")
+	if code != 0 {
+		t.Fatalf("replay --show: exit %d", code)
+	}
+	if !strings.Contains(out, "would replay") {
+		t.Errorf("--show output missing 'would replay': %q", out)
+	}
+	if !strings.Contains(out, "message=hi") {
+		t.Errorf("--show output missing param line: %q", out)
+	}
+
+	// Should still be exactly 1 entry — --show must not fire.
+	type any1 struct{}
+	if got := len(readAllEntries[any1](t, logPath)); got != 1 {
+		t.Errorf("entries after --show: %d, want 1 (--show must not fire)", got)
+	}
+}
+
+// TestLogsReplay_MutuallyExclusiveModes confirms the CLI rejects
+// combining a positional hash with --last.
+func TestLogsReplay_MutuallyExclusiveModes(t *testing.T) {
+	dir := setupDir(t, map[string]string{"factorly.yaml": "tools: {}\n"})
+	cmd := exec.Command(binary, "logs", "replay", "abc12345", "--last")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1")
+	var out, errb strings.Builder
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	err := cmd.Run()
+	if err == nil {
+		t.Fatalf("expected non-zero exit, got success: %s", out.String())
+	}
+	if !strings.Contains(errb.String(), "mutually exclusive") {
+		t.Errorf("expected 'mutually exclusive' in stderr, got: %s", errb.String())
+	}
+}
+
+// readAllEntries is a generic helper that decodes every line of a
+// JSONL audit log into a slice of the caller's chosen struct shape.
+func readAllEntries[T any](t *testing.T, path string) []T {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open log: %v", err)
+	}
+	defer f.Close()
+	var out []T
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		var e T
+		if err := json.Unmarshal(sc.Bytes(), &e); err != nil {
+			t.Fatalf("parse log line: %v\nline: %s", err, sc.Text())
+		}
+		out = append(out, e)
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	return out
+}
+
+// readLastHashFromLog reads the last JSONL line and pulls its hash
+// field. Helper for tests that need to address the most recent
+// entry by chain hash.
+func readLastHashFromLog(t *testing.T, path string) string {
+	t.Helper()
+	type entry struct {
+		Hash string `json:"hash"`
+	}
+	all := readAllEntries[entry](t, path)
+	if len(all) == 0 {
+		return ""
+	}
+	return all[len(all)-1].Hash
+}
+
 // TestCodeToolStampsSourceSHAInAuditLog verifies the audit log entry
 // for a code-tool call carries a 64-char hex SHA-256 of the script body
 // in source_sha. Also verifies a non-code call (CLI tool) leaves the
