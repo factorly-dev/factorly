@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "factorly"
-version = "0.14.0"
+version = "0.14.1"
 description = "Security and governance layer for AI agent tool access"
 readme = "README.md"
 license = {text = "GPL-3.0"}
