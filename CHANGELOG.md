@@ -1,3 +1,18 @@
+## [v0.11.1] - 2026-05-22
+
+UI contrast pass: bump weak grays so secondary text actually reads, and make destructive/action links look like buttons instead of faded suggestions.
+
+### Changed
+
+- `text-gray-300` / `text-gray-400` → `text-gray-600` for informational text on light backgrounds: empty states, helper paragraphs, timestamps, counts, table cells, the masked-secret dots in `/vault`
+- Form section labels (`text-[10px] ... uppercase`) bumped from `-400` to `-600` across tool / workflow / auth / store / vault edit pages
+- Tiny inline annotations (`(default: false)`, type hints, key-count badges) settled at `text-gray-500`
+- Action links bumped to the `-600`/`-700` family so they meet WCAG AA on white: store/vault `view` / `replace` / `delete`, auth `logout` / `edit` / `delete` / `refresh`, blueprint `View YAML` / `Uninstall`, tool edit `Duplicate` / `Delete`, every `+ env var` / `+ param` add-button
+- Required-field `*` markers bumped from `text-red-400` to `text-red-600`
+- `bg-gray-100 text-gray-400` skipped-step pill kept (decorative status, not informational)
+- Dark-panel response viewer in `try_result.html` left untouched (`-300`/`-400` are correct on `bg-gray-800`/`bg-gray-900`)
+- `CLAUDE.md`: short rule-of-thumb section so future templates don't drift back
+
 ## [v0.14.0] - 2026-05-22
 
 Replay any past call from `/history` or the CLI; workflow runs coalesce into one expandable row.
