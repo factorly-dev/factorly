@@ -1,3 +1,52 @@
+## [v0.14.0] - 2026-05-22
+
+Replay any past call from `/history` or the CLI; workflow runs coalesce into one expandable row.
+
+### Added
+
+**Replay** — re-fire any past call through the same proxy as a fresh call. Vault refs re-resolve, shadow rules re-apply, audit log records the new entry with `replayed_from` linking back to the source.
+
+- `↻ Replay` button on every `/history` row, plus a separate `↻ Replay workflow` action on coalesced workflow runs
+- `✎ Edit & Replay` link opens the tool's Try-It form pre-populated with the recorded params (`/tools/{name}?prefill={hash}`)
+- `POST /history/{hash}/replay` handler; `applyPrefill` helper for the Edit & Replay path
+- `factorly logs replay <hash>` CLI command — full or ≥4-char prefix
+- `--last [--last-n N]` to pick the Nth most recent call; `--last-of <tool>` to pick the last call of a specific tool
+- `--param key=value` overrides one recorded param (repeatable); `--show` dry-runs without firing
+- Selection flags are mutually exclusive (errors loudly)
+
+**Workflow run coalescing in `/history`** — every step entry of a run now gathers under a single expandable row labeled with the workflow's name.
+
+- Expandable parent row with a `git-compare` icon badge showing step count
+- Child steps render in execution order (step 1 → N) when expanded; filters keep the parent visible when only a step matches
+- Per-step Replay and Edit & Replay buttons (step replays fire as plain standalone calls)
+- Workflow-level Replay re-fires the entire workflow via the suppressed parent entry's audit hash
+
+**Data shape additions** (drive both UI coalescing and CLI replay):
+
+- `logger.Entry`: new `WorkflowRunID`, `WorkflowName`, and `ReplayedFrom` fields
+- `provider.WorkflowRunIDKey` + `WorkflowNameKey` context keys (workflow provider stamps both before each child-step dispatch; proxy reads them)
+- `proxy.ReplayedFromKey` context key (replay handlers set it; proxy stamps the audit entry)
+
+**Shared plumbing in `internal/logger`** (used by UI and CLI):
+
+- `FindByHash(path, hash)` — exact or prefix match (≥4 chars), errors on ambiguity
+- `MostRecentMatch(path, n, predicate)` — Nth-most-recent entry matching a filter; backs the CLI's `--last` / `--last-of`
+
+**Tests**
+
+- Unit: `logger.FindByHash` (exact/prefix/ambiguous/missing/too-short), `logger.MostRecentMatch` (newest/filtered/Nth/overflow/missing-file), workflow context-stamping in both proxy and provider, history coalescing scenarios, replay eligibility
+- Integration: workflow run-ID/name audit stamping end-to-end via the real binary; `logs replay` happy path, `--last`, `--param`, `--show`, mutually-exclusive selection
+
+### Changed
+
+- `isReplayable` no longer excludes `Interface=="workflow"` — step-level replays are now allowed (re-fired as standalone tool calls, no parent workflow context)
+- UI's `findAuditEntryByHash` is now a thin wrapper around `logger.FindByHash`
+- Homebrew templates and brew git push updated
+
+### Fixed
+
+- Trello blueprint JSON body for POST/PUT requests
+
 ## [v0.13.0] - 2026-05-21
 
 ### Added
