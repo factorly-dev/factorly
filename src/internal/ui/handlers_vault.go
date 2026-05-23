@@ -4,6 +4,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
@@ -186,17 +187,36 @@ func workspaceVaultFilePath(name string) string {
 // prompt in the UI:
 //   - "<tier> vault locked: password required" — no non-interactive
 //     password source resolved (env var, keyfile).
-//   - "decrypting vault (wrong password?)" — a password was found but
-//     it didn't decrypt the file. Same UX answer: prompt for the
-//     right one.
+//   - vault.ErrWrongPassword — a password was found but it didn't
+//     decrypt the file. Same UX answer: prompt for the right one.
 func isVaultLockedErr(err error) bool {
 	if err == nil {
 		return false
+	}
+	if errors.Is(err, vault.ErrWrongPassword) {
+		return true
 	}
 	msg := err.Error()
 	return strings.Contains(msg, "vault locked") ||
 		strings.Contains(msg, "decrypting vault") ||
 		strings.Contains(msg, "wrong password")
+}
+
+// unlockErrorMessage classifies an OpenWithPassword failure for the
+// inline unlock form. ErrWrongPassword gets a user-friendly retry
+// nudge; everything else surfaces its underlying error so the user
+// can see what actually broke (corrupt file, I/O failure, etc.)
+// rather than getting a misleading "incorrect password" prompt.
+//
+// Returns "" when err is nil so callers can ignore-check.
+func unlockErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, vault.ErrWrongPassword) {
+		return "Incorrect password — try again."
+	}
+	return "Failed to open vault: " + err.Error()
 }
 
 func (s *Server) handleVaultSet(w http.ResponseWriter, r *http.Request) {
@@ -349,7 +369,7 @@ func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.renderVaultUnlockPartial(w, vaultUnlockData{
 			Scope: scope, Op: op, Key: key, Value: value,
-			Error: "incorrect password",
+			Error: unlockErrorMessage(err),
 		})
 		return
 	}
@@ -521,7 +541,7 @@ func (s *Server) handleVaultUnlockAll(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			results = append(results, tierResult{
 				Label: t.Label, Scope: t.Scope, Success: false,
-				Error: "incorrect password",
+				Error: unlockErrorMessage(err),
 			})
 			continue
 		}

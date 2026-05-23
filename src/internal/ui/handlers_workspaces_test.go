@@ -246,14 +246,20 @@ func TestHandleWorkspaceUnlockWithoutPasswordOpener(t *testing.T) {
 	srv.mux.ServeHTTP(rec, req)
 
 	// Manager has no password opener (test default Manager is nil
-	// openers) → unlock attempt fails → render the unlock partial
-	// with a generic "incorrect password" message. The user-facing
-	// distinction between "no opener" and "wrong password" was
-	// deliberately collapsed: both end in the same retry UI.
+	// openers) → unlock attempt fails → render the unlock partial.
+	// We no longer collapse "no opener" into "incorrect password" —
+	// the new unlockErrorMessage classifier branches on
+	// vault.ErrWrongPassword and surfaces other errors verbatim,
+	// which is more useful when the failure isn't actually the
+	// user's password.
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "incorrect password") {
-		t.Errorf("expected unlock retry partial; body=%s", rec.Body.String())
+	body := rec.Body.String()
+	if !strings.Contains(body, "Failed to open vault") {
+		t.Errorf("expected 'Failed to open vault' message for no-opener case, got %s", body)
+	}
+	if strings.Contains(body, "Incorrect password") {
+		t.Error("no-opener case should not surface as 'Incorrect password'; that copy is reserved for ErrWrongPassword")
 	}
 }

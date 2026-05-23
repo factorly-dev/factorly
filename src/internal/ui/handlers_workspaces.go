@@ -245,7 +245,7 @@ func (s *Server) handleWorkspaceUnlock(w http.ResponseWriter, r *http.Request) {
 	defer pw.Zero()
 	backend, err := s.vaultMgr.OpenWithPassword("workspace:"+name, pw)
 	if err != nil {
-		s.renderUnlockPartial(w, name, "incorrect password")
+		s.renderUnlockPartial(w, name, unlockErrorMessage(err))
 		return
 	}
 	s.vaultMgr.Put("workspace:"+name, backend)
