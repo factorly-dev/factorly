@@ -1,3 +1,24 @@
+## [v0.15.1] - 2026-05-23
+
+### Added
+
+- **`factorly.store.get` builtin** — agents can now read back values they (or you) have stored. Previously the agent-facing store surface had `save` / `list` / `search` / `delete` but no way to retrieve a single value, leaving the "I researched these URLs already" use case half-implemented. The new builtin mirrors the CLI's `factorly store get`: cascade reads (workspace → project), refresh-on-read to keep frequently-touched keys alive, missing keys return as a non-zero result so agents can branch on absence. Existing docstrings for List/Search already referenced "pair with Get" — this closes the gap.
+- Dashboard quick-start tiles expanded:
+  - **Fresh install** now also nudges "Stash credentials in the vault" so users discover where API tokens go before they start running tools.
+  - **Has-tools-no-calls** branch grew from 2 tiles to 6: Try a built-in, Add credentials to the vault, Connect an OAuth provider, Explore more blueprints, Set up a workspace, Compose a workflow. Pointing at `/vault/new`, `/auth/new`, `/blueprints/browse`, `/workspaces/new` respectively.
+
+### Changed
+
+- Dashboard quick-start tiles reordered for gradual enhancement (so scrolling the list top-to-bottom is itself a "what to do next" path):
+  - **Fresh install** (no tools yet): Browse blueprints → Import an OpenAPI spec → Create a tool by hand → Stash credentials in the vault. Easiest path first, support layer last.
+  - **Has-tools-no-calls**: Try a built-in → Add credentials to the vault → Connect an OAuth provider → Compose a workflow → Set up a workspace → Explore more blueprints. Fire something immediately, fix the most common failure (missing creds), then compose, then scale, then expand.
+- Tests pin the tile order via index walking so a future reshuffle has to acknowledge the contract.
+
+### Fixed
+
+- Dashboard quick-start tiles now actually fall back to the fresh-install set when the user has no hand-rolled tools yet. The check was treating builtins (`factorly.fetch`, `factorly.code`, `factorly.store.*`, etc.) as user tools, which meant every real install landed in the has-tools-no-calls branch and the fresh-install branch was unreachable in production. `quickStartTiles` now filters `Type == "builtin"` (and workflows) out of the inventory before deciding.
+
+
 ## [v0.15.0] - 2026-05-23
 
 New `/dashboard` landing page: always-populated, status strip across the top, live activity feed with workflow-run coalescing on the left, last-24h rollups on the right (top tools + oversight breakdown), quick-start tiles when there's no audit log yet.
