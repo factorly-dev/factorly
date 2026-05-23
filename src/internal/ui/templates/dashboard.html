@@ -67,9 +67,64 @@
       <button type="button" onclick="clearDashboardFeed()" class="text-[10px] text-gray-500 hover:text-gray-700">clear</button>
     </div>
     <div id="dashboard-feed" class="divide-y divide-gray-100 max-h-[480px] overflow-y-auto">
+      {{if .Data.FeedSeed}}
+      {{/*
+        Server-rendered seed. Each row mirrors the structure newCoalescedRow / newStandaloneRow
+        emit in JS so the visual is identical to live arrivals. Workflow groups carry
+        data-run-id so the inline script can rehydrate its workflowRows map on init —
+        without that, a workflow_step event for a seeded run would synthesize a duplicate
+        placeholder parent.
+      */}}
+      {{range $group := .Data.FeedSeed}}
+      {{if $group.IsWorkflow}}
+      <details class="group" data-feed-row="seed" data-run-id="{{$group.Lead.WorkflowRunID}}">
+        <summary class="px-5 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold
+              {{if eq $group.Lead.Status "success"}}bg-green-100 text-green-700{{else if eq $group.Lead.Status "blocked"}}bg-red-100 text-red-700{{else}}bg-amber-100 text-amber-700{{end}}" data-icon>{{if eq $group.Lead.Status "success"}}✓{{else if eq $group.Lead.Status "blocked"}}✗{{else}}!{{end}}</span>
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-700">workflow</span>
+            <span class="font-mono text-gray-700" data-tool>{{$group.Lead.Tool}}</span>
+            <span class="text-[10px] text-gray-500" data-step-counter>step {{$group.StepCount}} of {{$group.StepCount}}</span>
+          </div>
+          <div class="flex items-center gap-2 text-[10px] text-gray-500 shrink-0">
+            <span class="font-mono" data-duration>{{$group.Lead.DurationMs}}ms</span>
+            <span data-timestamp>{{$group.Lead.TimestampRel}}</span>
+          </div>
+        </summary>
+        <div class="px-5 pb-3 pt-2 bg-gray-50 border-t border-gray-100">
+          <div class="space-y-1" data-steps>
+            {{range $i, $ch := $group.Children}}
+            <div class="flex items-center gap-2 text-[11px]" data-step-index="{{inc $i}}">
+              <span class="inline-flex items-center justify-center w-3 h-3 rounded-full text-[8px] font-bold
+                {{if eq $ch.Status "success"}}bg-green-100 text-green-700{{else if eq $ch.Status "blocked"}}bg-red-100 text-red-700{{else}}bg-amber-100 text-amber-700{{end}}">{{if eq $ch.Status "success"}}✓{{else if eq $ch.Status "blocked"}}✗{{else}}!{{end}}</span>
+              <span class="text-gray-500 font-mono">{{inc $i}}/{{$group.StepCount}}</span>
+              <span class="font-mono text-gray-700">{{$ch.Tool}}</span>
+              <span class="text-gray-500">{{$ch.Status}}</span>
+              {{if $ch.DurationMs}}<span class="font-mono text-gray-500">{{$ch.DurationMs}}ms</span>{{end}}
+            </div>
+            {{end}}
+          </div>
+        </div>
+      </details>
+      {{else}}
+      <div class="px-5 py-2.5 flex items-center justify-between text-xs" data-feed-row="seed">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold
+            {{if eq $group.Lead.Status "success"}}bg-green-100 text-green-700{{else if eq $group.Lead.Status "blocked"}}bg-red-100 text-red-700{{else}}bg-amber-100 text-amber-700{{end}}">{{if eq $group.Lead.Status "success"}}✓{{else if eq $group.Lead.Status "blocked"}}✗{{else}}!{{end}}</span>
+          <span class="font-mono text-gray-700">{{$group.Lead.Tool}}</span>
+        </div>
+        <div class="flex items-center gap-2 text-[10px] text-gray-500">
+          <span class="font-mono">{{$group.Lead.DurationMs}}ms</span>
+          <span>{{$group.Lead.TimestampRel}}</span>
+        </div>
+      </div>
+      {{end}}
+      {{end}}
+      {{else}}
       <div id="dashboard-feed-empty" class="px-5 py-10 text-center text-gray-500 text-sm">
         {{if .Data.HasAnyCalls}}Waiting for the next call…{{else}}First tool call will appear here.{{end}}
       </div>
+      {{end}}
     </div>
   </div>
 
@@ -179,6 +234,20 @@
   var MAX_ROWS = 30;
   var workflowRows = new Map(); // run_id -> {row, stepsContainer, total}
 
+  // Rehydrate workflowRows from server-rendered seed rows so a live
+  // workflow_step event for a seeded run finds its parent instead of
+  // synthesizing a duplicate placeholder.
+  Array.prototype.forEach.call(
+    feed.querySelectorAll('[data-feed-row="seed"][data-run-id]'),
+    function(row) {
+      var runID = row.getAttribute('data-run-id');
+      if (!runID) return;
+      var stepsContainer = row.querySelector('[data-steps]');
+      var total = stepsContainer ? stepsContainer.children.length : 0;
+      workflowRows.set(runID, {row: row, total: total});
+    }
+  );
+
   window.clearDashboardFeed = function() {
     feed.innerHTML = '';
     workflowRows.clear();
@@ -224,6 +293,7 @@
     var s = statusIcon('running');
     var row = document.createElement('details');
     row.className = 'group';
+    if (data.workflow_run_id) row.setAttribute('data-run-id', data.workflow_run_id);
     row.innerHTML =
       '<summary class="px-5 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors flex items-center justify-between text-xs">' +
         '<div class="flex items-center gap-2">' +

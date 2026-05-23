@@ -243,6 +243,12 @@ func groupHistoryEntries(entries []historyEntry) []historyGroup {
 			// recent-entries cutoff), Replay isn't offered.
 			Hash:       parentHash[b.runID],
 			Replayable: parentHash[b.runID] != "",
+			// Run ID is hoisted so dashboard seed rows can carry
+			// data-run-id and the live-feed JS can rehydrate its
+			// coalescing Map. /history doesn't need it but the
+			// extra field is harmless there.
+			WorkflowRunID: b.runID,
+			WorkflowName:  b.workflow,
 		}
 		groups = append(groups, historyGroup{
 			Lead:       lead,

@@ -25,12 +25,22 @@ import (
 // false (fresh install). TopTools and Oversight are computed over
 // the last 24h of the audit log; both helpers return zero values on
 // empty input so the template can render "0 calls" without NaN.
+//
+// FeedSeed is the initial server-rendered set of feed rows so the
+// "Live activity" panel doesn't look dead when the page loads with
+// existing audit data. It uses the same coalescing rules as the live
+// JS so a workflow run that finished an hour ago renders as one
+// expandable row with its steps nested, exactly the way an incoming
+// run would render. The JS rehydrates its run-id Map from the seed
+// rows on init so subsequent workflow_step events merge into the
+// right parent rather than creating duplicates.
 type dashboardData struct {
 	HasAnyCalls bool
 	Status      statusStrip
 	QuickStart  []ctaTile
 	TopTools    []toolRollup
 	Oversight   oversightCounts
+	FeedSeed    []historyGroup
 	WindowLabel string
 }
 
@@ -95,6 +105,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		Status:      s.buildStatusStrip(r),
 		TopTools:    topTools(inWindow, 10),
 		Oversight:   oversightBreakdown(inWindow),
+		FeedSeed:    feedSeed(inWindow, dashboardFeedMaxRows),
 		WindowLabel: "last 24h",
 	}
 	if !data.HasAnyCalls {
@@ -106,6 +117,62 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		"Nav":   "dashboard",
 		"Data":  data,
 	})
+}
+
+// dashboardFeedMaxRows is the visible cap on the live feed, applied
+// both to the initial seed (server-rendered from the 24h window) and
+// to incoming SSE events (the JS trims oldest rows once we exceed it).
+// Keep both sides in sync — JS uses the same constant.
+const dashboardFeedMaxRows = 30
+
+// feedSeed builds the initial set of feed rows from `windowed` (the
+// last-24h slice in oldest-first order). Coalesces workflow runs by
+// run_id using the same logic /history uses, so a run that finished
+// before the page loaded renders as one expandable parent row with
+// its steps nested — identical to the live JS coalescing path.
+//
+// Returns at most maxRows groups, newest-first. If `windowed` holds
+// more than maxRows after grouping, the oldest groups are dropped so
+// the freshest activity always shows.
+func feedSeed(windowed []logger.Entry, maxRows int) []historyGroup {
+	if len(windowed) == 0 || maxRows <= 0 {
+		return nil
+	}
+	// groupHistoryEntries expects newest-first input. windowed is
+	// oldest-first (from the JSONL); reverse it into a fresh slice.
+	reversed := make([]logger.Entry, len(windowed))
+	for i, e := range windowed {
+		reversed[len(windowed)-1-i] = e
+	}
+	enriched := make([]historyEntry, 0, len(reversed))
+	for _, raw := range reversed {
+		enriched = append(enriched, historyEntry{
+			Timestamp:     raw.Timestamp.Format("2006-01-02 15:04:05"),
+			TimestampRel:  relativeTime(raw.Timestamp),
+			Tool:          raw.Tool,
+			Interface:     raw.Interface,
+			Status:        raw.Status,
+			DurationMs:    raw.DurationMs,
+			ShadowAction:  raw.ShadowAction,
+			Output:        truncate(raw.Output, 200),
+			Error:         raw.Error,
+			Params:        raw.Params,
+			AgentID:       raw.AgentID,
+			Workspace:     raw.Workspace,
+			Hash:          raw.Hash,
+			ReplayedFrom:  raw.ReplayedFrom,
+			Replayable:    isReplayable(raw),
+			SourceSHA:     raw.SourceSHA,
+			Promotable:    raw.Tool == "factorly.code" && raw.Status == "success" && raw.SourceSHA != "",
+			WorkflowRunID: raw.WorkflowRunID,
+			WorkflowName:  raw.WorkflowName,
+		})
+	}
+	groups := groupHistoryEntries(enriched)
+	if len(groups) > maxRows {
+		groups = groups[:maxRows]
+	}
+	return groups
 }
 
 // readRecentEntries reads up to `max` newest audit entries as raw
