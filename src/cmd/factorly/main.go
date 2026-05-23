@@ -224,9 +224,24 @@ func runToolsList(cmd *cobra.Command, args []string) error {
 		for i, p := range t.Parameters {
 			params[i] = p.Name
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Name, t.Type, t.Description, strings.Join(params, ", "))
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Name, t.Type, summaryLine(t.Description), strings.Join(params, ", "))
 	}
 	return w.Flush()
+}
+
+// summaryLine returns the first non-empty line of a tool description.
+// Many builtins have multi-line agent-facing prose (a one-sentence
+// summary, blank line, then detail) — for the tabular `factorly tools`
+// listing we want just the summary so the table stays readable.
+// `factorly tools show <name>` still dumps the full YAML, so the
+// detail is never hidden, just not splattered across a column.
+func summaryLine(desc string) string {
+	for _, line := range strings.Split(desc, "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 var callCmd = &cobra.Command{
