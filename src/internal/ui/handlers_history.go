@@ -441,6 +441,52 @@ func findAuditEntryByHash(cfgPath, hash string) (*logger.Entry, error) {
 	return logger.FindByHash(path, hash)
 }
 
+// handleHistoryDetail returns the per-entry detail body (params,
+// status, error, output, plus Replay / Edit-and-Replay buttons) as
+// an HTML fragment. Reuses the same `history_entry_body` partial
+// that /history's row bodies render with, so the dashboard's
+// inline-expand affordance shows identical content to clicking the
+// matching row on /history.
+//
+// Lookup is by audit hash (exact or ≥4-char prefix). Returns 404
+// if no matching entry exists in the current log; the dashboard JS
+// surfaces that as a small inline error and leaves the row
+// expanded-empty so the user can collapse and try again.
+func (s *Server) handleHistoryDetail(w http.ResponseWriter, r *http.Request) {
+	hash := r.PathValue("hash")
+	raw, err := findAuditEntryByHash(s.cfgPath, hash)
+	if err != nil {
+		http.Error(w, "looking up entry: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if raw == nil {
+		http.Error(w, "audit entry not found", http.StatusNotFound)
+		return
+	}
+	entry := historyEntry{
+		Timestamp:     raw.Timestamp.Format("2006-01-02 15:04:05"),
+		TimestampRel:  relativeTime(raw.Timestamp),
+		Tool:          raw.Tool,
+		Interface:     raw.Interface,
+		Status:        raw.Status,
+		DurationMs:    raw.DurationMs,
+		ShadowAction:  raw.ShadowAction,
+		Output:        truncate(raw.Output, 200),
+		Error:         raw.Error,
+		Params:        raw.Params,
+		AgentID:       raw.AgentID,
+		Workspace:     raw.Workspace,
+		Hash:          raw.Hash,
+		ReplayedFrom:  raw.ReplayedFrom,
+		Replayable:    isReplayable(*raw),
+		SourceSHA:     raw.SourceSHA,
+		Promotable:    raw.Tool == "factorly.code" && raw.Status == "success" && raw.SourceSHA != "",
+		WorkflowRunID: raw.WorkflowRunID,
+		WorkflowName:  raw.WorkflowName,
+	}
+	s.renderPartial(w, "history_entry_body", entry)
+}
+
 // handleHistoryReplay re-runs a historical call. Looks up the entry
 // by Hash, validates eligibility (must be replayable, tool must
 // still exist), then fires through the same proxy as any other UI

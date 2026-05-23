@@ -124,6 +124,7 @@ func (s *Server) handleActivityStream(w http.ResponseWriter, r *http.Request) {
 					"error":           e.Error,
 					"output":          e.Output,
 					"params":          e.Params,
+					"hash":            e.Hash,
 					"workflow_run_id": e.WorkflowRunID,
 					"workflow_name":   e.WorkflowName,
 				})

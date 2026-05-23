@@ -358,6 +358,40 @@ func TestHandleDashboard_ActiveUseSeedsWorkflowRowWithRunID(t *testing.T) {
 	}
 }
 
+// TestHandleDashboard_SeedRowsCarryDetailHxGet verifies that
+// server-rendered standalone seed rows expose the htmx attributes
+// needed to lazy-load /history/{hash}/detail on first click.
+// Without this, clicking a row would expand to "loading…" forever.
+func TestHandleDashboard_SeedRowsCarryDetailHxGet(t *testing.T) {
+	srv, cfgPath := testServer(t, &config.Config{
+		Tools: map[string]config.ToolConfig{"x.tool": {Type: "cli", Command: "true"}},
+	})
+
+	logPath := filepath.Join(filepath.Dir(cfgPath), "audit.jsonl")
+	writeDashboardLog(t, logPath, []logger.Entry{
+		{Timestamp: time.Now().Add(-5 * time.Minute), Tool: "x.tool", Hash: "seed-hash-abcd", Status: "success", Interface: "cli"},
+	})
+	t.Setenv("FACTORLY_LOG_PATH", logPath)
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `hx-get="/history/seed-hash-abcd/detail"`) {
+		t.Error("expected seed standalone row to carry hx-get on its summary")
+	}
+	if !strings.Contains(body, `hx-trigger="click once"`) {
+		t.Error("expected hx-trigger=\"click once\" so detail loads on first expand")
+	}
+	if !strings.Contains(body, `class="feed-row-body`) {
+		t.Error("expected feed-row-body container for the lazy-loaded detail")
+	}
+}
+
 // writeDashboardLog writes one JSONL line per entry to path. The
 // dashboard handler reads via FACTORLY_LOG_PATH when set, so tests
 // don't need the full logger pipeline.

@@ -88,6 +88,10 @@ type CallEvent struct {
 	// Lets live feeds (dashboard) coalesce steps under one parent row.
 	WorkflowRunID string
 	WorkflowName  string
+	// Hash is the audit-chain identifier of the logged entry. SSE
+	// consumers (dashboard live feed) use it as a stable handle for
+	// lazy-loading per-row detail via GET /history/{hash}/detail.
+	Hash string
 }
 
 type Proxy struct {
@@ -427,6 +431,7 @@ func (p *Proxy) emitCallEvent(entry *logger.Entry) {
 		SourceSHA:     entry.SourceSHA,
 		WorkflowRunID: entry.WorkflowRunID,
 		WorkflowName:  entry.WorkflowName,
+		Hash:          entry.Hash,
 	})
 }
 

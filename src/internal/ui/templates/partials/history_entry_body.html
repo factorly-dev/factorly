@@ -1,0 +1,78 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+{{define "history_entry_body"}}
+  {{if or .Promotable .Replayable}}
+  <!--
+    Action row. "Save as tool" only shows for factorly.code success
+    rows; "Replay" / "Edit & Replay" show for any non-workflow
+    entry with a stable chain hash. The two can stack (a successful
+    factorly.code call is both promotable and replayable).
+  -->
+  <div class="mb-3 flex items-center justify-end gap-2">
+    {{if .Replayable}}
+    <a href="/tools/{{.Tool}}?prefill={{.Hash}}"
+       class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+       title="Open this call in the tool's form with params pre-filled, ready to edit and re-run">
+      ✎ Edit & Replay
+    </a>
+    <form hx-post="/history/{{.Hash}}/replay"
+          hx-confirm="Replay {{.Tool}} with the same parameters?"
+          hx-target="#main-content"
+          hx-swap="outerHTML"
+          hx-select="#main-content"
+          hx-push-url="true"
+          class="inline">
+      <button type="submit"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors"
+              title="Re-run this call with the same parameters">
+        ↻ Replay
+      </button>
+    </form>
+    {{end}}
+    {{if .Promotable}}
+    <a href="/tools/promote?from-sha={{.SourceSHA}}"
+       class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">
+      {{icon "plus"}} Save as tool
+    </a>
+    {{end}}
+  </div>
+  {{end}}
+  <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-3">
+    <div><dt class="text-gray-500">Time</dt><dd class="font-mono">{{.Timestamp}}</dd></div>
+    <div><dt class="text-gray-500">Interface</dt><dd class="font-mono">{{.Interface}}</dd></div>
+    <div><dt class="text-gray-500">Status</dt><dd class="font-mono">{{.Status}}</dd></div>
+    <div><dt class="text-gray-500">Duration</dt><dd class="font-mono">{{.DurationMs}}ms</dd></div>
+    {{if .Workspace}}<div><dt class="text-gray-500">Workspace</dt><dd class="font-mono">{{.Workspace}}</dd></div>{{end}}
+    {{if .AgentID}}<div><dt class="text-gray-500">Agent</dt><dd class="font-mono">{{.AgentID}}</dd></div>{{end}}
+    {{if .ShadowAction}}<div><dt class="text-gray-500">Shadow</dt><dd class="font-mono">{{.ShadowAction}}</dd></div>{{end}}
+  </dl>
+
+  {{if .Params}}
+  <div class="mb-3">
+    <h4 class="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Parameters</h4>
+    <div class="space-y-2">
+      {{range $k, $v := .Params}}
+      <div>
+        <div class="text-[11px] text-gray-500 font-medium mb-0.5">{{$k}}</div>
+        <pre class="text-[11px] font-mono bg-gray-50 text-gray-700 px-2.5 py-1.5 rounded border border-gray-100 whitespace-pre-wrap break-all">{{$v}}</pre>
+      </div>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
+  {{if .Error}}
+  <div class="bg-red-50 rounded p-2 mb-2">
+    <pre class="text-red-700 text-[11px] font-mono whitespace-pre-wrap">{{.Error}}</pre>
+  </div>
+  {{end}}
+
+  {{if .Output}}
+  <div class="bg-gray-900 rounded p-3">
+    <pre class="text-green-300 text-[11px] font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">{{.Output}}</pre>
+  </div>
+  {{end}}
+{{end}}

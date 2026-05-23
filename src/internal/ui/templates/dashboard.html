@@ -94,30 +94,70 @@
         <div class="px-5 pb-3 pt-2 bg-gray-50 border-t border-gray-100">
           <div class="space-y-1" data-steps>
             {{range $i, $ch := $group.Children}}
-            <div class="flex items-center gap-2 text-[11px]" data-step-index="{{inc $i}}">
-              <span class="inline-flex items-center justify-center w-3 h-3 rounded-full text-[8px] font-bold
-                {{if eq $ch.Status "success"}}bg-green-100 text-green-700{{else if eq $ch.Status "blocked"}}bg-red-100 text-red-700{{else}}bg-amber-100 text-amber-700{{end}}">{{if eq $ch.Status "success"}}✓{{else if eq $ch.Status "blocked"}}✗{{else}}!{{end}}</span>
-              <span class="text-gray-500 font-mono">{{inc $i}}/{{$group.StepCount}}</span>
-              <span class="font-mono text-gray-700">{{$ch.Tool}}</span>
-              <span class="text-gray-500">{{$ch.Status}}</span>
-              {{if $ch.DurationMs}}<span class="font-mono text-gray-500">{{$ch.DurationMs}}ms</span>{{end}}
-            </div>
+            {{/* Each step row is its own <details>: glance at the
+                 status row, expand for the full detail (params,
+                 output, replay) from /history/{hash}/detail. */}}
+            <details class="step-row" data-step-index="{{inc $i}}" data-history-hash="{{$ch.Hash}}">
+              <summary
+                {{if $ch.Hash}}
+                hx-get="/history/{{$ch.Hash}}/detail"
+                hx-target="next .feed-row-body"
+                hx-swap="innerHTML"
+                hx-trigger="click once"
+                {{end}}
+                class="flex items-center gap-2 text-[11px] cursor-pointer hover:bg-gray-100 -mx-2 px-2 py-0.5 rounded">
+                <span class="inline-flex items-center justify-center w-3 h-3 rounded-full text-[8px] font-bold
+                  {{if eq $ch.Status "success"}}bg-green-100 text-green-700{{else if eq $ch.Status "blocked"}}bg-red-100 text-red-700{{else}}bg-amber-100 text-amber-700{{end}}">{{if eq $ch.Status "success"}}✓{{else if eq $ch.Status "blocked"}}✗{{else}}!{{end}}</span>
+                <span class="text-gray-500 font-mono">{{inc $i}}/{{$group.StepCount}}</span>
+                <span class="font-mono text-gray-700">{{$ch.Tool}}</span>
+                <span class="text-gray-500">{{$ch.Status}}</span>
+                {{if $ch.DurationMs}}<span class="font-mono text-gray-500">{{$ch.DurationMs}}ms</span>{{end}}
+              </summary>
+              <div class="feed-row-body mt-1 px-3 py-2 bg-white border border-gray-200 rounded">
+                {{if $ch.Hash}}
+                <div class="text-[10px] text-gray-500 italic">loading…</div>
+                {{else}}
+                <div class="text-[10px] text-gray-500 italic">No detail available.</div>
+                {{end}}
+              </div>
+            </details>
             {{end}}
           </div>
         </div>
       </details>
       {{else}}
-      <div class="px-5 py-2.5 flex items-center justify-between text-xs" data-feed-row="seed">
-        <div class="flex items-center gap-2">
-          <span class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold
-            {{if eq $group.Lead.Status "success"}}bg-green-100 text-green-700{{else if eq $group.Lead.Status "blocked"}}bg-red-100 text-red-700{{else}}bg-amber-100 text-amber-700{{end}}">{{if eq $group.Lead.Status "success"}}✓{{else if eq $group.Lead.Status "blocked"}}✗{{else}}!{{end}}</span>
-          <span class="font-mono text-gray-700">{{$group.Lead.Tool}}</span>
+      {{/* Standalone (non-workflow) call. Clicking the row expands inline
+           and lazy-loads the same per-row detail body /history shows.
+           hx-get fires once on the first click of the <summary>; the
+           response replaces the placeholder body. Closing/reopening
+           doesn't re-fetch. */}}
+      <details class="group" data-feed-row="seed" data-history-hash="{{$group.Lead.Hash}}">
+        <summary
+          {{if $group.Lead.Hash}}
+          hx-get="/history/{{$group.Lead.Hash}}/detail"
+          hx-target="next .feed-row-body"
+          hx-swap="innerHTML"
+          hx-trigger="click once"
+          {{end}}
+          class="px-5 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold
+              {{if eq $group.Lead.Status "success"}}bg-green-100 text-green-700{{else if eq $group.Lead.Status "blocked"}}bg-red-100 text-red-700{{else}}bg-amber-100 text-amber-700{{end}}">{{if eq $group.Lead.Status "success"}}✓{{else if eq $group.Lead.Status "blocked"}}✗{{else}}!{{end}}</span>
+            <span class="font-mono text-gray-700">{{$group.Lead.Tool}}</span>
+          </div>
+          <div class="flex items-center gap-2 text-[10px] text-gray-500">
+            <span class="font-mono">{{$group.Lead.DurationMs}}ms</span>
+            <span>{{$group.Lead.TimestampRel}}</span>
+          </div>
+        </summary>
+        <div class="feed-row-body px-5 pb-3 pt-2 border-t border-gray-100 bg-gray-50">
+          {{if $group.Lead.Hash}}
+          <div class="text-[11px] text-gray-500 italic">loading…</div>
+          {{else}}
+          <div class="text-[11px] text-gray-500 italic">No detail available — this entry pre-dates the audit hash chain.</div>
+          {{end}}
         </div>
-        <div class="flex items-center gap-2 text-[10px] text-gray-500">
-          <span class="font-mono">{{$group.Lead.DurationMs}}ms</span>
-          <span>{{$group.Lead.TimestampRel}}</span>
-        </div>
-      </div>
+      </details>
       {{end}}
       {{end}}
       {{else}}
@@ -315,16 +355,35 @@
 
   function newStandaloneRow(data) {
     var s = statusIcon(data.status);
-    var row = document.createElement('div');
-    row.className = 'px-5 py-2.5 flex items-center justify-between text-xs';
+    var row = document.createElement('details');
+    row.className = 'group';
+    row.setAttribute('data-feed-row', 'live');
+    if (data.hash) row.setAttribute('data-history-hash', data.hash);
+    // hx-get + hx-trigger="click once" lazy-load the detail body the
+    // first time the user expands this row. Shape matches the
+    // server-rendered seed rows so visual + behavior are identical.
+    var hxAttrs = data.hash
+      ? ' hx-get="/history/' + esc(data.hash) + '/detail"'
+        + ' hx-target="next .feed-row-body"'
+        + ' hx-swap="innerHTML"'
+        + ' hx-trigger="click once"'
+      : '';
+    var detailBody = data.hash
+      ? '<div class="text-[11px] text-gray-500 italic">loading…</div>'
+      : '<div class="text-[11px] text-gray-500 italic">No detail available.</div>';
     row.innerHTML =
-      '<div class="flex items-center gap-2">' +
-        '<span class="inline-flex items-center justify-center w-4 h-4 rounded-full ' + s.cls + ' text-[10px] font-bold">' + s.ch + '</span>' +
-        '<span class="font-mono text-gray-700">' + esc(data.tool) + '</span>' +
-      '</div>' +
-      '<div class="flex items-center gap-2 text-[10px] text-gray-500">' +
-        '<span class="font-mono">' + data.duration_ms + 'ms</span>' +
-        '<span>' + esc(data.timestamp) + '</span>' +
+      '<summary' + hxAttrs + ' class="px-5 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors flex items-center justify-between text-xs">' +
+        '<div class="flex items-center gap-2">' +
+          '<span class="inline-flex items-center justify-center w-4 h-4 rounded-full ' + s.cls + ' text-[10px] font-bold">' + s.ch + '</span>' +
+          '<span class="font-mono text-gray-700">' + esc(data.tool) + '</span>' +
+        '</div>' +
+        '<div class="flex items-center gap-2 text-[10px] text-gray-500">' +
+          '<span class="font-mono">' + data.duration_ms + 'ms</span>' +
+          '<span>' + esc(data.timestamp) + '</span>' +
+        '</div>' +
+      '</summary>' +
+      '<div class="feed-row-body px-5 pb-3 pt-2 border-t border-gray-100 bg-gray-50">' +
+        detailBody +
       '</div>';
     return row;
   }
@@ -333,30 +392,73 @@
     dropEmpty();
     var runID = data.workflow_run_id || '';
     if (runID) {
-      // Either this is the parent workflow call (data.tool is the
-      // workflow itself) or a step of an already-active run. The
-      // step case is unusual — proxy logs the parent before child
-      // steps fire — but we handle it either way.
+      // A `call` event with workflow_run_id is the audit entry for
+      // one of the workflow's STEPS (the outer workflow's call event
+      // doesn't carry workflow_run_id — the context key is only set
+      // inside the workflow provider, after the proxy has begun
+      // logging the outer call).
+      //
+      // If we already have a bucket for this run_id, find the
+      // matching placeholder step row (created by an earlier
+      // workflow_step event) and upgrade it into an expandable
+      // <details>. If no placeholder exists yet (rare timing case),
+      // we leave the bucket as-is; the next workflow_step event will
+      // create the row, but without the hash. Acceptable for v1.
       var existing = workflowRows.get(runID);
       if (existing) {
-        // Final call for this run: status/duration become real.
-        var s = statusIcon(data.status);
-        var icon = existing.row.querySelector('[data-icon]');
-        if (icon) {
-          icon.textContent = s.ch;
-          icon.className = 'inline-flex items-center justify-center w-4 h-4 rounded-full ' + s.cls + ' text-[10px] font-bold';
+        var stepsContainer = existing.row.querySelector('[data-steps]');
+        if (stepsContainer && data.tool) {
+          // Match by tool name and prefer a not-yet-upgraded row.
+          var candidates = stepsContainer.querySelectorAll('[data-step-tool="' + data.tool + '"]');
+          for (var i = 0; i < candidates.length; i++) {
+            if (candidates[i].tagName !== 'DETAILS') {
+              upgradeStepRowToExpandable(candidates[i], data);
+              break;
+            }
+          }
         }
-        var dur = existing.row.querySelector('[data-duration]');
-        if (dur) dur.textContent = data.duration_ms + 'ms';
         return;
       }
+      // No bucket yet — seed a coalesced parent from this event.
       var row = newCoalescedRow(data);
       feed.insertBefore(row, feed.firstChild);
       workflowRows.set(runID, {row: row, total: 0});
       trimToMax();
       return;
     }
+    // Outer-workflow finalizer detection. The proxy's audit entry
+    // for the workflow itself fires AFTER all step entries; it
+    // carries the workflow's tool name as `data.tool` but no
+    // workflow_run_id (the context value is only set inside the
+    // workflow provider, not visible to the proxy when logging the
+    // outer call). If any active coalesced bucket's parent row
+    // names the same tool, this is the finalizer — lock that
+    // parent's status/duration and don't render a duplicate
+    // standalone row.
+    if (data.tool) {
+      var matchedParent = null;
+      workflowRows.forEach(function(v) {
+        if (matchedParent) return;
+        var toolEl = v.row.querySelector('[data-tool]');
+        if (toolEl && toolEl.textContent === data.tool) matchedParent = v.row;
+      });
+      if (matchedParent) {
+        var s2 = statusIcon(data.status);
+        var icon2 = matchedParent.querySelector('[data-icon]');
+        if (icon2) {
+          icon2.textContent = s2.ch;
+          icon2.className = 'inline-flex items-center justify-center w-4 h-4 rounded-full ' + s2.cls + ' text-[10px] font-bold';
+        }
+        var dur2 = matchedParent.querySelector('[data-duration]');
+        if (dur2) dur2.textContent = data.duration_ms + 'ms';
+        return;
+      }
+    }
     feed.insertBefore(newStandaloneRow(data), feed.firstChild);
+    // Newly inserted rows have raw hx-* attributes that htmx didn't
+    // know about at page load; tell it to process them so the
+    // hx-trigger="click once" fires on first expand.
+    if (window.htmx) htmx.process(feed.firstChild);
     trimToMax();
   }
 
@@ -385,10 +487,16 @@
     var stepsContainer = bucket.row.querySelector('[data-steps]');
     if (!stepsContainer) return;
 
+    // Build a placeholder step row. workflow_step events fire during
+    // execution and have no audit hash yet — so the row isn't
+    // expandable yet. The matching `call` event (carrying hash +
+    // workflow_run_id) arrives moments later and upgrades the row
+    // to a <details> with the hx-get lazy-load wired up.
     var s = statusIcon(data.status);
     var step = document.createElement('div');
     step.className = 'flex items-center gap-2 text-[11px]';
     step.dataset.stepIndex = data.index;
+    step.dataset.stepTool = data.tool || '';
     step.innerHTML =
       '<span class="inline-flex items-center justify-center w-3 h-3 rounded-full ' + s.cls + ' text-[8px] font-bold">' + s.ch + '</span>' +
       '<span class="text-gray-500 font-mono">' + data.index + '/' + (data.total || '?') + '</span>' +
@@ -398,6 +506,34 @@
     var existingStep = stepsContainer.querySelector('[data-step-index="' + data.index + '"]');
     if (existingStep) existingStep.replaceWith(step);
     else stepsContainer.appendChild(step);
+  }
+
+  // upgradeStepRowToExpandable takes a placeholder step row (created by
+  // renderStep from a workflow_step event) and converts it into a
+  // <details> with hx-get wired to load /history/{hash}/detail on
+  // first click. Called when the matching `call` event arrives with
+  // the audit hash.
+  function upgradeStepRowToExpandable(stepRow, data) {
+    if (stepRow.tagName === 'DETAILS') return; // already upgraded
+    if (!data.hash) return;
+    var details = document.createElement('details');
+    details.className = 'step-row';
+    if (stepRow.dataset.stepIndex) details.dataset.stepIndex = stepRow.dataset.stepIndex;
+    details.dataset.historyHash = data.hash;
+    var summary = document.createElement('summary');
+    summary.setAttribute('hx-get', '/history/' + data.hash + '/detail');
+    summary.setAttribute('hx-target', 'next .feed-row-body');
+    summary.setAttribute('hx-swap', 'innerHTML');
+    summary.setAttribute('hx-trigger', 'click once');
+    summary.className = 'flex items-center gap-2 text-[11px] cursor-pointer hover:bg-gray-100 -mx-2 px-2 py-0.5 rounded';
+    summary.innerHTML = stepRow.innerHTML;
+    details.appendChild(summary);
+    var body = document.createElement('div');
+    body.className = 'feed-row-body mt-1 px-3 py-2 bg-white border border-gray-200 rounded';
+    body.innerHTML = '<div class="text-[10px] text-gray-500 italic">loading…</div>';
+    details.appendChild(body);
+    stepRow.replaceWith(details);
+    if (window.htmx) htmx.process(details);
   }
 
   // Independent EventSource for the dashboard. Don't share with

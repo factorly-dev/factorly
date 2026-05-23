@@ -169,6 +169,94 @@ func TestHistoryReplay_RejectsMissingTool(t *testing.T) {
 	}
 }
 
+// TestHistoryDetail_ReturnsRowBodyFragment hits the new
+// /history/{hash}/detail endpoint used by the dashboard's inline
+// expand affordance. The response is the same per-row body that
+// renders inside /history's expandable rows — params, status,
+// duration, and (when eligible) the Replay / Edit & Replay buttons.
+func TestHistoryDetail_ReturnsRowBodyFragment(t *testing.T) {
+	seedAuditLog(t, []logger.Entry{
+		{
+			Timestamp:  time.Now(),
+			Tool:       "echo.tool",
+			Hash:       "hash-detail-aaaa",
+			Status:     "success",
+			Interface:  "cli",
+			DurationMs: 42,
+			Params:     map[string]string{"text": "hello"},
+			Output:     "hello\n",
+		},
+	})
+	srv, _ := testServerWithProxy(t, &config.Config{Tools: map[string]config.ToolConfig{
+		"echo.tool": {Type: "cli", Command: "echo"},
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/history/hash-detail-aaaa/detail", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	// Body should NOT contain the page layout chrome — just the row
+	// detail fragment (the partial). Look for distinctive bits.
+	for _, want := range []string{
+		"echo.tool",      // tool name appears in the Replay link href
+		"42ms",           // duration
+		"hello",          // params value
+		"Parameters",     // section header
+		"Replay",         // action button (entry is replayable)
+		"Edit & Replay",  // action button
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %q in detail fragment, body=%s", want, body)
+		}
+	}
+	// No layout wrapper — fragment only.
+	if strings.Contains(body, "<html") || strings.Contains(body, "<body") {
+		t.Errorf("expected fragment, got full page; body=%s", body[:min(200, len(body))])
+	}
+}
+
+// TestHistoryDetail_PrefixHashMatchesUniqueEntry covers the same
+// ≥4-char prefix matching `findAuditEntryByHash` supports for the
+// replay endpoint. Lets the dashboard avoid passing 64-char hashes
+// in attributes when a short prefix is enough.
+func TestHistoryDetail_PrefixHashMatchesUniqueEntry(t *testing.T) {
+	seedAuditLog(t, []logger.Entry{
+		{Timestamp: time.Now(), Tool: "x.tool", Hash: "abcd1234567890", Status: "success", Interface: "cli"},
+	})
+	srv, _ := testServerWithProxy(t, &config.Config{Tools: map[string]config.ToolConfig{
+		"x.tool": {Type: "cli", Command: "true"},
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/history/abcd/detail", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("prefix lookup expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestHistoryDetail_NotFound returns 404 when no entry matches the
+// hash — the dashboard's expanded body shows whatever the server
+// returns, so a non-empty error string is what the user sees.
+func TestHistoryDetail_NotFound(t *testing.T) {
+	seedAuditLog(t, []logger.Entry{
+		{Timestamp: time.Now(), Tool: "x", Hash: "hash-only-one", Status: "success"},
+	})
+	srv, _ := testServerWithProxy(t, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/history/hash-missing-xx/detail", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 // TestGroupHistoryEntries_StandaloneAndWorkflow exercises the
 // coalescing function. Entries without a WorkflowRunID pass through
 // as singleton groups; entries sharing a WorkflowRunID gather under
