@@ -185,33 +185,160 @@ func TestHandleDashboard_ActiveUseShowsRollups(t *testing.T) {
 	}
 }
 
-func TestHandleDashboard_StatusStripCountsTools(t *testing.T) {
-	srv, _ := testServer(t, &config.Config{
-		Tools: map[string]config.ToolConfig{
-			"a.cli":      {Type: "cli", Command: "true"},
-			"b.rest":     {Type: "rest", Method: "GET", BaseURL: "https://x"},
-			"wf.example": {Type: "workflow"},
-		},
+// --- Top-vault-keys tests ---------------------------------------------
+
+func TestTopVaultKeys_EmptyInputReturnsNil(t *testing.T) {
+	if got := topVaultKeys(nil, 10); got != nil {
+		t.Fatalf("expected nil for empty input, got %#v", got)
+	}
+}
+
+func TestTopVaultKeys_NoVaultKeysReturnsNil(t *testing.T) {
+	// Entries exist but none declared vault_keys.
+	entries := []logger.Entry{
+		{Tool: "x", Status: "success"},
+		{Tool: "y", Status: "success"},
+	}
+	if got := topVaultKeys(entries, 10); got != nil {
+		t.Fatalf("expected nil when no entries reference vault keys, got %#v", got)
+	}
+}
+
+func TestTopVaultKeys_OrdersByCountThenName(t *testing.T) {
+	entries := []logger.Entry{
+		{Tool: "github.list", VaultKeys: []string{"GITHUB_TOKEN"}},
+		{Tool: "github.create", VaultKeys: []string{"GITHUB_TOKEN"}},
+		{Tool: "github.delete", VaultKeys: []string{"GITHUB_TOKEN"}},
+		{Tool: "slack.post", VaultKeys: []string{"SLACK_BOT"}},
+		{Tool: "slack.read", VaultKeys: []string{"SLACK_BOT"}},
+		// Ties at 1; alphabetical breaks them: ANTHROPIC_KEY before
+		// OPENAI_KEY.
+		{Tool: "claude.ask", VaultKeys: []string{"ANTHROPIC_KEY"}},
+		{Tool: "gpt.ask", VaultKeys: []string{"OPENAI_KEY"}},
+		// Empty string filtered out:
+		{Tool: "junk", VaultKeys: []string{""}},
+	}
+	got := topVaultKeys(entries, 10)
+	if len(got) != 4 {
+		t.Fatalf("expected 4 keys, got %d (%#v)", len(got), got)
+	}
+	if got[0].Key != "GITHUB_TOKEN" || got[0].Count != 3 || got[0].Pct != 100 {
+		t.Errorf("leader wrong: %#v", got[0])
+	}
+	if got[1].Key != "SLACK_BOT" || got[1].Count != 2 {
+		t.Errorf("second wrong: %#v", got[1])
+	}
+	if got[2].Key != "ANTHROPIC_KEY" {
+		t.Errorf("tiebreak wrong, expected ANTHROPIC_KEY before OPENAI_KEY, got %q", got[2].Key)
+	}
+	// 2/3 * 100 = 66 (integer div).
+	if got[1].Pct != 66 {
+		t.Errorf("expected SLACK_BOT.Pct=66, got %d", got[1].Pct)
+	}
+}
+
+func TestTopVaultKeys_RespectsLimitN(t *testing.T) {
+	entries := []logger.Entry{
+		{Tool: "x", VaultKeys: []string{"A"}},
+		{Tool: "x", VaultKeys: []string{"B"}},
+		{Tool: "x", VaultKeys: []string{"C"}},
+		{Tool: "x", VaultKeys: []string{"D"}},
+	}
+	got := topVaultKeys(entries, 2)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(got))
+	}
+}
+
+func TestHandleDashboard_RendersTopVaultKeysPanel(t *testing.T) {
+	srv, cfgPath := testServer(t, &config.Config{
+		Tools: map[string]config.ToolConfig{"x.tool": {Type: "cli", Command: "true"}},
 	})
+	logPath := filepath.Join(filepath.Dir(cfgPath), "audit.jsonl")
+	writeDashboardLog(t, logPath, []logger.Entry{
+		{Timestamp: time.Now().Add(-10 * time.Minute), Tool: "x.tool", Status: "success", VaultKeys: []string{"GITHUB_TOKEN"}},
+		{Timestamp: time.Now().Add(-5 * time.Minute), Tool: "x.tool", Status: "success", VaultKeys: []string{"GITHUB_TOKEN", "SLACK_BOT"}},
+	})
+	t.Setenv("FACTORLY_LOG_PATH", logPath)
 
 	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 	rec := httptest.NewRecorder()
 	srv.mux.ServeHTTP(rec, req)
-
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 	body := rec.Body.String()
-	// ToolsTotal excludes workflow entries, so the count pill should
-	// read 2 and a separate "workflow 1" chip should also appear.
-	if !strings.Contains(body, "cli 1") {
-		t.Error("expected 'cli 1' pill in status strip")
+	for _, want := range []string{"Top vault items", "GITHUB_TOKEN", "SLACK_BOT"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %q in dashboard body", want)
+		}
 	}
-	if !strings.Contains(body, "rest 1") {
-		t.Error("expected 'rest 1' pill in status strip")
+}
+
+// TestHandleDashboard_OversightTilesDeepLinkToHistory pins the
+// oversight tile → /history?status=X drill-down so a refactor
+// can't quietly drop the affordance. Each tile must link to the
+// matching status filter.
+func TestHandleDashboard_OversightTilesDeepLinkToHistory(t *testing.T) {
+	srv, cfgPath := testServer(t, &config.Config{
+		Tools: map[string]config.ToolConfig{"x.tool": {Type: "cli", Command: "true"}},
+	})
+	logPath := filepath.Join(filepath.Dir(cfgPath), "audit.jsonl")
+	writeDashboardLog(t, logPath, []logger.Entry{
+		{Timestamp: time.Now().Add(-5 * time.Minute), Tool: "x.tool", Status: "success"},
+	})
+	t.Setenv("FACTORLY_LOG_PATH", logPath)
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		`href="/history?status=success"`,
+		`href="/history?status=error"`,
+		`href="/history?status=blocked"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected oversight tile linking to %q", want)
+		}
 	}
-	if !strings.Contains(body, "workflow 1") {
-		t.Error("expected 'workflow 1' pill in status strip")
+}
+
+// TestHandleDashboard_TopToolsHasManageLink mirrors the Top vault
+// items manage link — header should also have one to /tools.
+func TestHandleDashboard_TopToolsHasManageLink(t *testing.T) {
+	srv, cfgPath := testServer(t, &config.Config{
+		Tools: map[string]config.ToolConfig{"x.tool": {Type: "cli", Command: "true"}},
+	})
+	logPath := filepath.Join(filepath.Dir(cfgPath), "audit.jsonl")
+	writeDashboardLog(t, logPath, []logger.Entry{
+		{Timestamp: time.Now().Add(-5 * time.Minute), Tool: "x.tool", Status: "success"},
+	})
+	t.Setenv("FACTORLY_LOG_PATH", logPath)
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	if !strings.Contains(body, `<a href="/tools" class="text-[10px] text-indigo-600`) {
+		t.Error("expected Top tools panel header to carry a 'manage →' link to /tools")
+	}
+}
+
+func TestHandleDashboard_NoStatusStrip(t *testing.T) {
+	// Status strip was removed; the markers that used to identify it
+	// must not appear anywhere on the page.
+	srv, _ := testServer(t, &config.Config{
+		Tools: map[string]config.ToolConfig{"x.tool": {Type: "cli", Command: "true"}},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	for _, banned := range []string{"BlueprintsInstalled", "of 0 available", "tiers opened", "VaultTiersOpened"} {
+		if strings.Contains(body, banned) {
+			t.Errorf("status-strip remnant %q still rendered", banned)
+		}
 	}
 }
 
