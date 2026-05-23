@@ -167,6 +167,7 @@ func New(opts Options) (*Server, error) {
 	// Parse each page template individually with the shared layout.
 	// This avoids "content" redefinition conflicts between pages.
 	pages := []string{
+		"templates/dashboard.html",
 		"templates/tools.html",
 		"templates/tool_edit.html",
 		"templates/tool_new.html",
@@ -255,10 +256,13 @@ func (s *Server) routes() {
 		http.Redirect(w, r, "/static/logo.png", http.StatusMovedPermanently)
 	})
 
-	// Tools
+	// Dashboard (default landing)
 	s.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/tools", http.StatusFound)
+		http.Redirect(w, r, "/dashboard", http.StatusFound)
 	})
+	s.mux.HandleFunc("GET /dashboard", s.handleDashboard)
+
+	// Tools
 	s.mux.HandleFunc("GET /tools", s.handleToolsList)
 	s.mux.HandleFunc("GET /tools/new", s.handleToolNew)
 	s.mux.HandleFunc("GET /tools/_form", s.handleToolFormPartial)
@@ -870,6 +874,7 @@ func templateFuncs() template.FuncMap {
 				"external-link": `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>`,
 				"info":          `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`,
 				"git-compare":   `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg>`,
+				"activity":      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.5.5 0 0 1-.96 0L9.24 3.18a.5.5 0 0 0-.96 0l-2.35 8.36A2 2 0 0 1 4 13H2"/></svg>`,
 			}
 			if svg, ok := icons[name]; ok {
 				return template.HTML(svg)

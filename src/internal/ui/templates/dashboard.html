@@ -1,0 +1,349 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+{{define "content"}}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Dashboard</h1>
+  <div class="flex items-center gap-2 text-xs text-gray-600">
+    <span class="inline-flex items-center gap-1">
+      <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+      live
+    </span>
+    <span class="text-gray-400">·</span>
+    <span>rollups: {{.Data.WindowLabel}}</span>
+  </div>
+</div>
+
+<!-- Status strip: always visible. Counts come from the live config
+     and on-disk state, not the audit log, so a fresh install still
+     gets a meaningful row here. -->
+{{with .Data.Status}}
+<div class="bg-white rounded-lg border border-gray-200 px-5 py-3 mb-6">
+  <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+    <div class="flex items-center gap-2">
+      <span class="text-[10px] uppercase tracking-wide text-gray-500">Tools</span>
+      <span class="font-mono font-semibold text-gray-800">{{.ToolsTotal}}</span>
+      {{range .ToolsByType}}
+      <span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded
+        {{if eq .Type "cli"}}bg-gray-100 text-gray-700
+        {{else if eq .Type "rest"}}bg-blue-50 text-blue-700
+        {{else if eq .Type "mcp"}}bg-purple-50 text-purple-700
+        {{else if eq .Type "code"}}bg-amber-50 text-amber-700
+        {{else if eq .Type "builtin"}}bg-emerald-50 text-emerald-700
+        {{else if eq .Type "workflow"}}bg-indigo-50 text-indigo-700
+        {{else}}bg-gray-100 text-gray-700{{end}}">{{.Type}} {{.Count}}</span>
+      {{end}}
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-[10px] uppercase tracking-wide text-gray-500">Blueprints</span>
+      <span class="font-mono font-semibold text-gray-800">{{.BlueprintsInstalled}}</span>
+      <span class="text-[10px] text-gray-500">of {{.BlueprintsAvailable}} available</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-[10px] uppercase tracking-wide text-gray-500">Workspaces</span>
+      <span class="font-mono font-semibold text-gray-800">{{.Workspaces}}</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-[10px] uppercase tracking-wide text-gray-500">Vault</span>
+      <span class="font-mono text-gray-700">{{.VaultTiersOpened}}/{{.VaultTiersTotal}}<span class="text-[10px] text-gray-500"> opened</span></span>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-[10px] uppercase tracking-wide text-gray-500">Store</span>
+      <span class="font-mono text-gray-700">{{.StoreTiersPresent}}/{{.StoreTiersTotal}}<span class="text-[10px] text-gray-500"> tiers</span></span>
+    </div>
+  </div>
+</div>
+{{end}}
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <!-- Live feed. SSE init happens in the inline script below, which
+       owns this column independent of sse-init.js (the global init
+       is just for window._activitySSE consumers like workflow_edit). -->
+  <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+      <h2 class="text-sm font-medium text-gray-700 flex items-center gap-2">{{icon "activity"}} Live activity</h2>
+      <button type="button" onclick="clearDashboardFeed()" class="text-[10px] text-gray-500 hover:text-gray-700">clear</button>
+    </div>
+    <div id="dashboard-feed" class="divide-y divide-gray-100 max-h-[480px] overflow-y-auto">
+      <div id="dashboard-feed-empty" class="px-5 py-10 text-center text-gray-500 text-sm">
+        {{if .Data.HasAnyCalls}}Waiting for the next call…{{else}}First tool call will appear here.{{end}}
+      </div>
+    </div>
+  </div>
+
+  <!-- Right column: rollups when there's data, quick-start when empty. -->
+  {{if .Data.HasAnyCalls}}
+  <div class="space-y-6">
+    <!-- Top tools. -->
+    <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div class="px-5 py-3 border-b border-gray-200">
+        <h2 class="text-sm font-medium text-gray-700">Top tools <span class="text-[10px] text-gray-500 font-normal">· {{.Data.WindowLabel}}</span></h2>
+      </div>
+      <div class="px-5 py-4">
+        {{if .Data.TopTools}}
+        <ul class="space-y-2">
+          {{range .Data.TopTools}}
+          <li class="text-xs">
+            <div class="flex items-center justify-between mb-0.5">
+              <span class="font-mono text-gray-700 truncate">{{.Tool}}</span>
+              <span class="font-mono text-gray-500 text-[11px] shrink-0 ml-2">{{.Count}}</span>
+            </div>
+            <div class="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+              <div class="h-full bg-indigo-500 rounded-full" style="width: {{.Pct}}%"></div>
+            </div>
+          </li>
+          {{end}}
+        </ul>
+        {{else}}
+        <p class="text-xs text-gray-500 text-center py-4">No calls in the last 24h.</p>
+        {{end}}
+      </div>
+    </div>
+
+    <!-- Oversight breakdown. Template guards against div-by-zero
+         when Total is 0 so we never render "NaN%". -->
+    {{with .Data.Oversight}}
+    <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div class="px-5 py-3 border-b border-gray-200">
+        <h2 class="text-sm font-medium text-gray-700">Oversight <span class="text-[10px] text-gray-500 font-normal">· last 24h</span></h2>
+      </div>
+      <div class="px-5 py-4">
+        {{if eq .Total 0}}
+        <p class="text-xs text-gray-500 text-center py-4">No calls in the last 24h.</p>
+        {{else}}
+        <div class="grid grid-cols-3 gap-3 text-center">
+          <div class="px-3 py-3 rounded bg-green-50 border border-green-100">
+            <div class="text-2xl font-bold text-green-700">{{.Success}}</div>
+            <div class="text-[10px] uppercase tracking-wide text-green-700 mt-0.5">success</div>
+          </div>
+          <div class="px-3 py-3 rounded bg-amber-50 border border-amber-100">
+            <div class="text-2xl font-bold text-amber-700">{{.Error}}</div>
+            <div class="text-[10px] uppercase tracking-wide text-amber-700 mt-0.5">error</div>
+          </div>
+          <div class="px-3 py-3 rounded bg-red-50 border border-red-100">
+            <div class="text-2xl font-bold text-red-700">{{.Blocked}}</div>
+            <div class="text-[10px] uppercase tracking-wide text-red-700 mt-0.5">blocked</div>
+          </div>
+        </div>
+        <p class="text-[11px] text-gray-500 text-center mt-3">{{.Total}} total</p>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  <!-- Quick-start tiles for the no-calls-yet state. -->
+  <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div class="px-5 py-3 border-b border-gray-200">
+      <h2 class="text-sm font-medium text-gray-700">Get started</h2>
+    </div>
+    <div class="divide-y divide-gray-100">
+      {{range .Data.QuickStart}}
+      <div class="px-5 py-4 flex items-start justify-between gap-4">
+        <div class="flex-1">
+          <div class="text-sm font-medium text-gray-800">{{.Title}}</div>
+          <p class="text-xs text-gray-600 mt-0.5">{{.Body}}</p>
+        </div>
+        <a href="{{.Href}}" class="shrink-0 px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors">{{.ButtonLabel}}</a>
+      </div>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+</div>
+
+<!--
+  Dashboard live feed.
+
+  Coalesces workflow runs into a single expandable row keyed by
+  workflow_run_id. The first `call` event for a run_id seeds the
+  parent row; subsequent `workflow_step` events update the step
+  counter and append a child step entry. The final `call` event for
+  the workflow tool itself (status success/error) locks the parent
+  status + duration.
+
+  Rows count toward the 30-row cap once each, even when expanded.
+  Older rows fall off the tail as new ones arrive.
+
+  The feed uses its own EventSource — independent of sse-init.js's
+  window._activitySSE — because each dashboard view wants a fresh
+  subscription. sse-init.js is only here for workflow_edit's
+  step-progress polling.
+-->
+<script>
+(function() {
+  var feed = document.getElementById('dashboard-feed');
+  var empty = document.getElementById('dashboard-feed-empty');
+  var MAX_ROWS = 30;
+  var workflowRows = new Map(); // run_id -> {row, stepsContainer, total}
+
+  window.clearDashboardFeed = function() {
+    feed.innerHTML = '';
+    workflowRows.clear();
+    var e = document.createElement('div');
+    e.id = 'dashboard-feed-empty';
+    e.className = 'px-5 py-10 text-center text-gray-500 text-sm';
+    e.textContent = 'Waiting for the next call…';
+    feed.appendChild(e);
+    empty = e;
+  };
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function statusIcon(status) {
+    if (status === 'success') return {ch: '✓', cls: 'bg-green-100 text-green-700'};
+    if (status === 'blocked') return {ch: '✗', cls: 'bg-red-100 text-red-700'};
+    if (status === 'error')   return {ch: '!', cls: 'bg-amber-100 text-amber-700'};
+    if (status === 'running') return {ch: '●', cls: 'bg-indigo-100 text-indigo-700'};
+    return {ch: '·', cls: 'bg-gray-100 text-gray-600'};
+  }
+
+  function dropEmpty() {
+    if (empty && empty.parentNode === feed) { empty.remove(); empty = null; }
+  }
+
+  function trimToMax() {
+    while (feed.children.length > MAX_ROWS) {
+      var last = feed.lastElementChild;
+      // Remove any workflowRows entry pointing at this row so the map
+      // doesn't leak references after trimming.
+      workflowRows.forEach(function(v, k) {
+        if (v.row === last) workflowRows.delete(k);
+      });
+      last.remove();
+    }
+  }
+
+  function newCoalescedRow(data) {
+    var s = statusIcon('running');
+    var row = document.createElement('details');
+    row.className = 'group';
+    row.innerHTML =
+      '<summary class="px-5 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors flex items-center justify-between text-xs">' +
+        '<div class="flex items-center gap-2">' +
+          '<span class="inline-flex items-center justify-center w-4 h-4 rounded-full ' + s.cls + ' text-[10px] font-bold" data-icon>' + s.ch + '</span>' +
+          '<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-700">workflow</span>' +
+          '<span class="font-mono text-gray-700" data-tool>' + esc(data.workflow_name || data.tool) + '</span>' +
+          '<span class="text-[10px] text-gray-500" data-step-counter>step 0 of ?</span>' +
+        '</div>' +
+        '<div class="flex items-center gap-2 text-[10px] text-gray-500 shrink-0">' +
+          '<span class="font-mono" data-duration>running</span>' +
+          '<span data-timestamp>' + esc(data.timestamp) + '</span>' +
+        '</div>' +
+      '</summary>' +
+      '<div class="px-5 pb-3 pt-2 bg-gray-50 border-t border-gray-100">' +
+        '<div class="space-y-1" data-steps></div>' +
+      '</div>';
+    return row;
+  }
+
+  function newStandaloneRow(data) {
+    var s = statusIcon(data.status);
+    var row = document.createElement('div');
+    row.className = 'px-5 py-2.5 flex items-center justify-between text-xs';
+    row.innerHTML =
+      '<div class="flex items-center gap-2">' +
+        '<span class="inline-flex items-center justify-center w-4 h-4 rounded-full ' + s.cls + ' text-[10px] font-bold">' + s.ch + '</span>' +
+        '<span class="font-mono text-gray-700">' + esc(data.tool) + '</span>' +
+      '</div>' +
+      '<div class="flex items-center gap-2 text-[10px] text-gray-500">' +
+        '<span class="font-mono">' + data.duration_ms + 'ms</span>' +
+        '<span>' + esc(data.timestamp) + '</span>' +
+      '</div>';
+    return row;
+  }
+
+  function renderCall(data) {
+    dropEmpty();
+    var runID = data.workflow_run_id || '';
+    if (runID) {
+      // Either this is the parent workflow call (data.tool is the
+      // workflow itself) or a step of an already-active run. The
+      // step case is unusual — proxy logs the parent before child
+      // steps fire — but we handle it either way.
+      var existing = workflowRows.get(runID);
+      if (existing) {
+        // Final call for this run: status/duration become real.
+        var s = statusIcon(data.status);
+        var icon = existing.row.querySelector('[data-icon]');
+        if (icon) {
+          icon.textContent = s.ch;
+          icon.className = 'inline-flex items-center justify-center w-4 h-4 rounded-full ' + s.cls + ' text-[10px] font-bold';
+        }
+        var dur = existing.row.querySelector('[data-duration]');
+        if (dur) dur.textContent = data.duration_ms + 'ms';
+        return;
+      }
+      var row = newCoalescedRow(data);
+      feed.insertBefore(row, feed.firstChild);
+      workflowRows.set(runID, {row: row, total: 0});
+      trimToMax();
+      return;
+    }
+    feed.insertBefore(newStandaloneRow(data), feed.firstChild);
+    trimToMax();
+  }
+
+  function renderStep(data) {
+    dropEmpty();
+    var runID = data.run_id || '';
+    var bucket = runID ? workflowRows.get(runID) : null;
+    if (!bucket) {
+      // Synthesize a placeholder parent. We saw the step before
+      // the parent call event (rare; the proxy logs the parent
+      // before step events but a hard reload can lose ordering).
+      var placeholder = newCoalescedRow({
+        workflow_name: data.workflow || 'workflow',
+        timestamp: '',
+      });
+      placeholder.querySelector('[data-tool]').textContent = data.workflow || 'workflow (in progress)';
+      feed.insertBefore(placeholder, feed.firstChild);
+      bucket = {row: placeholder, total: 0};
+      if (runID) workflowRows.set(runID, bucket);
+      trimToMax();
+    }
+    if (data.total) bucket.total = data.total;
+    var counter = bucket.row.querySelector('[data-step-counter]');
+    if (counter) counter.textContent = 'step ' + data.index + ' of ' + (bucket.total || '?');
+
+    var stepsContainer = bucket.row.querySelector('[data-steps]');
+    if (!stepsContainer) return;
+
+    var s = statusIcon(data.status);
+    var step = document.createElement('div');
+    step.className = 'flex items-center gap-2 text-[11px]';
+    step.dataset.stepIndex = data.index;
+    step.innerHTML =
+      '<span class="inline-flex items-center justify-center w-3 h-3 rounded-full ' + s.cls + ' text-[8px] font-bold">' + s.ch + '</span>' +
+      '<span class="text-gray-500 font-mono">' + data.index + '/' + (data.total || '?') + '</span>' +
+      '<span class="font-mono text-gray-700">' + esc(data.tool) + '</span>' +
+      '<span class="text-gray-500">' + esc(data.status) + '</span>' +
+      (data.duration_ms ? '<span class="font-mono text-gray-500">' + data.duration_ms + 'ms</span>' : '');
+    var existingStep = stepsContainer.querySelector('[data-step-index="' + data.index + '"]');
+    if (existingStep) existingStep.replaceWith(step);
+    else stepsContainer.appendChild(step);
+  }
+
+  // Independent EventSource for the dashboard. Don't share with
+  // window._activitySSE — that one is for workflow_edit's polling.
+  var es = new EventSource('/activity/stream');
+  es.addEventListener('call', function(ev) {
+    try { renderCall(JSON.parse(ev.data)); } catch(_) {}
+  });
+  es.addEventListener('workflow_step', function(ev) {
+    try { renderStep(JSON.parse(ev.data)); } catch(_) {}
+  });
+  // Tear down the connection when we navigate away (hx-boost or hard
+  // nav). The dashboard re-creates one on next visit.
+  window.addEventListener('beforeunload', function() {
+    try { es.close(); } catch(_) {}
+  });
+})();
+</script>
+{{end}}

@@ -83,6 +83,11 @@ type CallEvent struct {
 	// SourceSHA mirrors logger.Entry.SourceSHA — present when the tool
 	// that ran was a code tool (or, in V2, the factorly.code builtin).
 	SourceSHA string
+	// WorkflowRunID / WorkflowName mirror logger.Entry. Present on
+	// every step call of a workflow run; empty for standalone calls.
+	// Lets live feeds (dashboard) coalesce steps under one parent row.
+	WorkflowRunID string
+	WorkflowName  string
 }
 
 type Proxy struct {
@@ -410,16 +415,18 @@ func (p *Proxy) emitCallEvent(entry *logger.Entry) {
 		output = output[:500] + "..."
 	}
 	p.onCall(CallEvent{
-		Timestamp:    entry.Timestamp,
-		Tool:         entry.Tool,
-		Params:       entry.Params,
-		Status:       entry.Status,
-		DurationMs:   entry.DurationMs,
-		ShadowAction: entry.ShadowAction,
-		AgentID:      entry.AgentID,
-		Output:       output,
-		Error:        entry.Error,
-		SourceSHA:    entry.SourceSHA,
+		Timestamp:     entry.Timestamp,
+		Tool:          entry.Tool,
+		Params:        entry.Params,
+		Status:        entry.Status,
+		DurationMs:    entry.DurationMs,
+		ShadowAction:  entry.ShadowAction,
+		AgentID:       entry.AgentID,
+		Output:        output,
+		Error:         entry.Error,
+		SourceSHA:     entry.SourceSHA,
+		WorkflowRunID: entry.WorkflowRunID,
+		WorkflowName:  entry.WorkflowName,
 	})
 }
 

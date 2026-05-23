@@ -115,15 +115,17 @@ func (s *Server) handleActivityStream(w http.ResponseWriter, r *http.Request) {
 				eventType = "call"
 				e := ae.Call
 				data, _ = json.Marshal(map[string]any{
-					"timestamp":   e.Timestamp.Format("15:04:05"),
-					"tool":        e.Tool,
-					"status":      e.Status,
-					"duration_ms": e.DurationMs,
-					"shadow":      e.ShadowAction,
-					"agent_id":    e.AgentID,
-					"error":       e.Error,
-					"output":      e.Output,
-					"params":      e.Params,
+					"timestamp":       e.Timestamp.Format("15:04:05"),
+					"tool":            e.Tool,
+					"status":          e.Status,
+					"duration_ms":     e.DurationMs,
+					"shadow":          e.ShadowAction,
+					"agent_id":        e.AgentID,
+					"error":           e.Error,
+					"output":          e.Output,
+					"params":          e.Params,
+					"workflow_run_id": e.WorkflowRunID,
+					"workflow_name":   e.WorkflowName,
 				})
 			}
 			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data)
@@ -133,6 +135,8 @@ func (s *Server) handleActivityStream(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
-	// Activity is now a drawer in the layout — redirect to tools
-	http.Redirect(w, r, "/tools", http.StatusFound)
+	// The right-side activity drawer was replaced by /dashboard's
+	// live feed in v0.15.0. Bookmarks and any /activity links from
+	// older docs land on the dashboard instead.
+	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
