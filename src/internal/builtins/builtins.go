@@ -134,6 +134,14 @@ func Register(cfg *config.Config, opts Options) {
 		},
 	})
 
+	register("factorly.store.get", config.ToolConfig{
+		Type:        "builtin",
+		Description: factorlyStoreGetDescription,
+		Parameters: []config.ParamConfig{
+			{Name: "key", Description: "Key to retrieve. Reads cascade workspace → project when inside a workspace.", Required: true},
+		},
+	})
+
 	register("factorly.store.search", config.ToolConfig{
 		Type:        "builtin",
 		Description: factorlyStoreSearchDescription,
@@ -173,6 +181,14 @@ Key conventions:
   - Pass ttl=0 for never-expire (use sparingly; the store is short-term memory by design).
 
 The store is workspace-scoped: when --workspace is active, you write to that workspace's store. Otherwise the project store.`
+
+const factorlyStoreGetDescription = `Retrieve the value for a single store key.
+
+Returns the raw value (string) on success. Returns an error if the key is missing or has expired.
+
+Reads cascade workspace → project when a workspace is active, so a project-level value is visible inside a workspace context unless the workspace overrides it. Refresh-on-read: a successful Get resets the entry's TTL window, so frequently-read keys stay alive without being re-saved.
+
+Pair with List or Search to enumerate keys first, then Get the specific values you need.`
 
 const factorlyStoreSearchDescription = `Search store keys by substring (case-insensitive). Returns matching key names, one per line.
 

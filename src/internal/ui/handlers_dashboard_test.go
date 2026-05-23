@@ -140,15 +140,141 @@ func TestHandleDashboard_FreshInstallShowsQuickStart(t *testing.T) {
 		t.Fatalf("expected 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	// Fresh-install quick-start tiles must show; rollup panels must
-	// not (because HasAnyCalls is false).
-	for _, want := range []string{"Get started", "Browse blueprints", "Import an OpenAPI spec", "Create a tool by hand"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("expected %q in fresh-install dashboard body", want)
+	if !strings.Contains(body, "Get started") {
+		t.Error("expected 'Get started' section header")
+	}
+	// Fresh-install tiles are ordered easiest path → bespoke →
+	// support layer (vault for the credentials those tools will need).
+	orderedTitles := []string{
+		"Browse blueprints",
+		"Import an OpenAPI spec",
+		"Create a tool by hand",
+		"Stash credentials in the vault",
+	}
+	prev := -1
+	prevTitle := ""
+	for _, title := range orderedTitles {
+		idx := strings.Index(body, title)
+		if idx < 0 {
+			t.Errorf("expected tile %q in fresh-install dashboard", title)
+			continue
 		}
+		if idx < prev {
+			t.Errorf("tile order regressed: %q (at %d) should come after %q (at %d)",
+				title, idx, prevTitle, prev)
+		}
+		prev = idx
+		prevTitle = title
 	}
 	if strings.Contains(body, "Top tools") {
 		t.Error("did not expect Top tools panel on fresh-install dashboard")
+	}
+}
+
+// TestHandleDashboard_BuiltinsOnlyStillTreatedAsFreshInstall pins
+// the "fresh install" definition: builtins (factorly.fetch,
+// factorly.code, factorly.store.*, etc.) don't count toward the
+// user's tool inventory. Without this filter, every real install
+// would land on the has-tools branch because builtins.Register
+// populates ~11 entries before the dashboard ever sees the config.
+// The fresh-install branch would be unreachable in production.
+func TestHandleDashboard_BuiltinsOnlyStillTreatedAsFreshInstall(t *testing.T) {
+	srv, _ := testServer(t, &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"factorly.fetch":      {Type: "builtin"},
+			"factorly.code":       {Type: "builtin"},
+			"factorly.store.save": {Type: "builtin"},
+			"some.workflow":       {Type: "workflow"},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	// Fresh-install signature: "Create a tool by hand" tile that
+	// only appears in the no-user-tools branch.
+	if !strings.Contains(body, "Create a tool by hand") {
+		t.Error("expected fresh-install tiles when config contains only builtins + workflows")
+	}
+	// And the has-tools-only "Try a built-in" tile must NOT appear.
+	if strings.Contains(body, "Try a built-in") {
+		t.Error("did not expect has-tools 'Try a built-in' tile when there are no user-defined tools")
+	}
+}
+
+// TestHandleDashboard_HasToolsNoCallsShowsBuildOutTiles covers the
+// second quick-start branch: the user has tools defined but no
+// calls in the audit log yet. They should see prompts to fill in
+// the missing pieces (vault credentials, OAuth, workspaces, more
+// blueprints) plus the "Try a built-in" / "Compose a workflow"
+// nudges. None of these tiles should appear on a fresh install
+// (different branch) so we leave that assertion to the
+// fresh-install test.
+//
+// The tile order is part of the contract — see quickStartTiles'
+// doc comment for the gradual-enhancement rationale — so the
+// assertion below pins the sequence, not just the membership.
+func TestHandleDashboard_HasToolsNoCallsShowsBuildOutTiles(t *testing.T) {
+	srv, _ := testServer(t, &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"my.tool": {Type: "cli", Command: "true"},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+
+	// Gradual-enhancement order: try → vault → auth → workflow →
+	// workspace → more blueprints. Verify each appears AFTER its
+	// predecessor by walking the indices forward.
+	orderedTitles := []string{
+		"Try a built-in",
+		"Add credentials to the vault",
+		"Connect an OAuth provider",
+		"Compose a workflow",
+		"Set up a workspace",
+		"Explore more blueprints",
+	}
+	prev := -1
+	prevTitle := ""
+	for _, title := range orderedTitles {
+		idx := strings.Index(body, title)
+		if idx < 0 {
+			t.Errorf("expected tile %q in has-tools dashboard", title)
+			continue
+		}
+		if idx < prev {
+			t.Errorf("tile order regressed: %q (at %d) should come after %q (at %d)",
+				title, idx, prevTitle, prev)
+		}
+		prev = idx
+		prevTitle = title
+	}
+
+	// Section header + tile targets — independent of order.
+	for _, want := range []string{
+		"Get started",
+		`href="/vault/new"`,
+		`href="/auth/new"`,
+		`href="/blueprints/browse"`,
+		`href="/workspaces/new"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %q in has-tools dashboard body", want)
+		}
+	}
+	// Fresh-install-only copy must not appear here.
+	if strings.Contains(body, "Create a tool by hand") {
+		t.Error("did not expect fresh-install 'Create a tool by hand' on has-tools dashboard")
 	}
 }
 

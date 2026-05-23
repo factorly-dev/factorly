@@ -1076,11 +1076,14 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	}
 
 	// Register factorly.store.* builtin handlers. These give the agent
-	// the four operations the CLI exposes — save, search, list, delete —
-	// against the same workspace-scoped bbolt store. Handlers go through
-	// getActiveStore(), so workspace cascade and audit logging are
-	// identical to the CLI path.
+	// the five operations the CLI exposes — get, save, search, list,
+	// delete — against the same workspace-scoped bbolt store. Handlers
+	// go through getActiveStore(), so workspace cascade and audit
+	// logging are identical to the CLI path.
 	if bp, ok := providers["builtin"].(*provider.BuiltinProvider); ok {
+		if _, has := cfg.Tools["factorly.store.get"]; has {
+			bp.RegisterHandler("factorly.store.get", makeStoreGetHandler())
+		}
 		if _, has := cfg.Tools["factorly.store.save"]; has {
 			bp.RegisterHandler("factorly.store.save", makeStoreSaveHandler())
 		}
@@ -1145,6 +1148,36 @@ func makeStoreSaveHandler() provider.BuiltinHandler {
 			return &provider.Result{Error: resultErr, ExitCode: 1}, nil
 		}
 		return &provider.Result{Output: "saved " + key}, nil
+	}
+}
+
+// makeStoreGetHandler returns the value for a single key, going
+// through the workspace→project read cascade. ErrNotFound surfaces
+// as a non-zero exit so the agent can branch on it; other errors
+// surface as Error too (Get's contract doesn't distinguish — both
+// are "you didn't get a value back"). Get is read-only and not
+// audit-logged, matching the CLI behavior.
+func makeStoreGetHandler() provider.BuiltinHandler {
+	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
+		key := params["key"]
+		if key == "" {
+			return &provider.Result{Error: "key is required", ExitCode: 1}, nil
+		}
+		var value string
+		var getErr error
+		err := withCascadeStore(func(backend store.Backend) error {
+			v, e := backend.Get(key)
+			value = v
+			getErr = e
+			return nil
+		})
+		if err != nil {
+			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
+		}
+		if getErr != nil {
+			return &provider.Result{Error: getErr.Error(), ExitCode: 1}, nil
+		}
+		return &provider.Result{Output: value}, nil
 	}
 }
 

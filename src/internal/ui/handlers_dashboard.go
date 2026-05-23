@@ -328,20 +328,43 @@ func topVaultKeys(entries []logger.Entry, n int) []vaultRollup {
 }
 
 // quickStartTiles picks the empty-state CTAs to show. Branches on
-// "do you have any tools defined yet?" so a fresh install gets the
-// browse/import/create trio, while someone with tools but no calls
-// gets "try one out" prompts.
+// "do you have any tools defined yet?" so a fresh install sees
+// install-the-tools prompts (browse / import / create / where do
+// my credentials go), while someone with tools but no calls sees
+// fill-in-the-blanks prompts in a gradual-enhancement order.
+//
+// Ordering within each branch follows the path a new user would
+// reasonably take, not the order the panels happen to render. The
+// idea is that scrolling the list top-to-bottom is itself a
+// "what to do next" tutorial.
+//
+// Tiles are unconditional within each branch — we don't try to
+// detect "does any tool actually need vault credentials?" yet.
+// The cost of an irrelevant tile is mild visual noise; the cost
+// of hiding a relevant one is the user not discovering the feature.
 func (s *Server) quickStartTiles() []ctaTile {
-	hasTools := false
+	// "Fresh install" means "no user-defined tools yet" — builtins
+	// (factorly.fetch, factorly.code, factorly.store.*, etc.) and
+	// workflow definitions don't count. The user thinks of builtins
+	// as "factorly's stuff," not as tools they added; without the
+	// filter, every real install would skip the fresh-install branch
+	// because builtins.Register populates ~11 tools before we ever
+	// see the config.
+	hasUserTools := false
 	if s.cfg != nil {
 		for _, tc := range s.cfg.Tools {
-			if tc.Type != "workflow" {
-				hasTools = true
-				break
+			if tc.Type == "workflow" || tc.Type == "builtin" {
+				continue
 			}
+			hasUserTools = true
+			break
 		}
 	}
-	if !hasTools {
+	if !hasUserTools {
+		// Fresh install arc: easiest path to a working setup (blueprints)
+		// → adapt an existing API (OpenAPI import) → write your own
+		// (hand-built tool) → support layer (vault for the credentials
+		// any of the above will need).
 		return []ctaTile{
 			{
 				Title:       "Browse blueprints",
@@ -361,8 +384,19 @@ func (s *Server) quickStartTiles() []ctaTile {
 				Href:        "/tools/new",
 				ButtonLabel: "Create",
 			},
+			{
+				Title:       "Stash credentials in the vault",
+				Body:        "Encrypted key/value store for API tokens, passwords, anything tools reference via {{vault:KEY}}.",
+				Href:        "/vault/new",
+				ButtonLabel: "Add a secret",
+			},
 		}
 	}
+	// Has-tools-no-calls arc: fire something immediately (try it) →
+	// fix the most common reason a call fails (missing credentials)
+	// → harder credentials (OAuth) → start composing what you have
+	// (workflows) → scale to multiple environments (workspaces) →
+	// power-user expansion (more blueprints).
 	return []ctaTile{
 		{
 			Title:       "Try a built-in",
@@ -371,10 +405,34 @@ func (s *Server) quickStartTiles() []ctaTile {
 			ButtonLabel: "Open tools",
 		},
 		{
+			Title:       "Add credentials to the vault",
+			Body:        "Your tools probably reference {{vault:KEY}} for API tokens. Add them here so calls don't 401.",
+			Href:        "/vault/new",
+			ButtonLabel: "Add a secret",
+		},
+		{
+			Title:       "Connect an OAuth provider",
+			Body:        "For tools that auth through GitHub / Google / etc. — register the provider, then log in with one click.",
+			Href:        "/auth/new",
+			ButtonLabel: "Set up auth",
+		},
+		{
 			Title:       "Compose a workflow",
 			Body:        "Chain tools into a multi-step pipeline with conditionals and state.",
 			Href:        "/workflows/new",
 			ButtonLabel: "New workflow",
+		},
+		{
+			Title:       "Set up a workspace",
+			Body:        "Named env + vault overlays so you can swap between staging / prod / per-customer setups without editing YAML.",
+			Href:        "/workspaces/new",
+			ButtonLabel: "New workspace",
+		},
+		{
+			Title:       "Explore more blueprints",
+			Body:        "Stack another ready-made toolchain on top — Slack, Trello, Linear, and more.",
+			Href:        "/blueprints/browse",
+			ButtonLabel: "Browse",
 		},
 	}
 }

@@ -1389,6 +1389,75 @@ func TestSyncCursorDetection(t *testing.T) {
 
 // --- Store Builtins (agent-facing) ---
 
+// TestStoreBuiltinGetReturnsValue exercises factorly.store.get end
+// to end: CLI set → agent reads via the builtin → script returns the
+// raw value. Pins the "agents can read back what they saved"
+// contract that closes the read-side gap in the v1 surface.
+func TestStoreBuiltinGetReturnsValue(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools: {}`,
+	})
+
+	// Seed via CLI; no vault, no password prompt.
+	if _, _, code := run(t, dir, "store", "set", "agent-pref", "brief-responses"); code != 0 {
+		t.Fatal("seed failed")
+	}
+
+	src := `package main
+import (
+    "errors"
+    "factorly"
+)
+func Run(p map[string]string) (any, error) {
+    r, err := factorly.Call("factorly.store.get", map[string]string{"key": "agent-pref"})
+    if err != nil { return nil, err }
+    if r.IsError() { return nil, errors.New("get: " + r.Error) }
+    return r.Output, nil
+}`
+	stdout, stderr, code := run(t, dir, "call", "factorly.code", "--code", src, "--params", "{}")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stdout, "brief-responses") {
+		t.Errorf("expected stored value in output, got %q", stdout)
+	}
+}
+
+// TestStoreBuiltinGetMissingKey verifies a missing key surfaces as
+// a non-zero exit through the builtin (mirrors the CLI's behavior
+// and the store package's ErrNotFound contract). Lets agents branch
+// on r.IsError() to decide whether to fall back to a default or
+// re-derive the value.
+func TestStoreBuiltinGetMissingKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools: {}`,
+	})
+
+	src := `package main
+import (
+    "factorly"
+)
+func Run(p map[string]string) (any, error) {
+    r, err := factorly.Call("factorly.store.get", map[string]string{"key": "never-saved"})
+    if err != nil { return nil, err }
+    if r.IsError() {
+        return "missing-handled:" + r.Error, nil
+    }
+    return "unexpectedly-found:" + r.Output, nil
+}`
+	stdout, _, code := run(t, dir, "call", "factorly.code", "--code", src, "--params", "{}")
+	if code != 0 {
+		t.Fatalf("script exit %d, output=%s", code, stdout)
+	}
+	if !strings.Contains(stdout, "missing-handled") {
+		t.Errorf("expected missing-key branch to trigger, got %q", stdout)
+	}
+}
+
 // TestStoreBuiltinsRoundTripViaCode exercises the four factorly.store.*
 // builtins through factorly.code — the canonical "agent uses store"
 // path. A script saves a key, searches for it, lists keys, and
