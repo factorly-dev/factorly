@@ -1,4 +1,61 @@
-## [v0.11.1] - 2026-05-22
+## [v0.15.0] - 2026-05-23
+
+New `/dashboard` landing page: always-populated, status strip across the top, live activity feed with workflow-run coalescing on the left, last-24h rollups on the right (top tools + oversight breakdown), quick-start tiles when there's no audit log yet.
+
+### Added
+
+**`/dashboard`** — the new front door.
+
+- Status strip: tool counts by type (`cli`, `rest`, `mcp`, `code`, `builtin`, `workflow`), installed-vs-available blueprints, workspace count, vault tiers opened, store tiers present
+- Live feed (SSE) with workflow-run coalescing: events carrying `workflow_run_id` group under one expandable parent row that updates as steps fire. Standalone calls render inline. 30-row cap; older rows fall off the tail
+- Live feed is seeded on page load with up to 30 of the most recent calls from the last 24h (newest-first, same coalescing rules as the live JS path) so the panel doesn't look dead on first paint. Seeded workflow rows carry `data-run-id` so the live JS rehydrates its coalescing map and merges incoming step events into the existing parent rather than synthesizing duplicates
+- Each feed row (seed + live) expands inline on click to show its full per-row detail (params, status, duration, error, output, plus Replay / Edit & Replay buttons). Reuses `/history`'s `history_entry_body` partial verbatim, lazy-loaded via `GET /history/{hash}/detail` on first expand. Workflow step rows get the same affordance once their audit hash arrives via the matching `call` event
+- `proxy.CallEvent` carries `Hash` (the audit-chain identifier of the logged entry); `/activity/stream` SSE payload includes it. Lets live rows attach the hx-get for detail lookup as soon as they're rendered
+
+### Changed
+
+- Dashboard layout: rollups moved to the left column (Oversight on top, Top tools, Top vault items beneath); the Live activity feed takes the full right column with a taller `max-h-[640px]` viewport. Quick-start tiles (fresh install) sit in the left column too.
+- Status strip removed from the top of the dashboard — the install-state counts (tool-types, blueprint inventory, workspace count, vault/store tier presence) weren't surfacing decisions, and the same data is more useful on its respective page. `buildStatusStrip`, `countVaultTiers`, `countStoreTiers`, the `statusStrip` / `typeCount` types, and the `Status` field on `dashboardData` are all gone.
+
+### Added (dashboard, continued)
+
+- **Top vault items** panel (under Top tools, left column). Bar list of the 10 most-referenced vault keys over the last 24h, counted from each call's `logger.Entry.VaultKeys` slice (the tool's declared `vault_keys` at log time). Header link drills into `/vault`. Emerald bars so it visually distinguishes from the indigo Top tools bars.
+- "manage →" link on the Top tools panel header (mirrors the Top vault items pattern) — drills into `/tools`.
+- Oversight tiles deep-link to `/history?status={success|error|blocked}` so you can click straight from the count into the matching rows.
+
+### Fixed
+
+- Dashboard live feed no longer renders a duplicate standalone row for the outer workflow call when a workflow finishes. The outer call's audit entry doesn't carry `workflow_run_id` (the context value is only set inside the workflow provider, after the proxy has begun logging the outer call), so the live JS used to fall through to the standalone branch and insert a duplicate next to the coalesced parent. The JS now matches the incoming tool name against active coalesced buckets and treats the event as the parent finalizer when found — locking the parent's status + duration onto the existing row instead. (The seed render path already suppressed this duplicate via `groupHistoryEntries`'s real-parent detection; only the live JS was affected.)
+- Top tools panel: bar list of the 10 most-fired tools over the last 24h. Leader pegs at 100%; others scale to it
+- Oversight panel: success / error / blocked stat row over the last 24h. Template guards against div-by-zero — pathological all-zero data renders "0 total" rather than "NaN%"
+- Quick-start tiles when the audit log is empty: branches on install state (no tools → browse / import / create; has-tools-no-calls → "try a builtin" / "compose a workflow")
+- `activity` lucide icon added to the template icon map for the Live activity panel header
+
+**Data plumbing for live coalescing**
+
+- `proxy.CallEvent` carries `WorkflowRunID` and `WorkflowName`; copied through `emitCallEvent` from the matching `logger.Entry` fields
+- `/activity/stream` SSE payload includes `workflow_run_id` and `workflow_name` on `call` events. Dashboard JS keys its coalescing `Map` by `run_id`
+
+**Tests**
+
+- `topTools` ordering / tie-breaking / NaN guard, `oversightBreakdown` counts, `filterAfter` windowing
+- Fresh-install handler render shows quick-start tiles and hides rollup panels
+- Active-use handler render shows rollups (with audit log via `FACTORLY_LOG_PATH`) and hides quick-start
+- Status-strip pill counts for `cli`, `rest`, and `workflow` tool types
+
+### Changed
+
+- `history_entry_body` template moved from `templates/history.html` into `templates/partials/history_entry_body.html` so the dashboard's inline-expand handler can render it via `renderPartial`. `/history`'s existing rendering is unchanged (the partial is still loaded by every page template)
+- Default landing page is now `/dashboard`. The `/` redirect target moved from `/tools` to `/dashboard`. The factorly logo and wordmark in the top nav point at `/dashboard` too
+- Top nav order: `Dashboard` · Tools · Workflows · Vault · Auth · Store · Blueprints · History
+- `/activity` legacy route now redirects to `/dashboard` (was `/tools`)
+
+### Removed
+
+- Right-side activity drawer (markup + CSS + toggle button) — replaced by the dashboard's live feed
+- `internal/ui/static/activity.js` — superseded by `static/sse-init.js` (~20 lines) which exists solely to keep `window._activitySSE` alive so `workflow_edit.html`'s "Try It" step-progress poller has something to attach to
+
+## [v0.14.1] - 2026-05-22
 
 UI contrast pass: bump weak grays so secondary text actually reads, and make destructive/action links look like buttons instead of faded suggestions.
 
