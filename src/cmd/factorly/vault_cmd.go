@@ -337,12 +337,16 @@ func openVault() (*vault.LocalBackend, error) {
 		return nil, fmt.Errorf("no vault tier resolved (check --workspace name)")
 	}
 	vlog("vault path: %s", t.Path)
-	pw, err := t.ResolvePassword(true)
+	b, pw, err := t.ResolveAndOpen(true)
 	if err != nil {
 		return nil, err
 	}
-	defer pw.Zero()
-	return vault.OpenLocalAt(t.Path, pw)
+	pw.Zero()
+	local, ok := b.(*vault.LocalBackend)
+	if !ok {
+		return nil, fmt.Errorf("openVault: tier returned non-local backend")
+	}
+	return local, nil
 }
 
 // errProjectVaultLocked / errGlobalVaultLocked signal that no
@@ -393,9 +397,9 @@ func openWorkspaceChainOrNil(name string, prompt bool) (vault.Backend, error) {
 	if !t.Exists() {
 		return nil, nil
 	}
-	wsPw, err := t.ResolvePassword(prompt)
+	wsBackend, wsPw, err := t.ResolveAndOpen(prompt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening workspace vault: %w", err)
 	}
 	defer wsPw.Zero()
 
@@ -403,12 +407,6 @@ func openWorkspaceChainOrNil(name string, prompt bool) (vault.Backend, error) {
 	// and may use it after this function returns; an independent
 	// lifetime is what Clone is for.
 	pwForFallback := wsPw.Clone()
-
-	wsBackend, err := t.Open(wsPw)
-	if err != nil {
-		pwForFallback.Zero()
-		return nil, fmt.Errorf("opening workspace vault: %w", err)
-	}
 	return &vault.FallbackBackend{
 		Primary: wsBackend,
 		SecondaryOpen: func() (vault.Backend, error) {
@@ -536,17 +534,10 @@ func openWithCandidateOrPrompt(t vaultTier, candidate vault.Secret, successMsg s
 		vlog("shared password didn't unlock %s; prompting", t.Path)
 		candidate.Zero()
 	}
-	pw, err := t.ResolvePassword(true)
-	if err != nil {
-		return nil, vault.Secret{}, err
-	}
-	b, err := t.Open(pw)
-	if err != nil {
-		pw.Zero()
-		return nil, vault.Secret{}, err
-	}
-	// pw becomes the returned Secret — caller owns it now.
-	return b, pw, nil
+	// Hand off to the tier's prompt-with-retry helper. Wrong-password
+	// failures at the interactive prompt re-prompt up to N times;
+	// env / keyfile failures surface immediately.
+	return t.ResolveAndOpen(true)
 }
 
 // errWorkspaceVaultLocked signals that no automatic password source

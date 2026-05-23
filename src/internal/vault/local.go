@@ -139,7 +139,12 @@ func OpenLocalAt(path string, password Secret) (*LocalBackend, error) {
 
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return nil, fmt.Errorf("decrypting vault (wrong password?): %w", err)
+		// Wrap ErrWrongPassword so callers (the CLI prompt loop, the
+		// UI unlock dialog) can detect this specific failure and offer
+		// a retry. Other open errors above (file I/O, corrupt header)
+		// keep their original wrapping — retrying with a different
+		// password won't fix them.
+		return nil, fmt.Errorf("decrypting vault: %w (underlying: %v)", ErrWrongPassword, err)
 	}
 
 	// Detect version

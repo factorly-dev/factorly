@@ -9,6 +9,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -177,6 +178,13 @@ func TestLocalWrongPassword(t *testing.T) {
 	_, err = OpenLocalAt(path, NewSecret([]byte("wrong-password")))
 	if err == nil {
 		t.Fatal("expected error for wrong password")
+	}
+	// Callers (CLI prompt loop, UI unlock dialog) branch on this
+	// sentinel to decide whether a retry is worth offering. If the
+	// wrapping breaks, the prompt loop falls back to single-attempt
+	// behavior and the regression goes silent — pin it explicitly.
+	if !errors.Is(err, ErrWrongPassword) {
+		t.Errorf("expected wrong-password error to wrap ErrWrongPassword, got %v", err)
 	}
 }
 

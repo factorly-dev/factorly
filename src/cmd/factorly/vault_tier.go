@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -173,6 +174,121 @@ func (t vaultTier) Open(pw vault.Secret) (vault.Backend, error) {
 	return vault.OpenLocalAt(t.Path, pw)
 }
 
+// vaultPromptAttempts caps the number of interactive password tries
+// before the CLI gives up. Matches sudo-style "you get three tries."
+// Non-interactive sources (env / keyfile) get one attempt — retrying
+// would re-derive the same key from the same source and re-fail.
+const vaultPromptAttempts = 3
+
+// ResolveAndOpen ties the prompt loop to the open call so a wrong
+// password at the interactive prompt re-prompts up to vaultPromptAttempts
+// times before failing. Env-var and key-file sources fail on the
+// first wrong password — retrying static sources can't change the
+// answer, and silently falling through to prompt would confuse
+// scripted callers.
+//
+// Returns the opened backend AND the Secret that unlocked it. Caller
+// owns the Secret and must Zero() it. On failure, no Secret is
+// returned (caller has nothing to zero).
+//
+// allowPrompt mirrors ResolvePassword's flag: pass false for paths
+// that must not block on stdin (the UI unlock-dialog source path).
+func (t vaultTier) ResolveAndOpen(allowPrompt bool) (vault.Backend, vault.Secret, error) {
+	// Phase 1: non-interactive sources. If env or keyfile resolves,
+	// we open exactly once. A wrong password from these sources is a
+	// surface-it-loudly error — no retry, because retrying the same
+	// static value would just re-fail.
+	if pw, source, ok, err := t.resolveNonInteractive(); err != nil {
+		return nil, vault.Secret{}, err
+	} else if ok {
+		b, err := t.Open(pw)
+		if err != nil {
+			pw.Zero()
+			if errors.Is(err, vault.ErrWrongPassword) {
+				return nil, vault.Secret{}, fmt.Errorf("%s vault: %s did not unlock %s", t.Name, source, t.Path)
+			}
+			return nil, vault.Secret{}, err
+		}
+		return b, pw, nil
+	}
+
+	if !allowPrompt {
+		return nil, vault.Secret{}, t.LockedErr
+	}
+
+	// Phase 2: interactive prompt with retry. Each iteration prompts
+	// fresh — we never reuse a Secret across attempts.
+	var lastErr error
+	for attempt := 1; attempt <= vaultPromptAttempts; attempt++ {
+		pw, err := promptSecret(t.PromptLabel)
+		if err != nil {
+			return nil, vault.Secret{}, err
+		}
+		if pw.Empty() {
+			pw.Zero()
+			lastErr = fmt.Errorf("vault password cannot be empty")
+			fmt.Fprintln(os.Stderr, lastErr)
+			continue
+		}
+		b, err := t.Open(pw)
+		if err == nil {
+			return b, pw, nil
+		}
+		pw.Zero()
+		lastErr = err
+		if !errors.Is(err, vault.ErrWrongPassword) {
+			// Non-password failure (corrupt file, I/O). Fail hard;
+			// the next prompt isn't going to fix it.
+			return nil, vault.Secret{}, err
+		}
+		remaining := vaultPromptAttempts - attempt
+		if remaining > 0 {
+			fmt.Fprintf(os.Stderr, "Incorrect password, try again (%d %s left).\n",
+				remaining, plural(remaining, "attempt", "attempts"))
+		}
+	}
+	return nil, vault.Secret{}, fmt.Errorf("vault unlock failed after %d attempts: %w", vaultPromptAttempts, lastErr)
+}
+
+// resolveNonInteractive checks env vars and key file (in that order)
+// and returns (secret, source-name, found, error). Splits the
+// non-prompt half of ResolvePassword out so ResolveAndOpen can
+// branch on the password source. We can't just call ResolvePassword
+// because we need to know which source the password came from.
+func (t vaultTier) resolveNonInteractive() (vault.Secret, string, bool, error) {
+	for _, e := range t.EnvVars {
+		pw, ok := os.LookupEnv(e.Name)
+		if !ok {
+			continue
+		}
+		if pw == "" {
+			if e.Strict {
+				return vault.Secret{}, "", false, fmt.Errorf("%s is set but empty", e.Name)
+			}
+			continue
+		}
+		vlog("%s vault password from %s", t.Name, e.Name)
+		return vault.SecretFromString(pw), e.Name, true, nil
+	}
+	if t.KeyFile != "" {
+		if pw, err := readKeyFile(t.KeyFile); err == nil {
+			vlog("%s vault password from %s", t.Name, t.KeyFile)
+			return pw, t.KeyFile, true, nil
+		}
+	}
+	return vault.Secret{}, "", false, nil
+}
+
+// plural picks the singular or plural form based on n. Tiny helper —
+// "1 attempt left" vs "2 attempts left" reads more naturally than
+// "1 attempts left."
+func plural(n int, singular, plural string) string {
+	if n == 1 {
+		return singular
+	}
+	return plural
+}
+
 // OpenChain opens the tier and returns the right chain shape for it.
 //
 //   - explicit tiers (--vault-path / FACTORLY_VAULT_PATH) → single
@@ -194,12 +310,14 @@ func (t vaultTier) OpenChain(allowPrompt bool) (vault.Backend, error) {
 	switch {
 	case strings.HasPrefix(t.Name, "explicit:"):
 		// Single vault, no chain. Honors the user's pin exactly.
-		pw, err := t.ResolvePassword(allowPrompt)
+		// ResolveAndOpen handles the prompt-retry-on-wrong-password
+		// loop for interactive callers.
+		b, pw, err := t.ResolveAndOpen(allowPrompt)
 		if err != nil {
 			return nil, err
 		}
-		defer pw.Zero()
-		return t.Open(pw)
+		pw.Zero()
+		return b, nil
 	case strings.HasPrefix(t.Name, "workspace:"):
 		// Workspace name lives in t.Name after the prefix.
 		name := strings.TrimPrefix(t.Name, "workspace:")

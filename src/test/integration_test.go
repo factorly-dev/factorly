@@ -2939,9 +2939,101 @@ func TestVaultWrongPasswordFails(t *testing.T) {
 		"FACTORLY_VAULT_PASSWORD=wrong-password",
 		"FACTORLY_VAULT_PATH="+vp,
 	)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err == nil {
 		t.Fatal("expected error for wrong vault password")
+	}
+	// Env-var-sourced passwords don't retry (retrying the same env
+	// value would just re-fail). The error message names the source
+	// and the vault path so users know what to fix.
+	es := stderr.String()
+	if !strings.Contains(es, "FACTORLY_VAULT_PASSWORD") {
+		t.Errorf("expected env-var name in error, got %q", es)
+	}
+	if !strings.Contains(es, "did not unlock") {
+		t.Errorf("expected 'did not unlock' phrasing, got %q", es)
+	}
+}
+
+// TestVaultInteractivePromptRetries pins the new "3 attempts" prompt
+// loop. Piping three lines on stdin: two wrong, one right. The first
+// two should produce "Incorrect password, try again" messages on
+// stderr; the third unlocks and the command succeeds.
+//
+// We don't pipe a separate FACTORLY_VAULT_PASSWORD here — that env
+// var would short-circuit the prompt path entirely.
+func TestVaultInteractivePromptRetries(t *testing.T) {
+	vp := filepath.Join(t.TempDir(), "vault.enc")
+
+	// Create vault with the known password.
+	runVault(t, vp, "vault", "set", "KEY", "value")
+
+	// Now invoke `vault list` without FACTORLY_VAULT_PASSWORD; pipe
+	// stdin with three attempts. The CLI's prompt path reads from
+	// stdin via bufio.Scanner when stdin isn't a TTY (which it isn't
+	// here since we're piping). "testpass123" is the password used
+	// by runVault above.
+	cmd := exec.Command(binary, "vault", "list")
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PATH="+vp,
+	)
+	// Strip any vault password env that might be inherited.
+	cleaned := cmd.Env[:0]
+	for _, e := range cmd.Env {
+		if strings.HasPrefix(e, "FACTORLY_VAULT_PASSWORD=") {
+			continue
+		}
+		cleaned = append(cleaned, e)
+	}
+	cmd.Env = cleaned
+	cmd.Stdin = strings.NewReader("wrong-one\nwrong-two\ntestpass123\n")
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("expected success after retry; err=%v stdout=%q stderr=%q",
+			err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "Incorrect password") {
+		t.Errorf("expected 'Incorrect password' message after wrong attempt, got stderr=%q", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "KEY") {
+		t.Errorf("expected 'KEY' in list output after eventual success, got stdout=%q", stdout.String())
+	}
+}
+
+// TestVaultInteractivePromptFailsAfterMaxAttempts pins the upper
+// bound: three wrong passwords in a row → command exits non-zero
+// with a "after 3 attempts" message.
+func TestVaultInteractivePromptFailsAfterMaxAttempts(t *testing.T) {
+	vp := filepath.Join(t.TempDir(), "vault.enc")
+	runVault(t, vp, "vault", "set", "KEY", "value")
+
+	cmd := exec.Command(binary, "vault", "list")
+	cmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PATH="+vp,
+	)
+	cleaned := cmd.Env[:0]
+	for _, e := range cmd.Env {
+		if strings.HasPrefix(e, "FACTORLY_VAULT_PASSWORD=") {
+			continue
+		}
+		cleaned = append(cleaned, e)
+	}
+	cmd.Env = cleaned
+	cmd.Stdin = strings.NewReader("nope1\nnope2\nnope3\n")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected non-zero exit after 3 wrong attempts")
+	}
+	if !strings.Contains(stderr.String(), "3 attempts") {
+		t.Errorf("expected error to mention 3 attempts, got %q", stderr.String())
 	}
 }
 
