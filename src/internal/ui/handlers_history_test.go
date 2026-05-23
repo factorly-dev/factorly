@@ -202,12 +202,12 @@ func TestHistoryDetail_ReturnsRowBodyFragment(t *testing.T) {
 	// Body should NOT contain the page layout chrome — just the row
 	// detail fragment (the partial). Look for distinctive bits.
 	for _, want := range []string{
-		"echo.tool",      // tool name appears in the Replay link href
-		"42ms",           // duration
-		"hello",          // params value
-		"Parameters",     // section header
-		"Replay",         // action button (entry is replayable)
-		"Edit & Replay",  // action button
+		"echo.tool",     // tool name appears in the Replay link href
+		"42ms",          // duration
+		"hello",         // params value
+		"Parameters",    // section header
+		"Replay",        // action button (entry is replayable)
+		"Edit & Replay", // action button
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("expected %q in detail fragment, body=%s", want, body)

@@ -31,13 +31,13 @@ import (
 // rows on init so subsequent workflow_step events merge into the
 // right parent rather than creating duplicates.
 type dashboardData struct {
-	HasAnyCalls   bool
-	QuickStart    []ctaTile
-	TopTools      []toolRollup
-	TopVaultKeys  []vaultRollup
-	Oversight     oversightCounts
-	FeedSeed      []historyGroup
-	WindowLabel   string
+	HasAnyCalls  bool
+	QuickStart   []ctaTile
+	TopTools     []toolRollup
+	TopVaultKeys []vaultRollup
+	Oversight    oversightCounts
+	FeedSeed     []historyGroup
+	WindowLabel  string
 }
 
 // ctaTile is one quick-start card shown when the user has no audit
