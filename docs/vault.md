@@ -69,6 +69,40 @@ factorly call github.repos --username octocat
   → agent sees only the response data
 ```
 
+## Trust model: where `{{vault:K}}` references resolve
+
+Factorly substitutes `{{backend:key}}` references in two distinct contexts. The trust model is different for each.
+
+**Tool configuration (operator-authored, trusted).** Refs in `factorly.yaml` — `auth.token`, `args:`, `headers:`, parameter `default:` values, anything the operator wrote — resolve at config-load time. The operator wrote them; the vault password (or the equivalent) gates access. Standard behavior.
+
+**Caller-supplied parameter values (potentially untrusted).** Refs that an agent, an MCP client, or a CLI invocation puts INTO a parameter value at call time. These default to a stricter rule:
+
+- Safe backends (`env`, `store`, `expr`) always resolve. They don't expose anything the caller didn't already have.
+- Secret backends (`vault`, `op`, external secret backends) **DO NOT resolve** unless the tool's parameter config opts in via `hydrate_vault_refs: true`. The literal template string flows through to the call body and the audit log.
+
+Why: an LLM-generated parameter value can contain a literal `{{vault:KEY}}` string the model produced by accident or by injection. Without this gating, that string would get hydrated into the outbound call and into the audit log — leaking the secret into a place the agent (or downstream API) can read.
+
+```yaml
+# A tool with an HMAC-signing param that legitimately accepts a vault ref.
+# The caller can pass {{vault:HMAC_KEY}} and it will resolve.
+tools:
+  api.signed:
+    type: rest
+    method: POST
+    url: https://api.example.com/sign
+    parameters:
+      - name: signing_key
+        required: true
+        hydrate_vault_refs: true  # opt in for this param only
+      - name: payload
+        required: true
+        # No flag → default-deny → caller can't sneak a vault ref into the payload.
+```
+
+If you're tempted to set `hydrate_vault_refs: true` widely, consider instead setting the parameter's `default:` to `"{{vault:K}}"` (config-authored, resolved at bootstrap from the operator's trusted config; the caller never has to know about the vault key).
+
+When a secret-backend ref does resolve (config default firing, or an opt-in caller param), the audit log records the original `{{vault:K}}` template string in `params`, not the resolved secret. The provider call body itself does receive the resolved value — that's the whole point — so a tool that echoes its inputs back (like a debug API) can still leak through the response; this is documented separately.
+
 ## Encryption details
 
 | Layer | Algorithm | Key derivation | Purpose |

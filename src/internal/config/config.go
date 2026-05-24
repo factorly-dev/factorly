@@ -131,6 +131,25 @@ type ParamConfig struct {
 	In          string `yaml:"in,omitempty"`      // "query", "path", "header", "body"
 	Type        string `yaml:"type,omitempty"`    // "string" (default), "integer", "number", "boolean", "json"
 	Default     string `yaml:"default,omitempty"` // default value if not provided by caller
+	// HydrateVaultRefs opts THIS param's caller-supplied value into
+	// secret-backend substitution ({{vault:K}}, {{op:...}}, external
+	// backends). DEFAULT FALSE — and it should stay that way for the
+	// vast majority of params. Caller-supplied values include LLM
+	// outputs that can be coerced into producing literal "{{vault:K}}"
+	// strings; resolving those strings would leak the secret into the
+	// outbound call body and the audit log.
+	//
+	// Set to true ONLY for params whose semantic role is "a credential
+	// I want the caller to fill in" — e.g. an explicit signing_key
+	// param on a custom HMAC-auth tool that's documented as accepting
+	// a vault reference. Even then, prefer setting the param's
+	// Default to {{vault:K}} so the substitution happens at bootstrap
+	// from operator-authored config, not at call time from
+	// caller-controlled input.
+	//
+	// Safe backends (env, store, expr) always resolve regardless of
+	// this flag — see internal/vault/resolver.go IsSafeBackendName.
+	HydrateVaultRefs bool `yaml:"hydrate_vault_refs,omitempty"`
 	// Validation rules
 	Min       *float64 `yaml:"min,omitempty"`
 	Max       *float64 `yaml:"max,omitempty"`

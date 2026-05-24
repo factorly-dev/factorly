@@ -205,13 +205,47 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		}
 	}
 
-	// Resolve {{backend:content}} patterns in param values (e.g., {{expr:now()}})
+	// Resolve {{backend:content}} patterns in param values.
+	//
+	// Caller-supplied values (this is the call path; the bootstrap
+	// path for config-side templates is handled separately at config
+	// load time) go through ResolveCallerParam, which:
+	//   - Always resolves safe backends ({{env:V}}, {{store:K}},
+	//     {{expr:...}}) — they don't expose anything the caller
+	//     didn't already have access to.
+	//   - Resolves secret backends ({{vault:K}}, {{op:...}}, external
+	//     backends) ONLY if the tool's ParamConfig opted that
+	//     specific param in via HydrateVaultRefs: true.
+	//
+	// Without this gating, a literal "{{vault:K}}" in caller-supplied
+	// input (e.g. an LLM-generated tool param value) would silently
+	// hydrate the secret into the outbound call and the audit log.
+	// See vault.IsSafeBackendName for the allowlist and
+	// internal/config/config.go ParamConfig.HydrateVaultRefs for the
+	// opt-in semantics.
+	//
+	// secretRefs collects {{vault:K}}-style templates that DID
+	// resolve against a secret backend (i.e. the param opted in).
+	// It's keyed by param name so the audit-log step below can
+	// replace the resolved value with the original template string,
+	// keeping the persisted log free of plaintext secrets.
+	var secretRefs map[string][]string
 	if p.resolver != nil {
 		for k, v := range params {
-			if strings.Contains(v, "{{") {
-				if resolved, err := p.resolver.Resolve(v); err == nil {
-					params[k] = resolved
+			if !strings.Contains(v, "{{") {
+				continue
+			}
+			allow := paramAllowsSecretBackends(tool, k)
+			resolved, refs, err := p.resolver.ResolveCallerParam(v, allow)
+			if err != nil {
+				continue
+			}
+			params[k] = resolved
+			if len(refs) > 0 {
+				if secretRefs == nil {
+					secretRefs = make(map[string][]string)
 				}
+				secretRefs[k] = refs
 			}
 		}
 	}
@@ -227,7 +261,7 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 				Timestamp:    time.Now(),
 				Interface:    iface,
 				Tool:         toolName,
-				Params:       params,
+				Params:       p.redactSecretRefsInParams(params, secretRefs),
 				Status:       "blocked",
 				ShadowAction: string(shadow.ActionInvalid),
 				Error:        strings.Join(validationResult.Errors, "; "),
@@ -246,18 +280,21 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		action, err := p.shadow.Check(ctx, toolName, params, iface)
 		shadowAction = action
 		if err != nil {
-			// Log the denial
+			// Log the denial. Use the redacted-copy for both Params and
+			// HighlightParams so a shadow-denied call with a vault ref
+			// in its body doesn't leak the secret into the deny log.
+			redacted := p.redactSecretRefsInParams(params, secretRefs)
 			entry := &logger.Entry{
 				Timestamp:    time.Now(),
 				Interface:    iface,
 				Tool:         toolName,
-				Params:       params,
+				Params:       redacted,
 				Status:       "blocked",
 				ShadowAction: string(action),
 				Error:        err.Error(),
 			}
 			if logParams := p.shadow.LogParamsFor(toolName); len(logParams) > 0 {
-				entry.HighlightParams = filterParams(params, logParams)
+				entry.HighlightParams = filterParams(redacted, logParams)
 			}
 			entry.AgentID = agentID
 			_ = p.logger.Log(entry)
@@ -277,7 +314,7 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 				Timestamp:    time.Now(),
 				Interface:    iface,
 				Tool:         toolName,
-				Params:       params,
+				Params:       p.redactSecretRefsInParams(params, secretRefs),
 				Status:       "blocked",
 				ShadowAction: "guard_blocked",
 				Error:        err.Error(),
@@ -347,12 +384,16 @@ func (p *Proxy) ExecuteWithContext(ctx context.Context, toolName string, params 
 		}
 	}
 
-	// Log the call
+	// Log the call. Redact resolved secret-backend values BACK to
+	// their template strings before persisting; the provider already
+	// ran with the resolved values, but the audit log should reflect
+	// what the caller actually said ("{{vault:K}}"), not what the
+	// secret happened to be.
 	entry := &logger.Entry{
 		Timestamp:      time.Now(),
 		Interface:      iface,
 		Tool:           toolName,
-		Params:         params,
+		Params:         p.redactSecretRefsInParams(params, secretRefs),
 		DurationMs:     result.Duration.Milliseconds(),
 		ShadowAction:   string(shadowAction),
 		AgentID:        agentID,
@@ -443,4 +484,55 @@ func filterParams(params map[string]string, keys []string) map[string]string {
 		}
 	}
 	return result
+}
+
+// paramAllowsSecretBackends reports whether the tool config opts the
+// named param into secret-backend substitution. Default false:
+//   - param is not declared in the tool's Parameters list, OR
+//   - param is declared but HydrateVaultRefs is false (the default).
+//
+// True only when there's a declared ParamConfig with HydrateVaultRefs:
+// true. This keeps the security default (deny secret-backend resolution
+// on caller-supplied values) for any param the operator hasn't
+// explicitly trusted.
+func paramAllowsSecretBackends(tool *registry.Tool, paramName string) bool {
+	if tool == nil {
+		return false
+	}
+	for _, pd := range tool.Parameters {
+		if pd.Name == paramName {
+			return pd.HydrateVaultRefs
+		}
+	}
+	return false
+}
+
+// redactSecretRefsInParams replaces values in the params map that
+// came from a secret-backend substitution with the original
+// "{{backend:key}}" template string. Used right before building a
+// logger.Entry so the audit log persists template strings, not
+// plaintext secrets. secretRefs is keyed by param name; the value
+// is the list of templates that successfully resolved during this
+// call (from Resolver.ResolveCallerParam).
+//
+// Mutates a shallow copy of params so the caller's params map (which
+// is being passed to the provider) is not affected. The audit log
+// gets the redacted copy; the provider gets the resolved values.
+//
+// No-op when secretRefs is empty (the common case). Resolver lookups
+// in RedactToTemplate fall back to no-op when the backend can no
+// longer return the value — the resolved value stays in the audit
+// log in that degenerate case, which is documented.
+func (p *Proxy) redactSecretRefsInParams(params map[string]string, secretRefs map[string][]string) map[string]string {
+	if len(secretRefs) == 0 || p.resolver == nil {
+		return params
+	}
+	out := make(map[string]string, len(params))
+	for k, v := range params {
+		if refs, ok := secretRefs[k]; ok {
+			v = p.resolver.RedactToTemplate(v, refs)
+		}
+		out[k] = v
+	}
+	return out
 }

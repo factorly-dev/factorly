@@ -293,35 +293,46 @@ var callCmd = &cobra.Command{
 			return err
 		}
 
-		// Resolve {{prefix:KEY}} refs in parameter values. Uses the
-		// resolver populated by bootstrapProviders so {{store:KEY}},
-		// {{env:VAR}}, {{expr:...}} all work in command-line param
-		// values, not just in tool YAML defaults.
+		// Lazy-open the vault if the called tool has any param with
+		// hydrate_vault_refs: true AND the user passed a {{vault:K}}
+		// ref in that param's value. The proxy's resolver path
+		// (ResolveCallerParam) does the actual substitution; this
+		// block just makes sure the vault backend is registered on
+		// the resolver before the call lands.
 		//
-		// Vault refs need extra handling: when no {{vault:...}} ref
-		// appears in the config, initResolver intentionally skips
-		// opening the vault (no password prompt for vault-free
-		// projects). But the user might still pass a vault ref on the
-		// command line. So check for that case and lazily open vault
-		// here, registering it on the cached resolver.
+		// We DO NOT pre-resolve params here. That used to happen and
+		// it was the bug: every caller-supplied value with a {{ ... }}
+		// pattern got expanded against every backend, including vault,
+		// before the proxy's per-param opt-in gate could see it.
+		// Pre-resolution leaked secrets into the audit log and into
+		// the outbound call body. The proxy now owns the substitution
+		// pass and applies the gating; we only need to ensure the
+		// resolver has the backends it might need.
 		resolver := getCachedResolver()
 		if resolver != nil {
-			needsVault := false
-			for _, v := range params {
-				if vault.HasVaultRefs(v) {
-					needsVault = true
-					break
+			toolCfg, hasTool := cfg.Tools[toolName]
+			if hasTool {
+				needsVault := false
+				for _, p := range toolCfg.Parameters {
+					if !p.HydrateVaultRefs {
+						continue
+					}
+					v, ok := params[p.Name]
+					if !ok {
+						v = p.Default
+					}
+					if vault.HasVaultRefs(v) {
+						needsVault = true
+						break
+					}
 				}
-			}
-			if needsVault {
-				backend, err := getCachedVault()
-				if err != nil {
-					return fmt.Errorf("resolving vault refs in params: %w", err)
+				if needsVault {
+					backend, err := getCachedVault()
+					if err != nil {
+						return fmt.Errorf("opening vault for hydrate_vault_refs param: %w", err)
+					}
+					resolver.Register("vault", backend)
 				}
-				resolver.Register("vault", backend)
-			}
-			for k, pv := range params {
-				params[k] = resolveVaultRef(resolver, pv)
 			}
 		}
 
@@ -690,17 +701,18 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 		params := make([]registry.Parameter, len(toolCfg.Parameters))
 		for i, p := range toolCfg.Parameters {
 			params[i] = registry.Parameter{
-				Name:        p.Name,
-				Description: p.Description,
-				Required:    p.Required,
-				Type:        p.Type,
-				Default:     p.Default,
-				Min:         p.Min,
-				Max:         p.Max,
-				MinLength:   p.MinLength,
-				MaxLength:   p.MaxLength,
-				Pattern:     p.Pattern,
-				Enum:        p.Enum,
+				Name:             p.Name,
+				Description:      p.Description,
+				Required:         p.Required,
+				Type:             p.Type,
+				Default:          p.Default,
+				HydrateVaultRefs: p.HydrateVaultRefs,
+				Min:              p.Min,
+				Max:              p.Max,
+				MinLength:        p.MinLength,
+				MaxLength:        p.MaxLength,
+				Pattern:          p.Pattern,
+				Enum:             p.Enum,
 			}
 		}
 		tool := &registry.Tool{

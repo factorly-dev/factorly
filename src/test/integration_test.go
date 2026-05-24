@@ -1545,7 +1545,17 @@ tools:
 
 // --- Vault Refs in Params ---
 
-func TestCallParamWithVaultRef(t *testing.T) {
+// TestCallParamWithVaultRef_DefaultDenies pins the security default
+// (introduced when we closed the caller-side vault-hydration leak):
+// a `{{vault:KEY}}` template in a caller-supplied param value does
+// NOT resolve. The param's tool config has no hydrate_vault_refs
+// opt-in, so the literal template flows through to the provider.
+//
+// (This test previously asserted the OPPOSITE behavior — that's the
+// vulnerability it was inadvertently documenting. See
+// TestVaultHydrationCallerParamRespectsHydrateVaultRefsFlag for the
+// per-param opt-in path.)
+func TestCallParamWithVaultRef_DefaultDenies(t *testing.T) {
 	dir := setupDir(t, map[string]string{
 		"factorly.yaml": `
 tools:
@@ -1553,6 +1563,9 @@ tools:
     type: cli
     command: echo
     args: ["{{text}}"]
+    parameters:
+      - name: text
+        required: true
 `,
 	})
 
@@ -1564,14 +1577,19 @@ tools:
 		t.Fatal("vault set failed")
 	}
 
-	// Call with {{vault:KEY}} as param value — should resolve
+	// Call with {{vault:KEY}} as caller param. Without
+	// hydrate_vault_refs: true on the `text` param, the template
+	// must flow through verbatim — that's the security guarantee.
 	stdout, _, code := runVault(t, vaultPath, "-c", filepath.Join(dir, "factorly.yaml"),
 		"call", "echo.test", "--text", "{{vault:MY_SECRET}}")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
-	if strings.TrimSpace(stdout) != "resolved-value" {
-		t.Errorf("expected 'resolved-value', got %q", stdout)
+	if strings.TrimSpace(stdout) != "{{vault:MY_SECRET}}" {
+		t.Errorf("expected literal template (security default-deny), got %q", stdout)
+	}
+	if strings.Contains(stdout, "resolved-value") {
+		t.Errorf("LEAK: vault secret resolved into caller-supplied param value despite no opt-in: %q", stdout)
 	}
 }
 
@@ -2235,6 +2253,197 @@ tools:
 	}
 	if !strings.Contains(out.String(), "secret=resolved_value") {
 		t.Errorf("expected 'secret=resolved_value', got %q", out.String())
+	}
+}
+
+// --- Caller-supplied {{vault:K}} hydration safety (regression for the
+// pre-v0.16.1 leak where agent-supplied params got resolved against
+// every backend, including vault, with no opt-in). ---
+
+// TestVaultHydrationCallerParamSkippedByDefault is the regression test
+// for the original Trello-card leak: an agent (or human) passes a
+// literal "{{vault:KEY}}" as the value of a tool parameter, and the
+// expectation is that the secret does NOT get substituted into the
+// outbound call or the audit log.
+//
+// Set up: vault with a known secret, plus a tool with a `text` param
+// that the call repeats verbatim via `echo`. Caller passes
+// `{{vault:LEAK_TEST_SECRET}}` as text. Verify (1) echo prints the
+// literal template, not the secret, and (2) the audit log records the
+// literal template.
+func TestVaultHydrationCallerParamSkippedByDefault(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `
+disable_builtins: true
+tools:
+  test.echo:
+    type: cli
+    command: echo
+    args: ["{{text}}"]
+    parameters:
+      - name: text
+        required: true
+`,
+	})
+	vaultPath := filepath.Join(dir, ".factorly", "vault.enc")
+	logPath := filepath.Join(dir, ".factorly", "audit.jsonl")
+
+	// Seed a vault secret. Distinctive sentinel so a grep can't false-positive.
+	setCmd := exec.Command(binary, "vault", "--vault-path", vaultPath, "set", "LEAK_TEST_SECRET", "the-actual-real-secret-do-not-leak")
+	setCmd.Dir = dir
+	setCmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PASSWORD=pw",
+	)
+	if err := setCmd.Run(); err != nil {
+		t.Fatalf("seed vault: %v", err)
+	}
+
+	// Call the tool, passing the vault template as a CALLER param value.
+	// Note: NO FACTORLY_NO_LOG so the audit log is written. The vault
+	// password is provided so the resolver could open the vault if it
+	// wanted to — proving the substitution is gated, not just blocked
+	// by the vault being locked.
+	callCmd := exec.Command(binary, "call", "test.echo", "--text", "{{vault:LEAK_TEST_SECRET}}")
+	callCmd.Dir = dir
+	callCmd.Env = append(os.Environ(),
+		"FACTORLY_PROJECT_VAULT_PASSWORD=pw",
+	)
+	var out, errOut strings.Builder
+	callCmd.Stdout = &out
+	callCmd.Stderr = &errOut
+	if err := callCmd.Run(); err != nil {
+		t.Fatalf("call failed: %v\nstderr: %s", err, errOut.String())
+	}
+
+	// Provider stdout must show the LITERAL template, not the secret.
+	if strings.Contains(out.String(), "the-actual-real-secret-do-not-leak") {
+		t.Errorf("THE BUG: vault secret leaked into provider call output: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "{{vault:LEAK_TEST_SECRET}}") {
+		t.Errorf("expected literal template in output, got %q", out.String())
+	}
+
+	// Audit log's params.* field must not contain the secret.
+	// (In this test the tool is `echo`, which echoes its argument
+	// back, so the `output` field would also be scanned if we
+	// substring-searched the whole log — but here the proxy never
+	// substituted in the first place, so output is also the literal
+	// template. We assert against params specifically to mirror the
+	// opted-in test below.)
+	logBytes, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	logStr := string(logBytes)
+	type entryShape struct {
+		Params map[string]string `json:"params"`
+	}
+	var entry entryShape
+	for _, line := range strings.Split(strings.TrimSpace(logStr), "\n") {
+		if err := json.Unmarshal([]byte(line), &entry); err == nil && entry.Params != nil {
+			break
+		}
+	}
+	if got := entry.Params["text"]; got != "{{vault:LEAK_TEST_SECRET}}" {
+		t.Errorf("audit log params.text should show literal template, got %q", got)
+	}
+	if strings.Contains(entry.Params["text"], "the-actual-real-secret-do-not-leak") {
+		t.Errorf("THE BUG: audit log params.text leaked the secret: %q", entry.Params["text"])
+	}
+}
+
+// TestVaultHydrationCallerParamRespectsHydrateVaultRefsFlag verifies
+// the per-param opt-in escape hatch. Same setup but the tool's
+// `text` param declares `hydrate_vault_refs: true`. Now:
+//   - Provider DOES get the resolved secret (the opt-in is the
+//     contract: tool author said "this param will carry vault refs").
+//   - Audit log STILL shows the template, not the secret (the
+//     redaction step runs regardless of who opted in).
+func TestVaultHydrationCallerParamRespectsHydrateVaultRefsFlag(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `
+disable_builtins: true
+tools:
+  test.echo:
+    type: cli
+    command: echo
+    args: ["{{text}}"]
+    parameters:
+      - name: text
+        required: true
+        hydrate_vault_refs: true
+`,
+	})
+	vaultPath := filepath.Join(dir, ".factorly", "vault.enc")
+	logPath := filepath.Join(dir, ".factorly", "audit.jsonl")
+
+	setCmd := exec.Command(binary, "vault", "--vault-path", vaultPath, "set", "OPTED_IN_SECRET", "this-is-the-opted-in-secret")
+	setCmd.Dir = dir
+	setCmd.Env = append(os.Environ(),
+		"FACTORLY_NO_LOG=1",
+		"FACTORLY_VAULT_PASSWORD=pw",
+	)
+	if err := setCmd.Run(); err != nil {
+		t.Fatalf("seed vault: %v", err)
+	}
+
+	callCmd := exec.Command(binary, "call", "test.echo", "--text", "key: {{vault:OPTED_IN_SECRET}}")
+	callCmd.Dir = dir
+	callCmd.Env = append(os.Environ(),
+		"FACTORLY_PROJECT_VAULT_PASSWORD=pw",
+	)
+	var out, errOut strings.Builder
+	callCmd.Stdout = &out
+	callCmd.Stderr = &errOut
+	if err := callCmd.Run(); err != nil {
+		t.Fatalf("call failed: %v\nstderr: %s", err, errOut.String())
+	}
+
+	// Provider DID get the resolved value (this is the opt-in path).
+	if !strings.Contains(out.String(), "this-is-the-opted-in-secret") {
+		t.Errorf("with hydrate_vault_refs: true the provider should receive the resolved secret, got %q", out.String())
+	}
+
+	// Audit log's params.* field MUST NOT contain the secret — the
+	// redaction step runs even on opted-in params.
+	//
+	// Note: the audit log's `output` field WILL contain the secret
+	// in this specific test setup because the tool is `echo`, which
+	// reflects its input back. That's an inherent provider behavior
+	// ("the API gave it back") and is out of scope for this fix —
+	// see CHANGELOG / docs. The fix scope is "don't leak the
+	// caller's vault refs into params, and don't leak resolved
+	// values from substitution into params." Output redaction is a
+	// separate concern.
+	logBytes, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	logStr := string(logBytes)
+
+	// Parse the entry so we can check the `params` field specifically
+	// instead of substring-searching across the whole row (which would
+	// false-positive on the `output` field).
+	type entryShape struct {
+		Params map[string]string `json:"params"`
+		Output string            `json:"output"`
+	}
+	var entry entryShape
+	for _, line := range strings.Split(strings.TrimSpace(logStr), "\n") {
+		if err := json.Unmarshal([]byte(line), &entry); err == nil && entry.Params != nil {
+			break
+		}
+	}
+	if got := entry.Params["text"]; got != "key: {{vault:OPTED_IN_SECRET}}" {
+		t.Errorf("audit log params.text should show template after redaction, got %q", got)
+	}
+	if strings.Contains(entry.Params["text"], "this-is-the-opted-in-secret") {
+		t.Errorf("audit log params.text leaked the resolved secret: %q", entry.Params["text"])
 	}
 }
 

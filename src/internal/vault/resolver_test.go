@@ -471,3 +471,186 @@ func TestResolveFuncComplexExpr(t *testing.T) {
 		t.Errorf("expected full expression passed, got %q", result)
 	}
 }
+
+// --- IsSafeBackendName / IsSecretBackendName ---
+
+func TestIsSafeBackendName(t *testing.T) {
+	cases := []struct {
+		name string
+		safe bool
+	}{
+		{"env", true},
+		{"store", true},
+		{"expr", true},
+		{"vault", false},
+		{"op", false},
+		{"aws-sm", false},
+		{"1password", false},
+		{"future-backend-we-havent-imagined", false}, // default-deny is the safe behavior
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := IsSafeBackendName(c.name); got != c.safe {
+			t.Errorf("IsSafeBackendName(%q) = %v, want %v", c.name, got, c.safe)
+		}
+		if got := IsSecretBackendName(c.name); got == c.safe {
+			t.Errorf("IsSecretBackendName(%q) should be inverse of IsSafeBackendName; got %v vs %v", c.name, got, c.safe)
+		}
+	}
+}
+
+// --- ResolveCallerParam ---
+
+func TestResolveCallerParam_SkipsSecretBackendByDefault(t *testing.T) {
+	// Without opt-in, a caller-supplied {{vault:K}} must NOT resolve.
+	// This is the security guarantee that closes the original leak.
+	r := NewResolver()
+	r.Register("vault", &mockBackend{secrets: map[string]string{"TOKEN": "real-secret-value"}})
+
+	got, refs, err := r.ResolveCallerParam("hello {{vault:TOKEN}} world", false)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if got != "hello {{vault:TOKEN}} world" {
+		t.Errorf("expected vault template to flow through unchanged, got %q", got)
+	}
+	if len(refs) != 0 {
+		t.Errorf("expected no secret refs recorded when gated, got %v", refs)
+	}
+}
+
+func TestResolveCallerParam_AllowsSecretBackendWhenOptedIn(t *testing.T) {
+	// With opt-in, {{vault:K}} resolves AND is reported in secretRefs
+	// so the caller can redact from the audit log.
+	r := NewResolver()
+	r.Register("vault", &mockBackend{secrets: map[string]string{"TOKEN": "real-secret-value"}})
+
+	got, refs, err := r.ResolveCallerParam("hello {{vault:TOKEN}} world", true)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if got != "hello real-secret-value world" {
+		t.Errorf("expected vault value to be substituted when opted in, got %q", got)
+	}
+	if len(refs) != 1 || refs[0] != "{{vault:TOKEN}}" {
+		t.Errorf("expected secretRefs to record the original template, got %v", refs)
+	}
+}
+
+func TestResolveCallerParam_AlwaysResolvesSafeBackends(t *testing.T) {
+	// env / store / expr resolve regardless of allowSecretBackends.
+	// They don't expose secrets the caller didn't already have.
+	r := NewResolver()
+	r.Register("env", &mockBackend{secrets: map[string]string{"USER": "alice"}})
+	r.Register("store", &mockBackend{secrets: map[string]string{"CACHE": "cached-id"}})
+	r.RegisterFunc("expr", func(c string) (string, error) { return "computed:" + c, nil })
+
+	// allowSecretBackends=false should still resolve all three safe backends.
+	got, refs, err := r.ResolveCallerParam("u={{env:USER}} c={{store:CACHE}} x={{expr:now}}", false)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	want := "u=alice c=cached-id x=computed:now"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if len(refs) != 0 {
+		t.Errorf("safe-backend refs must not be reported as secret, got %v", refs)
+	}
+}
+
+func TestResolveCallerParam_MixedBackends(t *testing.T) {
+	// One string with both safe and secret refs; safe ones resolve,
+	// secret ones flow through unchanged, only the latter are
+	// recorded. This is the realistic shape for an agent-supplied
+	// param that includes both legitimate substitutions and an
+	// accidental/malicious vault reference.
+	r := NewResolver()
+	r.Register("env", &mockBackend{secrets: map[string]string{"USER": "alice"}})
+	r.Register("vault", &mockBackend{secrets: map[string]string{"TOKEN": "real-secret-value"}})
+
+	got, refs, err := r.ResolveCallerParam("user={{env:USER}} key={{vault:TOKEN}}", false)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if got != "user=alice key={{vault:TOKEN}}" {
+		t.Errorf("got %q, want partial substitution", got)
+	}
+	if len(refs) != 0 {
+		t.Errorf("expected no secret refs (vault not opted in), got %v", refs)
+	}
+}
+
+func TestResolveCallerParam_RecordsMultipleSecretRefs(t *testing.T) {
+	// Audit redaction needs to know about every secret-backend resolution
+	// so the logger can replace each in turn.
+	r := NewResolver()
+	r.Register("vault", &mockBackend{secrets: map[string]string{
+		"A": "value-a",
+		"B": "value-b",
+	}})
+
+	got, refs, err := r.ResolveCallerParam("{{vault:A}}-{{vault:B}}-{{vault:A}}", true)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if got != "value-a-value-b-value-a" {
+		t.Errorf("got %q, want resolved", got)
+	}
+	if len(refs) != 3 {
+		t.Errorf("expected 3 secret refs (one per occurrence), got %d (%v)", len(refs), refs)
+	}
+}
+
+func TestResolveCallerParam_EscapedReferencePassesThrough(t *testing.T) {
+	// The existing \{{ escape syntax must still work.
+	r := NewResolver()
+	r.Register("vault", &mockBackend{secrets: map[string]string{"TOKEN": "secret"}})
+
+	got, _, err := r.ResolveCallerParam(`\{{vault:TOKEN}}`, true)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if got != "{{vault:TOKEN}}" {
+		t.Errorf("expected escape to pass literal {{...}} through, got %q", got)
+	}
+}
+
+func TestResolveCallerParam_NilResolverIsNoop(t *testing.T) {
+	var r *Resolver
+	got, refs, err := r.ResolveCallerParam("{{vault:K}}", true)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if got != "{{vault:K}}" || len(refs) != 0 {
+		t.Errorf("nil resolver should be a no-op, got %q %v", got, refs)
+	}
+}
+
+// --- RedactToTemplate ---
+
+func TestRedactToTemplate_ReplacesSecretValueWithTemplate(t *testing.T) {
+	r := NewResolver()
+	r.Register("vault", &mockBackend{secrets: map[string]string{"TOKEN": "real-secret"}})
+
+	// Simulate the proxy flow: caller param was "Bearer {{vault:TOKEN}}",
+	// got resolved to "Bearer real-secret", we need to redact the
+	// audit log back to "Bearer {{vault:TOKEN}}".
+	resolved := "Bearer real-secret in some longer string"
+	got := r.RedactToTemplate(resolved, []string{"{{vault:TOKEN}}"})
+	if got != "Bearer {{vault:TOKEN}} in some longer string" {
+		t.Errorf("redaction wrong: %q", got)
+	}
+}
+
+func TestRedactToTemplate_NoOpWhenBackendMissing(t *testing.T) {
+	// If we can't re-fetch the value (backend gone), leave the string
+	// alone rather than corrupting it. The resolver was registered
+	// when the resolution happened; this is a defensive guard for
+	// the unlock-state-lost scenario.
+	r := NewResolver() // no backend registered
+	got := r.RedactToTemplate("the secret value", []string{"{{vault:K}}"})
+	if got != "the secret value" {
+		t.Errorf("expected no-op when backend missing, got %q", got)
+	}
+}

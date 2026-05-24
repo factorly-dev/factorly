@@ -175,4 +175,10 @@ The principle: **the smallest useful primitive that lets the agent remember thin
 
 A v2 privilege-escalation guard is on the roadmap — for v1, the rule is "doc-warn and trust the operator's config review."
 
+### Caller-supplied `{{store:KEY}}` in param values
+
+`{{store:KEY}}` is on the safe-backend allowlist for caller-supplied parameter values — agents can pass it as a param value without any per-param opt-in, and it resolves the same way config-side references do. This is intentional: the store is the agent's own scratchpad, so resolving a store ref can't expose anything the agent didn't already have access to.
+
+Vault, OnePassword, and other secret backends require an explicit per-param opt-in (`hydrate_vault_refs: true` on the parameter's config); see [the vault docs](vault.md) for the full trust model. Store doesn't.
+
 [← Back to Documentation](README.md)

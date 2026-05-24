@@ -16,6 +16,11 @@ type Parameter struct {
 	Required    bool
 	Type        string // "string" (default), "integer", "number", "boolean", "json"
 	Default     string
+	// HydrateVaultRefs mirrors config.ParamConfig.HydrateVaultRefs:
+	// when true, caller-supplied values for THIS param are allowed
+	// to be substituted against secret backends ({{vault:K}} etc.).
+	// Default false. See config.ParamConfig for the full rationale.
+	HydrateVaultRefs bool
 	// Validation rules
 	Min       *float64
 	Max       *float64
