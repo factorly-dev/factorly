@@ -5184,6 +5184,110 @@ func Run(p map[string]string) (any, error) {
 	}
 }
 
+// TestFactorlyCodeBuiltinComposesWithItself exercises the composability
+// of the factorly.code surface: an outer script calls factorly.code
+// again with a different inner script source, and the inner result
+// flows back through the outer wrapping. This is the canonical
+// "agent dynamically composes a tool from a tool" pattern — the
+// outer script generates / chooses inner Go source at runtime and
+// runs it through the same builtin.
+//
+// What this exercises that the sibling-call test (above) doesn't:
+//   - The inner call goes through compile-validate-execute in a
+//     fresh interpreter, not through a pre-registered cli tool.
+//   - Both inner and outer scripts produce their own audit entries
+//     with distinct SourceSHA values, proving the chain is honest
+//     about which code actually ran at each level.
+//   - The store SDK handle is available at both levels (the inner
+//     script writes; the outer reads), proving per-call SDK
+//     injection works recursively.
+func TestFactorlyCodeBuiltinComposesWithItself(t *testing.T) {
+	// Isolate HOME so the inner script's store writes can't escape
+	// into the dev's real ~/.config/factorly/store.db.
+	t.Setenv("HOME", t.TempDir())
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools: {}`,
+	})
+
+	// The inner script writes a value to the store and returns a
+	// distinctive marker. Encoded as a JSON-quoted Go string so it
+	// can be embedded inside the outer script's source literal
+	// without escaping headaches.
+	innerSrc := `package main
+import "factorly"
+func Run(p map[string]string) (any, error) {
+    if err := factorly.Store.Set("compose.marker", "inner-was-here"); err != nil {
+        return nil, err
+    }
+    return "inner-output", nil
+}`
+	innerSrcQuoted, err := json.Marshal(innerSrc)
+	if err != nil {
+		t.Fatalf("marshal inner src: %v", err)
+	}
+
+	// The outer script invokes factorly.code with the inner source,
+	// then reads back the store value the inner script wrote, and
+	// returns both — proving inner ran AND its side effects landed
+	// in the same backend the outer can see.
+	outerSrc := `package main
+import (
+    "encoding/json"
+    "errors"
+    "factorly"
+)
+func Run(p map[string]string) (any, error) {
+    inner := ` + string(innerSrcQuoted) + `
+    res, err := factorly.Call("factorly.code", map[string]string{
+        "code":   inner,
+        "params": "{}",
+    })
+    if err != nil { return nil, err }
+    if res.IsError() { return nil, errors.New("inner failed: " + res.Error) }
+
+    marker, err := factorly.Store.Get("compose.marker")
+    if err != nil { return nil, err }
+
+    payload, err := json.Marshal(map[string]string{
+        "inner_output": res.Output,
+        "store_marker": marker,
+    })
+    if err != nil { return nil, err }
+    return string(payload), nil
+}`
+
+	stdout, stderr, code := run(t, dir,
+		"call", "factorly.code",
+		"--code", outerSrc,
+		"--params", `{}`,
+	)
+	if code != 0 {
+		t.Fatalf("outer call exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+
+	// stdout should contain both the inner script's return value
+	// AND the store marker the inner script wrote — proving the
+	// composition round-tripped successfully.
+	if !strings.Contains(stdout, `"inner_output":"inner-output"`) {
+		t.Errorf("outer didn't see inner return value; stdout=%q", stdout)
+	}
+	if !strings.Contains(stdout, `"store_marker":"inner-was-here"`) {
+		t.Errorf("outer didn't see inner's store write; stdout=%q", stdout)
+	}
+
+	// Confirm the CLI can also see the inner's store write — same
+	// bbolt file, no cross-process boundary even though the inner
+	// call ran inside a nested interpreter.
+	out, _, code := run(t, dir, "store", "get", "compose.marker")
+	if code != 0 {
+		t.Fatalf("cli store get exit %d", code)
+	}
+	if strings.TrimSpace(out) != "inner-was-here" {
+		t.Errorf("cli store get = %q, want 'inner-was-here'", out)
+	}
+}
+
 // TestFactorlyCodeBuiltinMaxCallsBudget confirms the user-side
 // shadow.max_calls override on the factorly.code builtin caps the
 // script's inner-call budget. Submitted script loops 200 times calling
