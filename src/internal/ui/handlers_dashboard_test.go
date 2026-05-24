@@ -173,18 +173,19 @@ func TestHandleDashboard_FreshInstallShowsQuickStart(t *testing.T) {
 
 // TestHandleDashboard_BuiltinsOnlyStillTreatedAsFreshInstall pins
 // the "fresh install" definition: builtins (factorly.fetch,
-// factorly.code, factorly.store.*, etc.) don't count toward the
+// factorly.code, factorly.shell, etc.) don't count toward the
 // user's tool inventory. Without this filter, every real install
 // would land on the has-tools branch because builtins.Register
-// populates ~11 entries before the dashboard ever sees the config.
-// The fresh-install branch would be unreachable in production.
+// populates several entries before the dashboard ever sees the
+// config. The fresh-install branch would be unreachable in
+// production.
 func TestHandleDashboard_BuiltinsOnlyStillTreatedAsFreshInstall(t *testing.T) {
 	srv, _ := testServer(t, &config.Config{
 		Tools: map[string]config.ToolConfig{
-			"factorly.fetch":      {Type: "builtin"},
-			"factorly.code":       {Type: "builtin"},
-			"factorly.store.save": {Type: "builtin"},
-			"some.workflow":       {Type: "workflow"},
+			"factorly.fetch": {Type: "builtin"},
+			"factorly.code":  {Type: "builtin"},
+			"factorly.shell": {Type: "builtin"},
+			"some.workflow":  {Type: "workflow"},
 		},
 	})
 

@@ -51,7 +51,11 @@ func validateScript(src string) error {
 		return &Result{}, nil
 	}
 	noopList := func() []ToolInfo { return nil }
-	if err := i.Use(factorlyExports(noopCall, noopList)); err != nil {
+	// A handle with nil closures is fine for validation — scripts that
+	// reference factorly.Store at parse time only need the type, not a
+	// working backend. Calling Get/Set on this handle would return
+	// "handle not configured," but validation never executes Run.
+	if err := i.Use(factorlyExports(noopCall, noopList, &StoreHandle{})); err != nil {
 		return fmt.Errorf("factorly setup: %w", err)
 	}
 	if _, err := i.Eval(src); err != nil {
@@ -72,7 +76,7 @@ func validateScript(src string) error {
 // (any, error) result returned. Yaegi's EvalWithContext is used for
 // timeout/cancellation: it runs in a goroutine internally, recovers
 // panics into an interp.Panic error, and cancels via ctx.
-func runScript(ctx context.Context, src string, params map[string]string, call callFunc, tools []ToolInfo) (any, error) {
+func runScript(ctx context.Context, src string, params map[string]string, call callFunc, tools []ToolInfo, store *StoreOps) (any, error) {
 	pkgName, err := extractPackageName(src)
 	if err != nil {
 		return nil, err
@@ -85,7 +89,19 @@ func runScript(ctx context.Context, src string, params map[string]string, call c
 	// factorly.ListTools within one Run see a stable view.
 	toolsSnap := append([]ToolInfo(nil), tools...)
 	list := func() []ToolInfo { return toolsSnap }
-	if err := i.Use(factorlyExports(call, list)); err != nil {
+	// Build the per-script StoreHandle. When the host didn't supply
+	// store ops (store == nil), the handle's closures stay nil and
+	// each method returns "handle not configured" — a clean runtime
+	// error rather than a panic.
+	handle := &StoreHandle{}
+	if store != nil {
+		handle.get = store.Get
+		handle.set = store.Set
+		handle.setWithTTL = store.SetWithTTL
+		handle.del = store.Delete
+		handle.list = store.List
+	}
+	if err := i.Use(factorlyExports(call, list, handle)); err != nil {
 		return nil, fmt.Errorf("factorly setup: %w", err)
 	}
 	if _, err := i.EvalWithContext(ctx, src); err != nil {

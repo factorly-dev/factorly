@@ -61,7 +61,7 @@ tools:
     args: ["Hello {{store:USER_NAME|world}}"]
 ```
 
-The agent writes `USER_NAME` via `factorly.store.save`, and downstream tool calls see it substituted at call time. This is a **bidirectional channel** between agent and config — see [Security](#security) below.
+The agent writes `USER_NAME` from inside a `factorly.code` script via `factorly.Store.Set("USER_NAME", ...)`, and downstream tool calls see it substituted at call time. This is a **bidirectional channel** between agent and config — see [Security](#security) below.
 
 ## Workspace scoping
 
@@ -101,41 +101,39 @@ factorly store --global list
 
 Precedence (mirrors `factorly vault`): `--global` > `--workspace` > project default > global fallback.
 
-## Agent-facing builtins
+## Agent-facing surface
 
-Four built-in tools mirror the CLI, callable from `factorly.code` scripts or MCP clients:
+Agents touch the store from inside a `factorly.code` script via the `factorly.Store` SDK handle. There is no standalone agent-callable tool for store operations — the SDK is the surface.
 
-| Tool | Parameters | Use |
-|---|---|---|
-| `factorly.store.save` | `key`, `value`, `ttl?` | Save a key/value pair |
-| `factorly.store.search` | `query` | Substring search keys |
-| `factorly.store.list` | — | List all keys |
-| `factorly.store.delete` | `key` | Remove a key |
+| Method | Use |
+|---|---|
+| `factorly.Store.Get(key)` | Returns `(value, factorly.ErrStoreNotFound)` on miss |
+| `factorly.Store.Set(key, value)` | Default TTL (30d, refresh-on-read) |
+| `factorly.Store.SetWithTTL(key, value, ttl)` | `time.Duration`; `0` = never expire |
+| `factorly.Store.Delete(key)` | Idempotent — no error if absent |
+| `factorly.Store.List()` | Sorted keys in the active tier (cascaded) |
 
 Example agent script:
 
 ```go
 package main
-import "factorly"
+import (
+    "factorly"
+    "time"
+)
 
 func Run(p map[string]string) (any, error) {
-    factorly.Call("factorly.store.save", map[string]string{
-        "key":   "research:url:example.com",
-        "value": "summarized: ...",
-        "ttl":   "7d",
-    })
-    return nil, nil
+    return nil, factorly.Store.SetWithTTL(
+        "research:url:example.com",
+        "summarized: ...",
+        7*24*time.Hour,
+    )
 }
 ```
 
-Default shadow is permissive (`confirm: false`) — agent ownership is the whole point. Operators can tighten via tool config:
+Reads cascade workspace → project; writes target the active tier (workspace when one is active, otherwise project). Refresh-on-read keeps frequently-touched entries alive.
 
-```yaml
-tools:
-  factorly.store.save:
-    shadow:
-      confirm: true   # require approval for every agent write
-```
+Earlier versions exposed `factorly.store.{get,save,search,list,delete}` as standalone agent-callable builtins. Those were removed in favor of the SDK handle — fewer entries in the tool list, no `factorly.Call` round-trip, typed errors.
 
 ## Storage backend
 
@@ -173,7 +171,7 @@ The principle: **the smallest useful primitive that lets the agent remember thin
 
 1. **Audit-log every write.** This already happens; `factorly store history <key>` shows the change log.
 2. **Don't reference `{{store:KEY}}` in privilege-granting locations.** Specifically, avoid using it in `shadow.allow_patterns`, file path overrides, or anywhere an attacker-controlled value would escalate capability. Use vault or env for those.
-3. **The agent can mutate config behavior.** If a tool reads `base_url: "{{store:API_URL}}"` and the agent writes `API_URL`, the next call goes to whatever URL the agent chose. Design tool configs with this in mind, or restrict store writes via `factorly.store.save` shadow rules.
+3. **The agent can mutate config behavior.** If a tool reads `base_url: "{{store:API_URL}}"` and the agent writes `API_URL` from a `factorly.code` script, the next call goes to whatever URL the agent chose. Design tool configs with this in mind. Because store writes happen from inside `factorly.code` scripts, you can restrict them by tightening shadow on `factorly.code` (e.g., `confirm: true`, narrower `allow_patterns`) — the script must succeed through the proxy's shadow rules before its `factorly.Store.Set` calls run.
 
 A v2 privilege-escalation guard is on the roadmap — for v1, the rule is "doc-warn and trust the operator's config review."
 

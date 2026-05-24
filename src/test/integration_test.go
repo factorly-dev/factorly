@@ -1387,86 +1387,21 @@ func TestSyncCursorDetection(t *testing.T) {
 	}
 }
 
-// --- Store Builtins (agent-facing) ---
+// --- factorly.Store SDK handle (in-script) ---
+//
+// Note: the prior `factorly.store.{get,save,search,list,delete}`
+// builtin tools were removed. The SDK handle below is the only
+// in-script path for store access; the CLI's `factorly store ...`
+// subcommand remains for human use.
 
-// TestStoreBuiltinGetReturnsValue exercises factorly.store.get end
-// to end: CLI set → agent reads via the builtin → script returns the
-// raw value. Pins the "agents can read back what they saved"
-// contract that closes the read-side gap in the v1 surface.
-func TestStoreBuiltinGetReturnsValue(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-
-	dir := setupDir(t, map[string]string{
-		"factorly.yaml": `tools: {}`,
-	})
-
-	// Seed via CLI; no vault, no password prompt.
-	if _, _, code := run(t, dir, "store", "set", "agent-pref", "brief-responses"); code != 0 {
-		t.Fatal("seed failed")
-	}
-
-	src := `package main
-import (
-    "errors"
-    "factorly"
-)
-func Run(p map[string]string) (any, error) {
-    r, err := factorly.Call("factorly.store.get", map[string]string{"key": "agent-pref"})
-    if err != nil { return nil, err }
-    if r.IsError() { return nil, errors.New("get: " + r.Error) }
-    return r.Output, nil
-}`
-	stdout, stderr, code := run(t, dir, "call", "factorly.code", "--code", src, "--params", "{}")
-	if code != 0 {
-		t.Fatalf("exit %d, stderr=%s", code, stderr)
-	}
-	if !strings.Contains(stdout, "brief-responses") {
-		t.Errorf("expected stored value in output, got %q", stdout)
-	}
-}
-
-// TestStoreBuiltinGetMissingKey verifies a missing key surfaces as
-// a non-zero exit through the builtin (mirrors the CLI's behavior
-// and the store package's ErrNotFound contract). Lets agents branch
-// on r.IsError() to decide whether to fall back to a default or
-// re-derive the value.
-func TestStoreBuiltinGetMissingKey(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-
-	dir := setupDir(t, map[string]string{
-		"factorly.yaml": `tools: {}`,
-	})
-
-	src := `package main
-import (
-    "factorly"
-)
-func Run(p map[string]string) (any, error) {
-    r, err := factorly.Call("factorly.store.get", map[string]string{"key": "never-saved"})
-    if err != nil { return nil, err }
-    if r.IsError() {
-        return "missing-handled:" + r.Error, nil
-    }
-    return "unexpectedly-found:" + r.Output, nil
-}`
-	stdout, _, code := run(t, dir, "call", "factorly.code", "--code", src, "--params", "{}")
-	if code != 0 {
-		t.Fatalf("script exit %d, output=%s", code, stdout)
-	}
-	if !strings.Contains(stdout, "missing-handled") {
-		t.Errorf("expected missing-key branch to trigger, got %q", stdout)
-	}
-}
-
-// TestStoreBuiltinsRoundTripViaCode exercises the four factorly.store.*
-// builtins through factorly.code — the canonical "agent uses store"
-// path. A script saves a key, searches for it, lists keys, and
-// deletes — round-tripping the agent-writable surface.
-func TestStoreBuiltinsRoundTripViaCode(t *testing.T) {
-	// Isolate HOME so the global store tier can never touch the dev's
-	// real ~/.config/factorly/store.db. The test only writes to the
-	// project store, but a regression that cascaded a write to the
-	// global tier would silently pollute the user's environment.
+// TestStoreSDKHandleRoundTrip exercises the in-script factorly.Store
+// handle end-to-end against the real binary: a script uses
+// factorly.Store.SetWithTTL to write, factorly.Store.Get to read
+// back the same value, and then the CLI's `factorly store get`
+// confirms the value really landed in the bbolt file. Closes the
+// loop so the SDK surface and the CLI subcommand target the same
+// store.
+func TestStoreSDKHandleRoundTrip(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	dir := setupDir(t, map[string]string{
@@ -1477,33 +1412,92 @@ func TestStoreBuiltinsRoundTripViaCode(t *testing.T) {
 import (
     "errors"
     "factorly"
+    "time"
 )
 func Run(p map[string]string) (any, error) {
-    if r, err := factorly.Call("factorly.store.save", map[string]string{"key": "agent-note", "value": "remembered"}); err != nil {
+    if err := factorly.Store.SetWithTTL("sdk.session", "alpha", 50*time.Minute); err != nil {
         return nil, err
-    } else if r.IsError() {
-        return nil, errors.New("save: " + r.Error)
     }
-    r, err := factorly.Call("factorly.store.list", map[string]string{})
+    v, err := factorly.Store.Get("sdk.session")
     if err != nil { return nil, err }
-    if r.IsError() { return nil, errors.New("list: " + r.Error) }
-    return r.Output, nil
+    if v != "alpha" {
+        return nil, errors.New("read-back mismatch: " + v)
+    }
+    return v, nil
 }`
 	stdout, stderr, code := run(t, dir, "call", "factorly.code", "--code", src, "--params", "{}")
 	if code != 0 {
-		t.Fatalf("exit %d, stderr=%s", code, stderr)
+		t.Fatalf("script exit %d, stderr=%s, stdout=%s", code, stderr, stdout)
 	}
-	if !strings.Contains(stdout, "agent-note") {
-		t.Errorf("expected list output to mention agent-note, got %q", stdout)
+	if !strings.Contains(stdout, "alpha") {
+		t.Errorf("expected script to return 'alpha', got %q", stdout)
 	}
 
-	// Confirm via CLI that the key really landed in the store.
-	out, _, code := run(t, dir, "store", "get", "agent-note")
+	// Confirm via CLI that the value is visible to non-script
+	// consumers — same bbolt file, same cascade.
+	out, _, code := run(t, dir, "store", "get", "sdk.session")
 	if code != 0 {
 		t.Fatalf("cli get exit %d", code)
 	}
-	if strings.TrimSpace(out) != "remembered" {
-		t.Errorf("cli get = %q, want 'remembered'", out)
+	if strings.TrimSpace(out) != "alpha" {
+		t.Errorf("cli get = %q, want 'alpha'", out)
+	}
+}
+
+// TestStoreSDKHandleMissingKeyReturnsErrStoreNotFound is the in-
+// script counterpart to the builtin's "missing key surfaces as
+// non-zero" contract. With the SDK handle, the agent can branch via
+// errors.Is(err, factorly.ErrStoreNotFound) instead of brittle
+// string-matching on the error message — a real ergonomic upgrade.
+func TestStoreSDKHandleMissingKeyReturnsErrStoreNotFound(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools: {}`,
+	})
+
+	src := `package main
+import (
+    "errors"
+    "factorly"
+)
+func Run(p map[string]string) (any, error) {
+    _, err := factorly.Store.Get("never-set")
+    if errors.Is(err, factorly.ErrStoreNotFound) {
+        return "missing-handled", nil
+    }
+    return "unexpected: " + err.Error(), nil
+}`
+	stdout, stderr, code := run(t, dir, "call", "factorly.code", "--code", src, "--params", "{}")
+	if code != 0 {
+		t.Fatalf("script exit %d, stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stdout, "missing-handled") {
+		t.Errorf("expected ErrStoreNotFound branch to fire, got %q", stdout)
+	}
+}
+
+// TestStoreSDKHandleDeleteIsIdempotent verifies the SDK Delete
+// contract end-to-end: deleting a missing key returns nil, just like
+// the CLI's `factorly store delete`.
+func TestStoreSDKHandleDeleteIsIdempotent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	dir := setupDir(t, map[string]string{
+		"factorly.yaml": `tools: {}`,
+	})
+
+	src := `package main
+import "factorly"
+func Run(p map[string]string) (any, error) {
+    return "ok", factorly.Store.Delete("never-existed")
+}`
+	stdout, stderr, code := run(t, dir, "call", "factorly.code", "--code", src, "--params", "{}")
+	if code != 0 {
+		t.Fatalf("script exit %d, stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stdout, "ok") {
+		t.Errorf("expected idempotent Delete to succeed, got stdout=%q", stdout)
 	}
 }
 

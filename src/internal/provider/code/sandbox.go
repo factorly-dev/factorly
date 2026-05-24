@@ -55,14 +55,22 @@ type listToolsFunc func() []ToolInfo
 // factorlyExports builds the in-script "factorly" package. The map key
 // "factorly/factorly" follows yaegi's "importpath/pkgname" convention so
 // the script can write `import "factorly"`.
-func factorlyExports(call callFunc, list listToolsFunc) interp.Exports {
+//
+// storeHandle is the per-execution StoreHandle exposed as
+// factorly.Store. Pass a freshly-constructed handle (its closures may
+// be nil for runs without a store opener) — the wrapping is done by
+// the caller so it can bind to per-execution context.
+func factorlyExports(call callFunc, list listToolsFunc, storeHandle *StoreHandle) interp.Exports {
 	return interp.Exports{
 		"factorly/factorly": {
-			"Call":      reflect.ValueOf(call),
-			"ListTools": reflect.ValueOf(list),
-			"Result":    reflect.ValueOf((*Result)(nil)),
-			"ToolInfo":  reflect.ValueOf((*ToolInfo)(nil)),
-			"ParamInfo": reflect.ValueOf((*ParamInfo)(nil)),
+			"Call":             reflect.ValueOf(call),
+			"ListTools":        reflect.ValueOf(list),
+			"Store":            reflect.ValueOf(storeHandle),
+			"Result":           reflect.ValueOf((*Result)(nil)),
+			"ToolInfo":         reflect.ValueOf((*ToolInfo)(nil)),
+			"ParamInfo":        reflect.ValueOf((*ParamInfo)(nil)),
+			"StoreHandle":      reflect.ValueOf((*StoreHandle)(nil)),
+			"ErrStoreNotFound": reflect.ValueOf(&ErrStoreNotFound).Elem(),
 		},
 	}
 }

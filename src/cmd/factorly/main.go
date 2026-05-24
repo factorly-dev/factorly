@@ -6,6 +6,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -1062,6 +1063,13 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	_, hasCodeBuiltin := cfg.Tools["factorly.code"]
 	if len(codeTools) > 0 || hasCodeBuiltin {
 		cp := codeprov.NewProvider(p, verbose)
+		// Wire the in-script factorly.Store handle. The opener returns a
+		// fresh StoreOps per script run; closures route through the same
+		// withCascadeStore / withActiveStore helpers the CLI uses so the
+		// workspace cascade, tier targeting, and audit-log path are
+		// identical to `factorly store get` / `factorly store set` /
+		// `factorly.store.*` builtins.
+		cp.SetStoreOpener(makeCodeStoreOpener())
 		registered := 0
 		for name, tc := range codeTools {
 			maxCalls := 0
@@ -1090,185 +1098,141 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 		}
 	}
 
-	// Register factorly.store.* builtin handlers. These give the agent
-	// the five operations the CLI exposes — get, save, search, list,
-	// delete — against the same workspace-scoped bbolt store. Handlers
-	// go through getActiveStore(), so workspace cascade and audit
-	// logging are identical to the CLI path.
-	if bp, ok := providers["builtin"].(*provider.BuiltinProvider); ok {
-		if _, has := cfg.Tools["factorly.store.get"]; has {
-			bp.RegisterHandler("factorly.store.get", makeStoreGetHandler())
-		}
-		if _, has := cfg.Tools["factorly.store.save"]; has {
-			bp.RegisterHandler("factorly.store.save", makeStoreSaveHandler())
-		}
-		if _, has := cfg.Tools["factorly.store.search"]; has {
-			bp.RegisterHandler("factorly.store.search", makeStoreSearchHandler())
-		}
-		if _, has := cfg.Tools["factorly.store.list"]; has {
-			bp.RegisterHandler("factorly.store.list", makeStoreListHandler())
-		}
-		if _, has := cfg.Tools["factorly.store.delete"]; has {
-			bp.RegisterHandler("factorly.store.delete", makeStoreDeleteHandler())
-		}
-		vlog("initialized factorly.store.* builtin handlers")
-	}
+	// factorly.store.* builtin handlers used to be registered here.
+	// They were removed when the factorly.Store SDK handle landed in
+	// factorly.code scripts — scripts now use factorly.Store directly
+	// (no Call round-trip), and the CLI `factorly store {get,set,...}`
+	// subcommand is the path for human use. The agent-facing builtins
+	// were premature; if MCP-direct store access becomes a real need
+	// we'll re-add a thinner surface.
 
 	return p, nil
 }
 
-// makeStoreSaveHandler returns a builtin handler that writes a
-// key/value to the active workspace store. Mirrors `factorly store
-// set` end-to-end including audit logging.
+// makeCodeStoreOpener returns the codeprov.StoreOpener that wires the
+// in-script factorly.Store handle to the same workspace-cascade /
+// active-tier helpers the CLI uses.
 //
-// Per-op open via withActiveStore so the bbolt file lock is released
-// as soon as the write completes — concurrent factorly processes
-// (CLI from another terminal, factorly ui) aren't blocked.
-func makeStoreSaveHandler() provider.BuiltinHandler {
-	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
-		key := params["key"]
-		if key == "" {
-			return &provider.Result{Error: "key is required", ExitCode: 1}, nil
-		}
-		value := params["value"]
-		ttl, hasTTL, ttlErr := parseStoreTTL(params["ttl"])
-		if ttlErr != nil {
-			return &provider.Result{Error: ttlErr.Error(), ExitCode: 1}, nil
-		}
-		var resultErr string
-		err := withActiveStore(func(backend store.Backend) error {
-			if hasTTL {
-				lb, ok := backend.(*store.LocalBackend)
-				if !ok {
-					resultErr = "TTL not supported by backend"
-					return nil
+// The opener returns a fresh StoreOps per script run; each method
+// closes its own short-lived bbolt handle via withCascadeStore (for
+// reads) or withActiveStore (for writes). That matches the per-op
+// lifecycle used everywhere else in this file — no shared backend, no
+// long-lived file lock.
+//
+// Audit log routing mirrors the CLI's `factorly store set` /
+// `factorly store delete` path (via logStoreOp) so `factorly store
+// history <key>` surfaces script-side writes alongside CLI-side ones.
+//
+// The supplied ctx is honored implicitly: withActiveStore and
+// withCascadeStore are synchronous and short-lived, so a cancelled
+// script context will land on the next bbolt syscall (or sooner if
+// the script returns). We don't thread ctx through directly because
+// the bbolt API is blocking and not context-aware.
+func makeCodeStoreOpener() codeprov.StoreOpener {
+	return func(ctx context.Context) *codeprov.StoreOps {
+		return &codeprov.StoreOps{
+			Get: func(key string) (string, error) {
+				if key == "" {
+					return "", fmt.Errorf("store: key is empty")
 				}
-				if err := lb.SetWithTTL(key, value, ttl); err != nil {
-					logStoreOp("save", key, "error")
-					resultErr = err.Error()
+				var value string
+				var getErr error
+				err := withCascadeStore(func(backend store.Backend) error {
+					v, e := backend.Get(key)
+					value = v
+					getErr = e
 					return nil
+				})
+				if err != nil {
+					return "", err
 				}
-			} else if err := backend.Set(key, value); err != nil {
-				logStoreOp("save", key, "error")
-				resultErr = err.Error()
-				return nil
-			}
-			logStoreOp("save", key, "success")
-			return nil
-		})
-		if err != nil {
-			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
+				if getErr != nil {
+					if errors.Is(getErr, store.ErrNotFound) {
+						return "", codeprov.ErrStoreNotFound
+					}
+					return "", getErr
+				}
+				return value, nil
+			},
+			Set: func(key, value string) error {
+				if key == "" {
+					return fmt.Errorf("store: key is empty")
+				}
+				var resultErr error
+				err := withActiveStore(func(backend store.Backend) error {
+					if e := backend.Set(key, value); e != nil {
+						logStoreOp("save", key, "error")
+						resultErr = e
+						return nil
+					}
+					logStoreOp("save", key, "success")
+					return nil
+				})
+				if err != nil {
+					return err
+				}
+				return resultErr
+			},
+			SetWithTTL: func(key, value string, ttl time.Duration) error {
+				if key == "" {
+					return fmt.Errorf("store: key is empty")
+				}
+				if ttl < 0 {
+					ttl = 0
+				}
+				var resultErr error
+				err := withActiveStore(func(backend store.Backend) error {
+					lb, ok := backend.(*store.LocalBackend)
+					if !ok {
+						resultErr = fmt.Errorf("store: TTL not supported by backend")
+						return nil
+					}
+					if e := lb.SetWithTTL(key, value, ttl); e != nil {
+						logStoreOp("save", key, "error")
+						resultErr = e
+						return nil
+					}
+					logStoreOp("save", key, "success")
+					return nil
+				})
+				if err != nil {
+					return err
+				}
+				return resultErr
+			},
+			Delete: func(key string) error {
+				if key == "" {
+					return fmt.Errorf("store: key is empty")
+				}
+				var resultErr error
+				err := withActiveStore(func(backend store.Backend) error {
+					if e := backend.Delete(key); e != nil {
+						logStoreOp("delete", key, "error")
+						resultErr = e
+						return nil
+					}
+					logStoreOp("delete", key, "success")
+					return nil
+				})
+				if err != nil {
+					return err
+				}
+				return resultErr
+			},
+			List: func() ([]string, error) {
+				var keys []string
+				err := withCascadeStore(func(backend store.Backend) error {
+					var listErr error
+					keys, listErr = backend.List()
+					return listErr
+				})
+				if err != nil {
+					return nil, err
+				}
+				return keys, nil
+			},
 		}
-		if resultErr != "" {
-			return &provider.Result{Error: resultErr, ExitCode: 1}, nil
-		}
-		return &provider.Result{Output: "saved " + key}, nil
 	}
-}
-
-// makeStoreGetHandler returns the value for a single key, going
-// through the workspace→project read cascade. ErrNotFound surfaces
-// as a non-zero exit so the agent can branch on it; other errors
-// surface as Error too (Get's contract doesn't distinguish — both
-// are "you didn't get a value back"). Get is read-only and not
-// audit-logged, matching the CLI behavior.
-func makeStoreGetHandler() provider.BuiltinHandler {
-	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
-		key := params["key"]
-		if key == "" {
-			return &provider.Result{Error: "key is required", ExitCode: 1}, nil
-		}
-		var value string
-		var getErr error
-		err := withCascadeStore(func(backend store.Backend) error {
-			v, e := backend.Get(key)
-			value = v
-			getErr = e
-			return nil
-		})
-		if err != nil {
-			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
-		}
-		if getErr != nil {
-			return &provider.Result{Error: getErr.Error(), ExitCode: 1}, nil
-		}
-		return &provider.Result{Output: value}, nil
-	}
-}
-
-// makeStoreSearchHandler returns a substring-match handler. Output
-// is newline-separated keys for ergonomic shell-style consumption.
-func makeStoreSearchHandler() provider.BuiltinHandler {
-	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
-		var keys []string
-		err := withCascadeStore(func(backend store.Backend) error {
-			var listErr error
-			keys, listErr = backend.Search(params["query"])
-			return listErr
-		})
-		if err != nil {
-			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
-		}
-		return &provider.Result{Output: joinNewline(keys)}, nil
-	}
-}
-
-// makeStoreListHandler returns every key in the active store.
-func makeStoreListHandler() provider.BuiltinHandler {
-	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
-		var keys []string
-		err := withCascadeStore(func(backend store.Backend) error {
-			var listErr error
-			keys, listErr = backend.List()
-			return listErr
-		})
-		if err != nil {
-			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
-		}
-		return &provider.Result{Output: joinNewline(keys)}, nil
-	}
-}
-
-// makeStoreDeleteHandler removes a key. Idempotent — missing keys
-// are not errors, mirroring the CLI behavior.
-func makeStoreDeleteHandler() provider.BuiltinHandler {
-	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
-		key := params["key"]
-		if key == "" {
-			return &provider.Result{Error: "key is required", ExitCode: 1}, nil
-		}
-		var resultErr string
-		err := withActiveStore(func(backend store.Backend) error {
-			if err := backend.Delete(key); err != nil {
-				logStoreOp("delete", key, "error")
-				resultErr = err.Error()
-				return nil
-			}
-			logStoreOp("delete", key, "success")
-			return nil
-		})
-		if err != nil {
-			return &provider.Result{Error: err.Error(), ExitCode: 1}, nil
-		}
-		if resultErr != "" {
-			return &provider.Result{Error: resultErr, ExitCode: 1}, nil
-		}
-		return &provider.Result{Output: "deleted " + key}, nil
-	}
-}
-
-// joinNewline glues a string slice with newlines for the agent-
-// facing output of List/Search. Pulled inline so the four handlers
-// share one formatting rule.
-func joinNewline(s []string) string {
-	if len(s) == 0 {
-		return ""
-	}
-	out := s[0]
-	for _, k := range s[1:] {
-		out += "\n" + k
-	}
-	return out
 }
 
 // makeFactorlyCodeHandler returns a builtin handler that compiles +

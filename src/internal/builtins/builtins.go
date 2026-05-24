@@ -115,92 +115,19 @@ func Register(cfg *config.Config, opts Options) {
 		},
 	})
 
-	// factorly.store.* — agent-writable workspace state primitive.
-	// Mirror of the `factorly store` CLI subcommands. Default shadow
-	// is permissive (no confirm) because store is the agent's write
-	// surface by design; operators tighten via `factorly.store.save`
-	// shadow rules in their config if they want approval gating.
+	// Store access for agents is intentionally NOT exposed as builtin
+	// tools. Agents that want to read or write the workspace store do
+	// so from inside a `factorly.code` script via the `factorly.Store`
+	// SDK handle (see factorlyCodeDescription). The CLI keeps its
+	// `factorly store {get,set,...}` subcommands for human use.
 	//
-	// Audit log entries for save/delete flow through the same
-	// logStoreOp path the CLI uses, so `factorly store history <key>`
-	// surfaces both CLI and agent-driven changes.
-	register("factorly.store.save", config.ToolConfig{
-		Type:        "builtin",
-		Description: factorlyStoreSaveDescription,
-		Parameters: []config.ParamConfig{
-			{Name: "key", Description: "Key to save under. Use prefixes like `research:url:...` for implicit namespacing.", Required: true},
-			{Name: "value", Type: "text", Description: "Value to save. Strings only; JSON-encode if you need structure.", Required: true},
-			{Name: "ttl", Description: "Optional lifetime (e.g. 7d, 24h, 30m). 0 = never expire. Empty = default 30d with refresh-on-read.", Required: false},
-		},
-	})
-
-	register("factorly.store.get", config.ToolConfig{
-		Type:        "builtin",
-		Description: factorlyStoreGetDescription,
-		Parameters: []config.ParamConfig{
-			{Name: "key", Description: "Key to retrieve. Reads cascade workspace → project when inside a workspace.", Required: true},
-		},
-	})
-
-	register("factorly.store.search", config.ToolConfig{
-		Type:        "builtin",
-		Description: factorlyStoreSearchDescription,
-		Parameters: []config.ParamConfig{
-			{Name: "query", Description: "Substring to match against keys (case-insensitive). Empty returns all keys.", Required: false},
-		},
-	})
-
-	register("factorly.store.list", config.ToolConfig{
-		Type:        "builtin",
-		Description: factorlyStoreListDescription,
-	})
-
-	register("factorly.store.delete", config.ToolConfig{
-		Type:        "builtin",
-		Description: factorlyStoreDeleteDescription,
-		Parameters: []config.ParamConfig{
-			{Name: "key", Description: "Key to remove.", Required: true},
-		},
-	})
+	// Rationale: the per-method builtin tools (factorly.store.save,
+	// .get, .list, .search, .delete) bloated the tool list with five
+	// entries that mirrored what one SDK handle does more ergonomically.
+	// If MCP-direct store access turns out to be a real need we can
+	// re-add a thinner surface; for now we trim and see if anyone
+	// notices.
 }
-
-// factorlyStoreSaveDescription teaches the agent how to use the
-// save primitive. Kept terse — the surface is intentionally narrow
-// (no tags, no namespaces) so there's not much to explain.
-const factorlyStoreSaveDescription = `Save a key/value pair to the workspace store — your scratchpad for cross-run state.
-
-Use this for things like:
-  - "I researched these URLs already, don't re-fetch"
-  - "The user prefers brief responses, no emojis"
-  - "Last successful deployment SHA was X"
-
-Key conventions:
-  - Plain strings; use prefixes like ` + "`research:url:<url>`" + ` for implicit namespacing.
-  - Values are strings too; JSON-encode if you need structure.
-  - Default TTL is 30 days with refresh-on-read — frequently-touched entries stay alive.
-  - Pass ttl=0 for never-expire (use sparingly; the store is short-term memory by design).
-
-The store is workspace-scoped: when --workspace is active, you write to that workspace's store. Otherwise the project store.`
-
-const factorlyStoreGetDescription = `Retrieve the value for a single store key.
-
-Returns the raw value (string) on success. Returns an error if the key is missing or has expired.
-
-Reads cascade workspace → project when a workspace is active, so a project-level value is visible inside a workspace context unless the workspace overrides it. Refresh-on-read: a successful Get resets the entry's TTL window, so frequently-read keys stay alive without being re-saved.
-
-Pair with List or Search to enumerate keys first, then Get the specific values you need.`
-
-const factorlyStoreSearchDescription = `Search store keys by substring (case-insensitive). Returns matching key names, one per line.
-
-Empty query returns all keys, sorted. The store has no semantic search by design — use prefixes (` + "`research:url:*`" + `) and Search to enumerate, then Get specific keys you want.`
-
-const factorlyStoreListDescription = `List every key in the workspace store, sorted. Workspace-scoped: cascades from project when reading inside a workspace.
-
-Pair with Get to enumerate what you've previously saved.`
-
-const factorlyStoreDeleteDescription = `Remove a key from the workspace store. Idempotent — deleting a missing key is not an error.
-
-Use to clean up entries that are no longer useful. Audit-logged.`
 
 // factorlyCodeDescription teaches an MCP agent enough to compose a
 // working script without trial-and-error. Kept in one place so the
@@ -256,6 +183,34 @@ The factorly host package exposes:
                   // t.Name, t.Description, t.Parameters available here
               }
           }
+
+  factorly.Store
+      First-class handle for the workspace store — the canonical way
+      for scripts to read and write cross-run state (research
+      caching, user preferences, last-known-good values). Reads
+      cascade workspace → project; writes target the active tier.
+      Refresh-on-read keeps frequently-touched entries alive.
+
+          factorly.Store.Get(key string) (string, error)
+              Returns factorly.ErrStoreNotFound when the key is
+              missing or expired.
+          factorly.Store.Set(key, value string) error
+              Default TTL (30 days, refresh-on-read).
+          factorly.Store.SetWithTTL(key, value string, ttl time.Duration) error
+              Explicit TTL; pass 0 for never-expire.
+          factorly.Store.Delete(key string) error
+              Idempotent — no error if the key is absent.
+          factorly.Store.List() ([]string, error)
+              Sorted list of keys in the active tier (cascaded).
+
+      Example — dedupe research across runs:
+
+          key := "research:url:" + p["url"]
+          if seen, err := factorly.Store.Get(key); err == nil {
+              return "already researched: " + seen, nil
+          }
+          // ... do the research ...
+          factorly.Store.Set(key, summary)
 
 Example — fetch a URL and return part of the JSON response:
 

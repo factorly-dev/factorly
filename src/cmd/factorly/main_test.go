@@ -7,9 +7,9 @@ import "testing"
 
 // TestSummaryLine pins the contract for the `factorly tools` column
 // formatter: first non-empty line of the description, trimmed. The
-// long agent-facing prose used by builtins (factorly.store.save,
-// factorly.code, etc.) gets collapsed to its leading sentence so
-// the tabular listing stays readable.
+// long agent-facing prose used by builtins like factorly.code gets
+// collapsed to its leading sentence so the tabular listing stays
+// readable.
 func TestSummaryLine(t *testing.T) {
 	cases := []struct {
 		name string

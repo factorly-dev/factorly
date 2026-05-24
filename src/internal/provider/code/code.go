@@ -42,12 +42,41 @@ type ToolExecutor interface {
 	ExecuteWithContext(ctx context.Context, toolName string, params map[string]string, iface string) (*provider.Result, error)
 }
 
+// StoreOps is the per-script bundle of store operations the host wires
+// in. The host decides which tier to target (typically workspace →
+// project for reads via withCascadeStore; the active tier for writes
+// via withActiveStore) and embeds that decision in the closures it
+// returns. The code provider doesn't know about tiers — it just calls
+// these.
+//
+// Returning a fresh bundle per script execution lets the host stamp
+// per-call context (active workspace, audit-log routing, etc.) without
+// the provider holding stale state. nil bundles are safe: the in-
+// script Store handle returns "handle not configured" errors so a
+// script that uses Store while the host opted out gets a clean
+// runtime error instead of a panic.
+type StoreOps struct {
+	Get        func(key string) (string, error)
+	Set        func(key, value string) error
+	SetWithTTL func(key, value string, ttl time.Duration) error
+	Delete     func(key string) error
+	List       func() ([]string, error)
+}
+
+// StoreOpener is the host-supplied factory for a per-script StoreOps.
+// Called once per script Run with the same ctx the script sees so
+// store operations can honor the call's deadline. Returning nil
+// disables in-script store access for that run (e.g. a host running
+// in a context that has no store backend).
+type StoreOpener func(ctx context.Context) *StoreOps
+
 // Provider implements provider.Provider for tools whose work is a Go
 // script. One Provider per Factorly process; it holds the registered
 // scripts and the executor used for inner calls.
 type Provider struct {
-	executor ToolExecutor
-	verbose  bool
+	executor    ToolExecutor
+	verbose     bool
+	storeOpener StoreOpener // optional; nil disables in-script store
 
 	mu      sync.RWMutex
 	scripts map[string]*entry
@@ -63,12 +92,25 @@ type entry struct {
 }
 
 // NewProvider creates a code provider wired to the given executor.
+// Call SetStoreOpener to enable the in-script factorly.Store handle.
+// Without an opener, scripts that touch Store get a "handle not
+// configured" error at call time — preferable to silently no-op'ing.
 func NewProvider(exec ToolExecutor, verbose bool) *Provider {
 	return &Provider{
 		executor: exec,
 		verbose:  verbose,
 		scripts:  make(map[string]*entry),
 	}
+}
+
+// SetStoreOpener installs the host-supplied factory that produces a
+// per-script StoreOps bundle. Pass nil to disable. Calling this after
+// the provider is in use is safe — subsequent script runs pick up the
+// new opener; in-flight runs keep the one they were started with.
+func (p *Provider) SetStoreOpener(opener StoreOpener) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.storeOpener = opener
 }
 
 // Setup is a no-op; scripts are validated at RegisterCode time.
@@ -204,7 +246,18 @@ func (p *Provider) Run(ctx context.Context, src string, params map[string]string
 		}, nil
 	}
 
-	val, runErr := runScript(ctx, src, params, call, p.tools())
+	// Snapshot the store opener under the lock so a concurrent
+	// SetStoreOpener doesn't race with this Run. The opener itself
+	// (when present) is invoked outside the lock.
+	p.mu.RLock()
+	opener := p.storeOpener
+	p.mu.RUnlock()
+	var storeOps *StoreOps
+	if opener != nil {
+		storeOps = opener(ctx)
+	}
+
+	val, runErr := runScript(ctx, src, params, call, p.tools(), storeOps)
 	duration := time.Since(start)
 
 	// Map (val, runErr) → provider.Result per the documented contract.
