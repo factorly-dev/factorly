@@ -1,3 +1,17 @@
+## [v0.17.0] - 2026-05-24
+
+### Added
+- `IsSafeBackendName`, `Resolver.ResolveCallerParam`, and `RedactToTemplate` to vault package
+- `ParamConfig.HydrateVaultRefs` opt-in flag (default false) to gate secret backend hydration for caller-supplied params
+- Recursion test for `factorly.code` covering nested interpreter SDK injection and shared store side-effects
+- Dashboard top-tools links to tool pages
+
+### Changed
+- Proxy resolver loop now gates secret backends behind `HydrateVaultRefs`; audit log `params` field redacted to `{{vault:K}}` template at all four log sites when a secret backend resolves
+- CLI handler drops duplicate eager pre-resolution pass
+- `TestCallParamWithVaultRef` rewritten to assert new gated behavior
+- Caller-supplied `{{vault:KEY}}` references require explicit opt-in to hydrate into outbound call bodies or audit logs
+
 ## [v0.16.0] - 2026-05-24
 
 ### Added
