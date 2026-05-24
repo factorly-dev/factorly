@@ -64,14 +64,21 @@
         {{if .Data.TopTools}}
         <ul class="space-y-2">
           {{range .Data.TopTools}}
+          {{/* Whole row is a link to /tools/{name} (the tool's edit
+               + Try-It page). Wrapping the <li>'s content in an <a>
+               keeps the bar visual intact while making the entire
+               row a click target — bigger hit area than just the
+               tool-name span. */}}
           <li class="text-xs">
-            <div class="flex items-center justify-between mb-0.5">
-              <span class="font-mono text-gray-700 truncate">{{.Tool}}</span>
-              <span class="font-mono text-gray-500 text-[11px] shrink-0 ml-2">{{.Count}}</span>
-            </div>
-            <div class="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-              <div class="h-full bg-indigo-500 rounded-full" style="width: {{.Pct}}%"></div>
-            </div>
+            <a href="/tools/{{.Tool}}" class="block hover:bg-gray-50 -mx-2 px-2 py-0.5 rounded transition-colors">
+              <div class="flex items-center justify-between mb-0.5">
+                <span class="font-mono text-gray-700 truncate">{{.Tool}}</span>
+                <span class="font-mono text-gray-500 text-[11px] shrink-0 ml-2">{{.Count}}</span>
+              </div>
+              <div class="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                <div class="h-full bg-indigo-500 rounded-full" style="width: {{.Pct}}%"></div>
+              </div>
+            </a>
           </li>
           {{end}}
         </ul>

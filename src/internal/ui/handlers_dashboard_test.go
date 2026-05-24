@@ -452,6 +452,39 @@ func TestHandleDashboard_TopToolsHasManageLink(t *testing.T) {
 	}
 }
 
+// TestHandleDashboard_TopToolsRowsLinkToToolPage pins the deep-link
+// from each top-tools bar row to its /tools/{name} page. Without
+// this, the affordance is invisible to a refactor that re-shapes
+// the row markup.
+func TestHandleDashboard_TopToolsRowsLinkToToolPage(t *testing.T) {
+	srv, cfgPath := testServer(t, &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"alpha.tool": {Type: "cli", Command: "true"},
+			"beta.tool":  {Type: "cli", Command: "true"},
+		},
+	})
+	logPath := filepath.Join(filepath.Dir(cfgPath), "audit.jsonl")
+	writeDashboardLog(t, logPath, []logger.Entry{
+		{Timestamp: time.Now().Add(-10 * time.Minute), Tool: "alpha.tool", Status: "success"},
+		{Timestamp: time.Now().Add(-9 * time.Minute), Tool: "alpha.tool", Status: "success"},
+		{Timestamp: time.Now().Add(-5 * time.Minute), Tool: "beta.tool", Status: "success"},
+	})
+	t.Setenv("FACTORLY_LOG_PATH", logPath)
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{`href="/tools/alpha.tool"`, `href="/tools/beta.tool"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %q in top-tools rollup, body did not contain it", want)
+		}
+	}
+}
+
 func TestHandleDashboard_NoStatusStrip(t *testing.T) {
 	// Status strip was removed; the markers that used to identify it
 	// must not appear anywhere on the page.
