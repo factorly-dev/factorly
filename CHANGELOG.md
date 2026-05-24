@@ -1,3 +1,23 @@
+## [v0.16.0] - 2026-05-24
+
+### Added
+
+- **`factorly.Store` SDK handle in `factorly.code` scripts.** Scripts can now read and write the workspace store directly. Methods: `Get(key)` (returns `factorly.ErrStoreNotFound` on miss so scripts can `errors.Is` to branch on absence), `Set(key, value)` (default TTL), `SetWithTTL(key, value, time.Duration)` (`0` = never expire), `Delete(key)` (idempotent), `List()` (sorted keys, cascaded). Reads cascade workspace → project; writes target the active tier — same rules as the CLI's `factorly store` subcommand. Audit logging routes through the existing `logStoreOp` path so `factorly store history <key>` surfaces script-side writes alongside CLI writes. Foundation work for the upcoming hooks v0 (https://trello.com/c/rLWKvaai).
+
+### Removed
+
+- **`factorly.store.{get,save,search,list,delete}` agent-facing builtin tools.** These were premature — they bloated the agent's tool list with five entries that mirrored what one SDK handle (`factorly.Store`, above) does more ergonomically. Scripts now use `factorly.Store.Get` / `Set` / etc. directly; the CLI's `factorly store ...` subcommand remains for human use. If MCP-direct store access (without going through `factorly.code`) turns out to be a real need, we can re-add a thinner surface. Files / handlers removed from `cmd/factorly/main.go`: `makeStore{Save,Get,Search,List,Delete}Handler` plus the `joinNewline` helper that only those handlers used. Five description constants removed from `internal/builtins/builtins.go`. Three integration tests removed (`TestStoreBuiltinGetReturnsValue`, `TestStoreBuiltinGetMissingKey`, `TestStoreBuiltinsRoundTripViaCode`) — coverage preserved by the new `TestStoreSDKHandle*` set.
+
+### Changed
+
+- `factorly tools` (and `factorly tools list`) now show only the first line of each tool's description. Builtins ship with multi-paragraph agent-facing prose (`factorly.store.save`, `factorly.code`, etc.), which used to splatter across the tabular listing and make it unreadable. The full description is unchanged everywhere else — `factorly tools show <name>` still dumps the raw YAML.
+
+### Fixed
+
+- Vault unlock now re-prompts on wrong password (up to 3 attempts) instead of failing silently and surfacing the error as a confusing "couldn't read vault item" at use time. Each wrong attempt prints `Incorrect password, try again (N attempts left).` to stderr; the third failed attempt exits non-zero with `vault unlock failed after 3 attempts`. Non-interactive sources (`FACTORLY_VAULT_PASSWORD` / key file) still fail on first wrong password — retrying a static value can't change the answer — with a more specific message (`<source> did not unlock <path>`) so users know which source to fix.
+- Vault unlock in the **UI** now distinguishes wrong password from other failures: a wrong password renders `Incorrect password — try again.` on the unlock form (htmx swap means the user can just retype and resubmit, no page reload); other errors (corrupt file, I/O, misconfigured manager) surface verbatim as `Failed to open vault: <reason>`. Previously every error was conflated as "incorrect password," which masked the real problem. Routed through a single `unlockErrorMessage` classifier used by `/vault/unlock`, `/vault/unlock-all`, and the workspace unlock dialog so the wording is consistent everywhere the UI prompts for a password.
+- `vault.ErrWrongPassword` sentinel introduced so the CLI prompt loop, UI unlock dialog, and any future caller can branch on auth failure vs. other open errors (corrupt file, I/O) — retrying makes sense for one but not the other.
+
 ## [v0.15.1] - 2026-05-23
 
 ### Added
