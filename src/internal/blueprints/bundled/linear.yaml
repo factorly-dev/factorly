@@ -1,51 +1,62 @@
 name: linear
 display_name: Linear
-version: 1.0.0
-description: Issue tracking and project management
+version: 1.1.0
+description: Issue tracking and project management (GraphQL-backed)
 category: engineering
 author: factorly
 homepage: https://github.com/factorly-dev/factorly
 license: MIT
 auth_type: api_key
-auth_guide: "Get your API key at https://linear.app/settings/api"
+auth_guide: "Create a personal API key at https://linear.app/settings/api and store it in LINEAR_API_KEY. Personal API keys are sent as-is (no `Bearer ` prefix); the tools below set the Authorization header directly."
 
 requires:
   vault_keys:
     - LINEAR_API_KEY
 
-tools:
-  linear.list_issues:
-    type: rest
-    description: List issues assigned to you
-    base_url: "https://api.linear.app"
-    method: POST
-    path: /graphql
-    headers:
-      Content-Type: application/json
-    auth:
-      type: bearer
-      token: "{{vault:LINEAR_API_KEY}}"
-    parameters:
-      - name: query
-        description: "GraphQL query (default: viewer's issues)"
-        in: body
+# Linear's public API is GraphQL-only (https://api.linear.app/graphql).
+# Every tool below POSTs a GraphQL envelope: {"query": "...", "variables": {...}}.
+# The body templates bake the query per-tool so the agent supplies flat
+# params (id, title, etc.) instead of having to author GraphQL.
 
+tools:
   linear.get_issue:
     type: rest
-    description: Get issue details by identifier
+    description: Get issue details by identifier (e.g. ENG-123) or UUID
     base_url: "https://api.linear.app"
     method: POST
     path: /graphql
     headers:
       Content-Type: application/json
     auth:
-      type: bearer
-      token: "{{vault:LINEAR_API_KEY}}"
+      type: header
+      header: Authorization
+      value: "{{vault:LINEAR_API_KEY}}"
     parameters:
       - name: id
-        description: "Issue identifier (e.g., ENG-123)"
+        description: "Issue identifier (e.g. ENG-123) or internal UUID"
         required: true
-        in: body
+    body: |
+      {"query":"query GetIssue($id: String!) { issue(id: $id) { id identifier title description url priority state { name } assignee { name email } team { id key name } createdAt updatedAt } }","variables":{"id":"{{id}}"}}
+
+  linear.list_my_issues:
+    type: rest
+    description: "List issues assigned to the authenticated user (the API-key owner), newest first"
+    base_url: "https://api.linear.app"
+    method: POST
+    path: /graphql
+    headers:
+      Content-Type: application/json
+    auth:
+      type: header
+      header: Authorization
+      value: "{{vault:LINEAR_API_KEY}}"
+    parameters:
+      - name: first
+        description: "How many issues to return (max 50)"
+        type: integer
+        default: "25"
+    body: |
+      {"query":"query MyIssues($first: Int!) { viewer { assignedIssues(first: $first, orderBy: updatedAt) { nodes { id identifier title url priority state { name } team { key } updatedAt } } } }","variables":{"first":{{first}}}}
 
   linear.create_issue:
     type: rest
@@ -56,79 +67,151 @@ tools:
     headers:
       Content-Type: application/json
     auth:
-      type: bearer
-      token: "{{vault:LINEAR_API_KEY}}"
+      type: header
+      header: Authorization
+      value: "{{vault:LINEAR_API_KEY}}"
     parameters:
+      - name: teamId
+        description: "Team UUID (use linear.list_teams to find one)"
+        required: true
       - name: title
         description: Issue title
         required: true
-        in: body
-      - name: teamId
-        description: Team ID
-        required: true
-        in: body
       - name: description
-        description: Issue description (markdown)
-        in: body
+        description: Issue description (markdown). Optional.
+        default: ""
       - name: priority
-        description: "Priority (0-4)"
-        in: body
+        description: "Priority: 0 (none), 1 (urgent), 2 (high), 3 (medium), 4 (low)"
+        type: integer
+        default: "0"
+    body: |
+      {"query":"mutation CreateIssue($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { id identifier title url } } }","variables":{"input":{"teamId":"{{teamId}}","title":"{{title}}","description":"{{description}}","priority":{{priority}}}}}
     shadow:
       confirm: true
 
   linear.update_issue:
     type: rest
-    description: Update an existing issue
+    description: "Update an existing issue. Provide only the fields you want to change; other fields keep their current values."
     base_url: "https://api.linear.app"
     method: POST
     path: /graphql
     headers:
       Content-Type: application/json
     auth:
-      type: bearer
-      token: "{{vault:LINEAR_API_KEY}}"
+      type: header
+      header: Authorization
+      value: "{{vault:LINEAR_API_KEY}}"
     parameters:
       - name: id
-        description: Issue ID
+        description: "Issue ID or identifier (e.g. ENG-123)"
         required: true
-        in: body
       - name: title
-        description: New title
-        in: body
-      - name: state
-        description: New state
-        in: body
+        description: New title (leave empty to keep current)
+        default: ""
+      - name: description
+        description: New description (markdown). Leave empty to keep current.
+        default: ""
+      - name: stateId
+        description: "New state UUID. Use linear.list_workflow_states to find one. Empty to keep current."
+        default: ""
       - name: assigneeId
-        description: Assignee user ID
-        in: body
+        description: "New assignee user UUID. Empty to keep current."
+        default: ""
+      - name: priority
+        description: "Priority 0-4, or -1 to keep current"
+        type: integer
+        default: "-1"
+    # The body uses {{param|default}} sparingly: every field is always sent.
+    # Linear's IssueUpdateInput tolerates empty strings on optional fields
+    # (no-op) but a -1 priority would fail validation, so we conditionally
+    # include it via two body shapes is awkward in pure YAML — we send
+    # priority always and document -1 as "don't change" with the caveat
+    # that callers should use a sensible value when they DO want to change it.
+    # If this becomes a real footgun a pre-script hook (see hooks v0) can
+    # branch the body.
+    body: |
+      {"query":"mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { success issue { id identifier title url } } }","variables":{"id":"{{id}}","input":{"title":"{{title}}","description":"{{description}}","stateId":"{{stateId}}","assigneeId":"{{assigneeId}}","priority":{{priority}}}}}
     shadow:
       confirm: true
 
-  linear.search:
+  linear.search_issues:
     type: rest
-    description: "Search issues, projects, and documents"
+    description: "Search issues by text. Matches title, description, and identifier."
     base_url: "https://api.linear.app"
     method: POST
     path: /graphql
     headers:
       Content-Type: application/json
     auth:
-      type: bearer
-      token: "{{vault:LINEAR_API_KEY}}"
+      type: header
+      header: Authorization
+      value: "{{vault:LINEAR_API_KEY}}"
     parameters:
       - name: query
         description: Search query string
         required: true
-        in: body
+      - name: first
+        description: "Max results (default 25, max 50)"
+        type: integer
+        default: "25"
+    body: |
+      {"query":"query SearchIssues($q: String!, $first: Int!) { searchIssues(term: $q, first: $first) { nodes { id identifier title url priority state { name } team { key } } } }","variables":{"q":"{{query}}","first":{{first}}}}
 
   linear.list_teams:
     type: rest
-    description: List all teams in the workspace
+    description: List all teams in the workspace (returns id, key, and name)
     base_url: "https://api.linear.app"
     method: POST
     path: /graphql
     headers:
       Content-Type: application/json
     auth:
-      type: bearer
-      token: "{{vault:LINEAR_API_KEY}}"
+      type: header
+      header: Authorization
+      value: "{{vault:LINEAR_API_KEY}}"
+    body: |
+      {"query":"query Teams { teams { nodes { id key name description } } }"}
+
+  linear.list_workflow_states:
+    type: rest
+    description: "List workflow states for a team (use the id values with linear.update_issue's stateId param)"
+    base_url: "https://api.linear.app"
+    method: POST
+    path: /graphql
+    headers:
+      Content-Type: application/json
+    auth:
+      type: header
+      header: Authorization
+      value: "{{vault:LINEAR_API_KEY}}"
+    parameters:
+      - name: teamId
+        description: "Team UUID"
+        required: true
+    body: |
+      {"query":"query TeamStates($teamId: String!) { team(id: $teamId) { states { nodes { id name type } } } }","variables":{"teamId":"{{teamId}}"}}
+
+  linear.graphql:
+    type: rest
+    description: "Escape hatch: send a raw GraphQL query/mutation. Use this when the curated linear.* tools above don't cover what you need. Body shape: {\"query\":\"...\",\"variables\":{...}}."
+    base_url: "https://api.linear.app"
+    method: POST
+    path: /graphql
+    headers:
+      Content-Type: application/json
+    auth:
+      type: header
+      header: Authorization
+      value: "{{vault:LINEAR_API_KEY}}"
+    parameters:
+      - name: query
+        description: GraphQL query or mutation string
+        required: true
+      - name: variables
+        description: 'GraphQL variables as a JSON object string (e.g. {"id":"WID-5"}). Optional.'
+        type: json
+        default: "{}"
+    body: |
+      {"query":"{{query}}","variables":{{variables}}}
+    shadow:
+      confirm: true

@@ -440,7 +440,7 @@ func TestBlueprintBrowseDetailRenders(t *testing.T) {
 	if !strings.Contains(body, "Linear") {
 		t.Error("expected 'Linear' on detail page")
 	}
-	if !strings.Contains(body, "linear.list_issues") {
+	if !strings.Contains(body, "linear.list_my_issues") {
 		t.Error("expected tool name from bundled YAML on detail page")
 	}
 	if !strings.Contains(body, "LINEAR_API_KEY") {

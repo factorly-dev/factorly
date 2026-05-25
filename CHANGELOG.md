@@ -1,3 +1,14 @@
+## [v0.17.1]
+
+### Fixed
+
+- **Linear blueprint sent malformed bodies.** Every `linear.*` tool POSTed to `/graphql` but the body was the flat `in: body` param map (e.g. `{"id":"WID-5"}`), which Linear's GraphQL server rejected with `GraphQL operations must contain a non-empty 'query' or a 'persistedQuery' extension`. Each tool now uses a `body:` template that wraps params in a proper GraphQL envelope (`{"query":"...","variables":{...}}`) with a per-tool baked query, so the agent supplies flat params and the GraphQL marshaling is invisible to it.
+- **Linear authorization header used the wrong format.** `auth.type: bearer` adds a `Bearer ` prefix, but Linear's personal API keys are sent as-is (without `Bearer `). Switched to `auth.type: header` with the raw key as the `Authorization` value. OAuth tokens still use Bearer; this fix matches what the blueprint's own `auth_guide` directs users at (personal API keys).
+
+### Changed
+
+- Linear blueprint bumped to v1.1.0. Tool surface refined: `linear.list_issues` renamed to `linear.list_my_issues` (more accurate — it lists the API-key owner's issues), `linear.search` renamed to `linear.search_issues` (scoped). New `linear.list_workflow_states` (needed to fill `stateId` on `linear.update_issue`). New `linear.graphql` escape-hatch tool for queries the curated set doesn't cover. `linear.update_issue`'s params expanded to include `description`, `stateId`, `assigneeId`, `priority` since those are the common update targets.
+
 ## [v0.17.0] - 2026-05-24
 
 ### Added
