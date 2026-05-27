@@ -8,8 +8,9 @@
     </div>
     <span class="text-gray-600 text-xs font-mono">{{.DurationMs}}ms</span>
   </div>
-  <div class="bg-gray-900 p-4">
+  <div class="relative bg-gray-900 p-4 pr-10">
     <pre class="text-red-300 text-xs font-mono whitespace-pre-wrap">{{.Error}}</pre>
+    {{template "copy_button_dark" .}}
   </div>
 </div>
 {{end}}

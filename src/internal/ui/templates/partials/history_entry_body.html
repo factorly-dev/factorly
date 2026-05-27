@@ -57,7 +57,10 @@
       {{range $k, $v := .Params}}
       <div>
         <div class="text-[11px] text-gray-500 font-medium mb-0.5">{{$k}}</div>
-        <pre class="text-[11px] font-mono bg-gray-50 text-gray-700 px-2.5 py-1.5 rounded border border-gray-100 whitespace-pre-wrap break-all">{{$v}}</pre>
+        <div class="relative flex items-center pr-8 bg-gray-50 rounded border border-gray-100" style="min-height: 2rem;">
+          <pre class="w-full text-[11px] font-mono text-gray-700 px-2.5 py-1.5 whitespace-pre-wrap break-all">{{$v}}</pre>
+          {{template "copy_button_light" .}}
+        </div>
       </div>
       {{end}}
     </div>
@@ -65,14 +68,16 @@
   {{end}}
 
   {{if .Error}}
-  <div class="bg-red-50 rounded p-2 mb-2">
-    <pre class="text-red-700 text-[11px] font-mono whitespace-pre-wrap">{{.Error}}</pre>
+  <div class="relative flex items-center min-h-8 bg-red-50 rounded p-2 pr-8 mb-2">
+    <pre class="w-full text-red-700 text-[11px] font-mono whitespace-pre-wrap">{{.Error}}</pre>
+    {{template "copy_button_light" .}}
   </div>
   {{end}}
 
   {{if .Output}}
-  <div class="bg-gray-900 rounded p-3">
+  <div class="relative bg-gray-900 rounded p-3 pr-10">
     <pre class="text-green-300 text-[11px] font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">{{.Output}}</pre>
+    {{template "copy_button_dark" .}}
   </div>
   {{end}}
 {{end}}

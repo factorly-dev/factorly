@@ -520,18 +520,26 @@ func (s *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `
   </div>`)
 
-	// Result on dark background
+	// Result/Error block on dark background. The wrapping `relative`
+	// scopes copyText (copy.js) so its `pre` lookup finds the
+	// pre that follows the button. The button HTML is inline here
+	// rather than a partial because the surrounding markup is also
+	// inline Go fprintf — keeping it together is cleaner than
+	// reaching for the template engine for one button.
+	copyBtn := `<button type="button" onclick="copyText(this, 'pre')" title="Copy" class="absolute top-2 right-2 text-gray-500 hover:text-gray-300 hover:bg-gray-700 px-1.5 py-0.5 rounded transition-colors"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>`
 	if wfResult.Result != "" {
 		fmt.Fprintf(w, `
-  <div class="bg-gray-900 px-4 py-3 border-t border-gray-200">
+  <div class="relative bg-gray-900 px-4 py-3 pr-10 border-t border-gray-200">
     <pre class="text-green-300 text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">%s</pre>
-  </div>`, template.HTMLEscapeString(wfResult.Result))
+    %s
+  </div>`, template.HTMLEscapeString(wfResult.Result), copyBtn)
 	}
 	if wfResult.Error != "" && wfResult.Result == "" {
 		fmt.Fprintf(w, `
-  <div class="bg-gray-900 px-4 py-3 border-t border-gray-200">
+  <div class="relative bg-gray-900 px-4 py-3 pr-10 border-t border-gray-200">
     <pre class="text-red-300 text-xs font-mono whitespace-pre-wrap">%s</pre>
-  </div>`, template.HTMLEscapeString(wfResult.Error))
+    %s
+  </div>`, template.HTMLEscapeString(wfResult.Error), copyBtn)
 	}
 
 	fmt.Fprint(w, `
