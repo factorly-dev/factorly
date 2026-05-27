@@ -5,6 +5,7 @@ package ui
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -264,7 +265,7 @@ func TestHistoryDetail_NotFound(t *testing.T) {
 // count.
 func TestGroupHistoryEntries_StandaloneAndWorkflow(t *testing.T) {
 	entries := []historyEntry{
-		// newest-first ordering (mimics readRecentLogs output)
+		// newest-first ordering (mimics readAllLogs output)
 		{Tool: "standalone1", Status: "success", DurationMs: 50},
 		{Tool: "github.create_issue", Status: "success", DurationMs: 200, WorkflowRunID: "abc123", WorkflowName: "daily-prep"},
 		{Tool: "slack.send", Status: "success", DurationMs: 100, WorkflowRunID: "abc123", WorkflowName: "daily-prep"},
@@ -514,5 +515,218 @@ func TestApplyPrefill(t *testing.T) {
 		if same[0].Default != "https://example.com" {
 			t.Errorf("empty src changed url default: %q", same[0].Default)
 		}
+	}
+}
+
+// makeEntries returns N historyEntries newest-first with synthetic
+// hashes "h0", "h1", … so tests can assert cursor advancement.
+func makeEntries(n int) []historyEntry {
+	out := make([]historyEntry, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, historyEntry{
+			Tool:   "echo",
+			Status: "success",
+			Hash:   fmt.Sprintf("h%d", i),
+		})
+	}
+	return out
+}
+
+// TestPaginateHistory_FirstPage returns the first pageSize groups and
+// a non-empty cursor when more remain.
+func TestPaginateHistory_FirstPage(t *testing.T) {
+	entries := makeEntries(120)
+	page, next := paginateHistory(entries, "", "", "", "", 50)
+	if len(page) != 50 {
+		t.Fatalf("page size = %d, want 50", len(page))
+	}
+	if next != "h49" {
+		t.Errorf("next cursor = %q, want h49", next)
+	}
+	if page[0].Lead.Hash != "h0" {
+		t.Errorf("first entry hash = %q, want h0", page[0].Lead.Hash)
+	}
+}
+
+// TestPaginateHistory_CursorAdvances second page starts after the
+// cursor and returns the next slice.
+func TestPaginateHistory_CursorAdvances(t *testing.T) {
+	entries := makeEntries(120)
+	page, next := paginateHistory(entries, "", "", "", "h49", 50)
+	if len(page) != 50 {
+		t.Fatalf("page size = %d, want 50", len(page))
+	}
+	if page[0].Lead.Hash != "h50" {
+		t.Errorf("first entry of second page = %q, want h50", page[0].Lead.Hash)
+	}
+	if next != "h99" {
+		t.Errorf("next cursor = %q, want h99", next)
+	}
+}
+
+// TestPaginateHistory_FinalPage the last page has fewer than pageSize
+// entries and the next cursor is empty.
+func TestPaginateHistory_FinalPage(t *testing.T) {
+	entries := makeEntries(120)
+	page, next := paginateHistory(entries, "", "", "", "h99", 50)
+	if len(page) != 20 {
+		t.Fatalf("final page size = %d, want 20", len(page))
+	}
+	if next != "" {
+		t.Errorf("next cursor = %q, want empty (end of log)", next)
+	}
+}
+
+// TestPaginateHistory_PastEnd a cursor pointing at the last group
+// returns an empty page and no next cursor (terminator condition).
+func TestPaginateHistory_PastEnd(t *testing.T) {
+	entries := makeEntries(10)
+	page, next := paginateHistory(entries, "", "", "", "h9", 50)
+	if len(page) != 0 {
+		t.Errorf("page past last cursor should be empty, got %d entries", len(page))
+	}
+	if next != "" {
+		t.Errorf("next cursor past end = %q, want empty", next)
+	}
+}
+
+// TestPaginateHistory_FiltersBeforeWindowing filtering is applied to
+// the full stream, not after windowing — so a small page of "errors"
+// is reachable even when most of the log is successes.
+func TestPaginateHistory_FiltersBeforeWindowing(t *testing.T) {
+	// 100 successes + 3 errors scattered. The 3 errors should all
+	// fit on one page of 50 with no Load-more.
+	entries := makeEntries(100)
+	entries[10].Status = "error"
+	entries[50].Status = "error"
+	entries[90].Status = "error"
+	page, next := paginateHistory(entries, "", "error", "", "", 50)
+	if len(page) != 3 {
+		t.Errorf("filtered page = %d, want 3 errors", len(page))
+	}
+	if next != "" {
+		t.Errorf("filtered single-page cursor = %q, want empty", next)
+	}
+}
+
+// TestPaginateHistory_WorkflowGroupNotSplit a workflow run is one
+// group in the page (parent + children together), regardless of how
+// many child entries it contains.
+func TestPaginateHistory_WorkflowGroupNotSplit(t *testing.T) {
+	// Newest-first: parent solo, then 5 workflow child entries.
+	// (groupHistoryEntries detects parent-adjacent-to-children and
+	// suppresses the standalone parent, synthesizing a workflow lead.)
+	entries := []historyEntry{
+		{Tool: "daily-prep", Status: "success", Hash: "parent"},
+		{Tool: "step5", Status: "success", Hash: "c5", WorkflowRunID: "run-1", WorkflowName: "daily-prep"},
+		{Tool: "step4", Status: "success", Hash: "c4", WorkflowRunID: "run-1", WorkflowName: "daily-prep"},
+		{Tool: "step3", Status: "success", Hash: "c3", WorkflowRunID: "run-1", WorkflowName: "daily-prep"},
+		{Tool: "step2", Status: "success", Hash: "c2", WorkflowRunID: "run-1", WorkflowName: "daily-prep"},
+		{Tool: "step1", Status: "success", Hash: "c1", WorkflowRunID: "run-1", WorkflowName: "daily-prep"},
+	}
+	page, next := paginateHistory(entries, "", "", "", "", 50)
+	if len(page) != 1 {
+		t.Fatalf("expected 1 coalesced group, got %d", len(page))
+	}
+	if !page[0].IsWorkflow {
+		t.Errorf("group should be workflow")
+	}
+	if page[0].StepCount != 5 {
+		t.Errorf("StepCount = %d, want 5", page[0].StepCount)
+	}
+	if next != "" {
+		t.Errorf("single-group page cursor = %q, want empty", next)
+	}
+}
+
+// TestGroupCursor workflow lead with parent hash uses the hash; without
+// one it falls back to wf:<runID>. Solo groups use the entry hash.
+func TestGroupCursor(t *testing.T) {
+	cases := []struct {
+		name string
+		g    historyGroup
+		want string
+	}{
+		{"solo", historyGroup{Lead: historyEntry{Hash: "abc"}}, "abc"},
+		{
+			"workflow with parent hash",
+			historyGroup{
+				IsWorkflow: true,
+				Lead:       historyEntry{Hash: "parent-hash", WorkflowRunID: "run-1"},
+			},
+			"parent-hash",
+		},
+		{
+			"workflow without parent hash falls back to runID",
+			historyGroup{
+				IsWorkflow: true,
+				Lead:       historyEntry{WorkflowRunID: "run-2"},
+			},
+			"wf:run-2",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := groupCursor(c.g); got != c.want {
+				t.Errorf("groupCursor = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestHandleHistoryMore the endpoint returns the next page and an OOB
+// chunk that replaces #history-more with a fresh button (or empty
+// when the cursor reached the end).
+func TestHandleHistoryMore(t *testing.T) {
+	// Seed enough entries to require two pages at size 50.
+	raws := make([]logger.Entry, 0, 120)
+	base := time.Now()
+	for i := 0; i < 120; i++ {
+		raws = append(raws, logger.Entry{
+			Timestamp: base.Add(time.Duration(i) * time.Minute),
+			Tool:      "echo",
+			Status:    "success",
+			Hash:      fmt.Sprintf("h%d", i),
+			Interface: "cli",
+		})
+	}
+	seedAuditLog(t, raws)
+
+	s, _ := testServer(t, nil)
+
+	// First page: no cursor.
+	req := httptest.NewRequest(http.MethodGet, "/history/more", nil)
+	rec := httptest.NewRecorder()
+	s.handleHistoryMore(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	// Should include rows (echo tool appears in each) and an OOB
+	// container with a fresh load-more button (more remain).
+	if !strings.Contains(body, "echo") {
+		t.Errorf("response missing row content; body=%s", body)
+	}
+	if !strings.Contains(body, `id="history-more"`) {
+		t.Errorf("response missing OOB #history-more container; body=%s", body)
+	}
+	if !strings.Contains(body, "Load more") {
+		t.Errorf("first-page response should still offer Load more; body=%s", body)
+	}
+
+	// Cursor at the very last hash: zero rows back and no fresh
+	// button (OOB container is empty).
+	req = httptest.NewRequest(http.MethodGet, "/history/more?cursor=h0", nil)
+	rec = httptest.NewRecorder()
+	s.handleHistoryMore(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("end-of-log status = %d, want 200", rec.Code)
+	}
+	tailBody := rec.Body.String()
+	// h0 is the OLDEST entry (smallest timestamp). Newest-first
+	// parse puts h119 first and h0 last, so cursor=h0 means "past
+	// the end" and should yield no button.
+	if strings.Contains(tailBody, "Load more") {
+		t.Errorf("end-of-log response should NOT contain a Load more button; body=%s", tailBody)
 	}
 }

@@ -312,6 +312,7 @@ func (s *Server) routes() {
 
 	// History
 	s.mux.HandleFunc("GET /history", s.handleHistory)
+	s.mux.HandleFunc("GET /history/more", s.handleHistoryMore)
 	s.mux.HandleFunc("GET /history/{hash}/detail", s.handleHistoryDetail)
 	s.mux.HandleFunc("POST /history/{hash}/replay", s.handleHistoryReplay)
 

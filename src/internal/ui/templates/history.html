@@ -45,104 +45,20 @@
   <p class="text-sm">Tool calls will appear here after you run them.</p>
 </div>
 {{else}}
-<div class="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
+<div id="history-list" class="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
   {{range .Groups}}
-  <details class="group">
-    <summary class="px-5 py-3 cursor-pointer hover:bg-gray-50 transition-colors flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold shrink-0
-          {{if eq .Lead.Status "success"}}bg-green-100 text-green-600{{else if eq .Lead.Status "blocked"}}bg-red-100 text-red-600{{else}}bg-amber-100 text-amber-600{{end}}">
-          {{if eq .Lead.Status "success"}}✓{{else if eq .Lead.Status "blocked"}}✗{{else}}!{{end}}
-        </span>
-        <span class="font-mono text-sm">{{.Lead.Tool}}</span>
-        {{if .IsWorkflow}}
-        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-purple-50 text-purple-700" title="Workflow run">{{icon "git-compare"}} {{.StepCount}} step{{if ne .StepCount 1}}s{{end}}</span>
-        {{end}}
-        {{if .Lead.Workspace}}
-        <span class="px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-700 font-mono">{{.Lead.Workspace}}</span>
-        {{end}}
-        {{if .Lead.ShadowAction}}
-        <span class="px-1.5 py-0.5 text-[10px] rounded bg-amber-50 text-amber-700">{{.Lead.ShadowAction}}</span>
-        {{end}}
-        {{if .Lead.ReplayedFrom}}
-        <span class="px-1.5 py-0.5 text-[10px] rounded bg-gray-50 text-gray-500" title="Replay of {{.Lead.ReplayedFrom}}">↻ replayed</span>
-        {{end}}
-        {{if .FilterMatchedChildOnly}}
-        <span class="px-1.5 py-0.5 text-[10px] rounded bg-yellow-50 text-yellow-700" title="A step inside this run matches the filter">filter hit in step</span>
-        {{end}}
-      </div>
-      <div class="flex items-center gap-3 text-xs text-gray-600">
-        <span class="font-mono">{{.Lead.DurationMs}}ms</span>
-        <span>{{.Lead.TimestampRel}}</span>
-      </div>
-    </summary>
-    <div class="px-5 pb-4 pt-3 border-t border-gray-50">
-      {{if .IsWorkflow}}
-        <!-- Workflow-level actions. Replay re-fires the whole
-             workflow via the suppressed parent entry's audit hash
-             (the lead carries it forward in groupHistoryEntries).
-             Edit & Replay opens the workflow's own tool edit page
-             with the parent call's params pre-filled. Hidden when
-             the suppressed parent isn't in the visible window
-             (older than the 100-entry cutoff) and Lead.Replayable
-             is therefore false. -->
-        {{if .Lead.Replayable}}
-        <div class="mb-3 flex items-center justify-end gap-2">
-          <a href="/tools/{{.Lead.Tool}}?prefill={{.Lead.Hash}}"
-             class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50 transition-colors"
-             title="Open this workflow's parameters in the edit form, ready to re-run">
-            ✎ Edit & Replay
-          </a>
-          <form hx-post="/history/{{.Lead.Hash}}/replay"
-                hx-confirm="Replay the entire {{.Lead.Tool}} workflow?"
-                hx-target="#main-content"
-                hx-swap="outerHTML"
-                hx-select="#main-content"
-                hx-push-url="true"
-                class="inline">
-            <button type="submit"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 transition-colors"
-                    title="Re-run the whole workflow from step 1">
-              ↻ Replay workflow
-            </button>
-          </form>
-        </div>
-        {{end}}
-        <!-- Workflow run body: render each child step as a compact
-             nested row. Each child reuses the same per-entry detail
-             markup we'd use for a standalone row, via the
-             `history_entry_body` template, but wrapped in its own
-             <details> so individual steps are independently
-             expandable. Each step row gets its own Replay /
-             Edit & Replay buttons via the partial (the step's
-             tool is replayable as a standalone call). -->
-        <div class="space-y-2">
-          {{range .Children}}
-          <details class="bg-gray-50 rounded border border-gray-100">
-            <summary class="px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors flex items-center justify-between text-xs">
-              <div class="flex items-center gap-2">
-                <span class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold shrink-0
-                  {{if eq .Status "success"}}bg-green-100 text-green-600{{else if eq .Status "blocked"}}bg-red-100 text-red-600{{else}}bg-amber-100 text-amber-600{{end}}">
-                  {{if eq .Status "success"}}✓{{else if eq .Status "blocked"}}✗{{else}}!{{end}}
-                </span>
-                <span class="font-mono">{{.Tool}}</span>
-              </div>
-              <div class="flex items-center gap-2 text-gray-600">
-                <span class="font-mono">{{.DurationMs}}ms</span>
-                <span>{{.TimestampRel}}</span>
-              </div>
-            </summary>
-            <div class="px-3 pb-3 pt-2 border-t border-gray-100">
-              {{template "history_entry_body" .}}
-            </div>
-          </details>
-          {{end}}
-        </div>
-      {{else}}
-        {{template "history_entry_body" .Lead}}
-      {{end}}
-    </div>
-  </details>
+    {{template "history_row" .}}
+  {{end}}
+</div>
+<!--
+  Load-more lives in its own container so the /history/more response
+  can OOB-swap-replace it. When there's no nextCursor (end of log),
+  the response replaces this container with an empty div and the
+  button vanishes.
+-->
+<div id="history-more" class="mt-4 flex justify-center">
+  {{if .NextCursor}}
+    {{template "history_more_button" .}}
   {{end}}
 </div>
 {{end}}

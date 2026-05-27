@@ -1,0 +1,38 @@
+<!--
+ Copyright 2026 Jordan Sherer <hi@jordansherer.com>
+ SPDX-License-Identifier: gpl
+-->
+
+<!--
+  history_more is the response body for GET /history/more. It contains:
+   (a) the next page of rows (appended into #history-list via the
+       button's hx-target / hx-swap=beforeend), and
+   (b) an OOB swap that replaces #history-more with either a fresh
+       button carrying the new cursor or an empty div when we've
+       reached the end of the log.
+-->
+{{define "history_more"}}
+{{range .Groups}}
+  {{template "history_row" .}}
+{{end}}
+<div id="history-more" hx-swap-oob="outerHTML" class="mt-4 flex justify-center">
+  {{if .NextCursor}}
+    {{template "history_more_button" .}}
+  {{end}}
+</div>
+{{end}}
+
+<!--
+  The button itself. Carries the active filters through every page-load
+  so "show me all errors" stays filtered as the user pages back through
+  the log. hx-target=#history-list + hx-swap=beforeend appends; the
+  OOB chunk in the response handles the button itself.
+-->
+{{define "history_more_button"}}
+<button hx-get="/history/more?cursor={{.NextCursor}}{{if .ToolFilter}}&tool={{.ToolFilter}}{{end}}{{if .StatusFilter}}&status={{.StatusFilter}}{{end}}{{if .WorkspaceFilter}}&workspace={{.WorkspaceFilter}}{{end}}"
+        hx-target="#history-list"
+        hx-swap="beforeend"
+        class="px-4 py-2 text-xs text-gray-700 border border-gray-200 rounded hover:bg-gray-50 transition-colors">
+  Load more
+</button>
+{{end}}

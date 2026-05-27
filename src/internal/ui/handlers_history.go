@@ -86,18 +86,28 @@ type historyGroup struct {
 	FilterMatchedChildOnly bool
 }
 
+// historyPageSize is the number of coalesced groups shown per page on
+// /history. Load-more appends another page each click. Tuned to keep
+// the initial render under a few hundred DOM nodes while still being
+// useful — most operators want "last hour or so" not "last entry."
+const historyPageSize = 50
+
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	toolFilter := r.URL.Query().Get("tool")
 	statusFilter := r.URL.Query().Get("status")
 	workspaceFilter := r.URL.Query().Get("workspace")
 
-	entries := readRecentLogs(s.cfgPath, 100)
+	// Read the full log (newest-first) once. Workspace dropdown needs
+	// the full distinct set; pagination needs the full filtered stream
+	// to slice the requested page out. The cost is one file scan per
+	// request — fine for the design budget (~10MB / ~1000 entries) we
+	// document for the store; if the audit log ever grows large enough
+	// for this to bite, the next step is an on-disk index keyed by
+	// hash, not in-memory paging tricks.
+	all := readAllLogs(s.cfgPath)
 
-	// Collect distinct workspaces present in the (unfiltered) log so
-	// the dropdown shows everything the user has run, not just what
-	// matches the current filter.
 	workspacesSeen := map[string]bool{}
-	for _, e := range entries {
+	for _, e := range all {
 		if e.Workspace != "" {
 			workspacesSeen[e.Workspace] = true
 		}
@@ -108,8 +118,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	sortStringsAsc(workspaceOptions)
 
-	groups := groupHistoryEntries(entries)
-	groups = filterHistoryGroups(groups, toolFilter, statusFilter, workspaceFilter)
+	groups, nextCursor := paginateHistory(all, toolFilter, statusFilter, workspaceFilter, "", historyPageSize)
 
 	s.render(w, "history.html", map[string]any{
 		"Title":            "History",
@@ -119,7 +128,88 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		"StatusFilter":     statusFilter,
 		"WorkspaceFilter":  workspaceFilter,
 		"WorkspaceOptions": workspaceOptions,
+		"NextCursor":       nextCursor,
 	})
+}
+
+// handleHistoryMore returns the next page of history rows as an HTMX
+// fragment. The button at the bottom of /history fires hx-get with
+// the current filters and the lead hash of the last visible group as
+// `cursor`. Response is the rendered rows plus an OOB swap that
+// replaces the load-more container (either with a fresh button
+// carrying the new cursor, or with nothing when we've reached the end
+// of the log).
+func (s *Server) handleHistoryMore(w http.ResponseWriter, r *http.Request) {
+	toolFilter := r.URL.Query().Get("tool")
+	statusFilter := r.URL.Query().Get("status")
+	workspaceFilter := r.URL.Query().Get("workspace")
+	cursor := r.URL.Query().Get("cursor")
+
+	all := readAllLogs(s.cfgPath)
+	groups, nextCursor := paginateHistory(all, toolFilter, statusFilter, workspaceFilter, cursor, historyPageSize)
+
+	s.renderPartial(w, "history_more", map[string]any{
+		"Groups":          groups,
+		"ToolFilter":      toolFilter,
+		"StatusFilter":    statusFilter,
+		"WorkspaceFilter": workspaceFilter,
+		"NextCursor":      nextCursor,
+	})
+}
+
+// groupCursor is the stable id we use to advance pagination. For
+// standalone groups it's the entry's audit hash. For workflow groups
+// it's the captured parent hash when we have one; otherwise we fall
+// back to "wf:<runID>" so older runs (whose parent entry has scrolled
+// off the visible window) still get a unique cursor. The fallback is
+// safe because workflow run IDs are globally unique within the log.
+func groupCursor(g historyGroup) string {
+	if g.IsWorkflow {
+		if g.Lead.Hash != "" {
+			return g.Lead.Hash
+		}
+		if g.Lead.WorkflowRunID != "" {
+			return "wf:" + g.Lead.WorkflowRunID
+		}
+	}
+	return g.Lead.Hash
+}
+
+// paginateHistory groups + filters all entries, then slices out the
+// requested page. cursor is the groupCursor of the last group on the
+// previous page; "" returns the first page. Returns (page, nextCursor)
+// where nextCursor is "" when no more pages remain.
+//
+// Filtering happens at the group level (same as before), but applied
+// to the full entry stream rather than a 100-entry tail — so "show me
+// all errors" surfaces every error in the log, not just errors that
+// happen to be in the recent slice.
+func paginateHistory(all []historyEntry, toolFilter, statusFilter, workspaceFilter, cursor string, pageSize int) ([]historyGroup, string) {
+	groups := groupHistoryEntries(all)
+	groups = filterHistoryGroups(groups, toolFilter, statusFilter, workspaceFilter)
+
+	start := 0
+	if cursor != "" {
+		for i, g := range groups {
+			if groupCursor(g) == cursor {
+				start = i + 1
+				break
+			}
+		}
+	}
+	if start >= len(groups) {
+		return nil, ""
+	}
+	end := start + pageSize
+	if end > len(groups) {
+		end = len(groups)
+	}
+	page := groups[start:end]
+	nextCursor := ""
+	if end < len(groups) && len(page) > 0 {
+		nextCursor = groupCursor(page[len(page)-1])
+	}
+	return page, nextCursor
 }
 
 // groupHistoryEntries coalesces audit entries into rendering groups.
@@ -134,7 +224,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 // the coalesced row; we detect them by tool name + timestamp
 // adjacency and suppress.
 //
-// Input is newest-first (as readRecentLogs returns). Output
+// Input is newest-first (as readAllLogs returns). Output
 // preserves that ordering at the group level.
 //
 // The synthesized parent's status reflects the run's outcome: any
@@ -300,13 +390,21 @@ func filterHistoryGroups(groups []historyGroup, toolFilter, statusFilter, worksp
 	return out
 }
 
-func readRecentLogs(cfgPath string, max int) []historyEntry {
+// readAllLogs reads the full audit log newest-first. /history's
+// pagination requires the full filtered stream (so "show me all
+// errors" surfaces every match, not just matches in the recent
+// slice). Cost: one full-file scan per request. Within the
+// store/audit design budget of ~10MB; revisit if logs grow huge.
+func readAllLogs(cfgPath string) []historyEntry {
 	if p := os.Getenv("FACTORLY_LOG_PATH"); p != "" {
-		return readLogsFromPath(p, max)
+		return readLogsFromPath(p, -1)
 	}
-	return readLogsFromPath(logger.ProjectLogPath(cfgPath), max)
+	return readLogsFromPath(logger.ProjectLogPath(cfgPath), -1)
 }
 
+// readLogsFromPath returns audit entries newest-first. max < 0 means
+// "no limit, return everything." max >= 0 keeps only the last `max`
+// lines from the file.
 func readLogsFromPath(path string, max int) []historyEntry {
 	f, err := os.Open(path)
 	if err != nil {
@@ -314,7 +412,6 @@ func readLogsFromPath(path string, max int) []historyEntry {
 	}
 	defer f.Close()
 
-	// Read all lines (we'll take the last `max`)
 	var lines []string
 	scanner := bufio.NewScanner(f)
 	// 1MB max line: factorly.code entries embed the full script as a
@@ -326,9 +423,8 @@ func readLogsFromPath(path string, max int) []historyEntry {
 		lines = append(lines, scanner.Text())
 	}
 
-	// Take last `max` lines
 	start := 0
-	if len(lines) > max {
+	if max >= 0 && len(lines) > max {
 		start = len(lines) - max
 	}
 	lines = lines[start:]

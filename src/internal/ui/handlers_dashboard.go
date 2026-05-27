@@ -164,7 +164,7 @@ func feedSeed(windowed []logger.Entry, maxRows int) []historyGroup {
 }
 
 // readRecentEntries reads up to `max` newest audit entries as raw
-// logger.Entry values. /history's readRecentLogs is similar but
+// logger.Entry values. /history's readAllLogs is similar but
 // returns the UI's enriched historyEntry shape (formatted timestamps,
 // derived booleans) — for rollup math we want the raw time.Time so
 // we can window by absolute timestamp.
