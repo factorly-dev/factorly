@@ -1,3 +1,12 @@
+## [v0.17.2] - 2026-05-26
+
+### Added
+- Pagination for `/history` endpoint, slicing filtered results into 50-group pages
+- `/history/more` endpoint returning appended rows with an out-of-band swap updating the Load-more button
+- Full audit log filtering before windowing so filters like "show errors" match across entire log, not just the current page
+- Cursor-based pagination using lead audit hash, falling back to `wf:<runID>` for workflow leads whose parent has scrolled out
+- Workflow groups preserved intact across page boundaries
+
 ## [v0.17.1]
 
 ### Fixed
