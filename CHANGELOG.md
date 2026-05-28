@@ -1,3 +1,15 @@
+## [v0.17.3] - 2026-05-28
+
+### Added
+- "Used by N tool(s)" indigo and "used by N auth(s)" green badge pills on vault and store list entries
+- `toolReferenceCounts` and `oauthProviderReferenceCounts` helpers to count references via YAML rendering and regex matching
+- Copy buttons on history Output/Error/Params, try-panel blocked response, and workflow run result containers
+- Shared copy button partial and global `copyText` helper in `static/copy.js`
+
+### Changed
+- Vault and store HTMX fragment renderers (`renderVaultSections`, `renderStoreKeys`) now include reference count badges to stay in sync after mutations
+- Removed 200-character truncation on history Output field so copied content matches full payload
+
 ## [v0.17.2] - 2026-05-26
 
 ### Added
