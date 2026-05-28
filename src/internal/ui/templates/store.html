@@ -46,9 +46,19 @@
     <div class="px-5 py-4 text-center text-gray-600 text-xs">empty</div>
     {{else}}
     {{range $section.Keys}}
+    {{$count := index $.Usage .}}
+    {{$authCount := index $.AuthUsage .}}
     <div class="px-5 py-2.5 border-b border-gray-100 last:border-b-0">
       <div class="flex items-center justify-between">
-        <a href="/store/entry?scope={{$section.Scope}}&key={{.}}" class="font-mono text-sm hover:text-indigo-600">{{.}}</a>
+        <div class="flex items-center gap-2 min-w-0">
+          <a href="/store/entry?scope={{$section.Scope}}&key={{.}}" class="font-mono text-sm hover:text-indigo-600 truncate">{{.}}</a>
+          {{if gt $count 0}}
+          <span class="px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-700" title="Referenced as {{`{{store:`}}{{.}}{{`}}`}} in tool config">used by {{$count}} tool{{if ne $count 1}}s{{end}}</span>
+          {{end}}
+          {{if gt $authCount 0}}
+          <span class="px-1.5 py-0.5 text-[10px] rounded bg-green-50 text-green-700" title="Referenced as {{`{{store:`}}{{.}}{{`}}`}} in oauth provider config">used by {{$authCount}} auth{{if ne $authCount 1}}s{{end}}</span>
+          {{end}}
+        </div>
         <div class="flex items-center gap-3">
           <a href="/store/entry?scope={{$section.Scope}}&key={{.}}" class="text-indigo-600 hover:text-indigo-700 text-xs">view</a>
           <button hx-delete="/store/{{.}}?scope={{$section.Scope}}"

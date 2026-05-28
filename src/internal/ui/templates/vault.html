@@ -61,9 +61,19 @@
     <div class="px-5 py-4 text-center text-gray-600 text-xs">empty</div>
     {{else}}
     {{range $section.Keys}}
+    {{$count := index $.Usage .}}
+    {{$authCount := index $.AuthUsage .}}
     <div class="px-5 py-2.5 border-b border-gray-100 last:border-b-0">
       <div class="flex items-center justify-between">
-        <span class="font-mono text-sm">{{.}}</span>
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="font-mono text-sm truncate">{{.}}</span>
+          {{if gt $count 0}}
+          <span class="px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-700" title="Referenced as {{`{{vault:`}}{{.}}{{`}}`}} in tool config">used by {{$count}} tool{{if ne $count 1}}s{{end}}</span>
+          {{end}}
+          {{if gt $authCount 0}}
+          <span class="px-1.5 py-0.5 text-[10px] rounded bg-green-50 text-green-700" title="Referenced as {{`{{vault:`}}{{.}}{{`}}`}} in oauth provider config">used by {{$authCount}} auth{{if ne $authCount 1}}s{{end}}</span>
+          {{end}}
+        </div>
         <div class="flex items-center gap-3">
           <span class="text-gray-500 text-sm">••••••••</span>
           <button type="button" onclick="showReplace(this, '{{.}}', '{{$section.Scope}}')"

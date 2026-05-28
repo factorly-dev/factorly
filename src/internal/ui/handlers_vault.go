@@ -28,9 +28,11 @@ type vaultSection struct {
 func (s *Server) handleVault(w http.ResponseWriter, r *http.Request) {
 	sections := s.vaultSections(r)
 	s.render(w, "vault.html", map[string]any{
-		"Title":    "Vault",
-		"Nav":      "vault",
-		"Sections": sections,
+		"Title":     "Vault",
+		"Nav":       "vault",
+		"Sections":  sections,
+		"Usage":     toolReferenceCounts(s.cfg, "vault"),
+		"AuthUsage": oauthProviderReferenceCounts(s.cfg, "vault"),
 	})
 }
 
@@ -410,6 +412,19 @@ func (s *Server) renderVaultKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// One scan of all tool configs per request gives us a key → tool-
+	// count map for the "used by N tools" badge. Cost is bounded by
+	// the tools map size; far cheaper than re-rendering inside the
+	// per-key loop.
+	usage := toolReferenceCounts(s.cfg, "vault")
+	authUsage := oauthProviderReferenceCounts(s.cfg, "vault")
+	renderVaultSections(w, sections, usage, authUsage)
+}
+
+// renderVaultSections is the pure formatter — sections in, HTML out.
+// Split from renderVaultKeys so tests can feed synthetic sections and
+// assert on the rendered HTML without standing up a real vault.
+func renderVaultSections(w http.ResponseWriter, sections []vaultSection, usage, authUsage map[string]int) {
 	for _, sec := range sections {
 		header := fmt.Sprintf("%s <span class=\"text-gray-500\">(%d keys)</span>", html.EscapeString(sec.Label), len(sec.Keys))
 		if sec.Locked {
@@ -427,8 +442,26 @@ func (s *Server) renderVaultKeys(w http.ResponseWriter, r *http.Request) {
 		} else {
 			for _, key := range sec.Keys {
 				esc := html.EscapeString(key)
+				usedBy := ""
+				if n := usage[key]; n > 0 {
+					noun := "tools"
+					if n == 1 {
+						noun = "tool"
+					}
+					usedBy += fmt.Sprintf(`<span class="px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-700" title="Referenced as {{vault:%s}} in tool config">used by %d %s</span>`, esc, n, noun)
+				}
+				if n := authUsage[key]; n > 0 {
+					noun := "auths"
+					if n == 1 {
+						noun = "auth"
+					}
+					usedBy += fmt.Sprintf(`<span class="px-1.5 py-0.5 text-[10px] rounded bg-green-50 text-green-700" title="Referenced as {{vault:%s}} in oauth provider config">used by %d %s</span>`, esc, n, noun)
+				}
 				fmt.Fprintf(w, `<div class="px-5 py-2.5 flex items-center justify-between border-b border-gray-100 last:border-b-0">
-					<span class="font-mono text-sm">%s</span>
+					<div class="flex items-center gap-2 min-w-0">
+						<span class="font-mono text-sm truncate">%s</span>
+						%s
+					</div>
 					<div class="flex items-center gap-3">
 						<span class="text-gray-500 text-sm">••••••••</span>
 						<button hx-delete="/vault/%s?scope=%s"
@@ -437,7 +470,7 @@ func (s *Server) renderVaultKeys(w http.ResponseWriter, r *http.Request) {
 								hx-confirm="Delete secret &#39;%s&#39;?"
 								class="text-red-600 hover:text-red-700 text-xs">delete</button>
 					</div>
-				</div>`, esc, esc, html.EscapeString(sec.Scope), esc)
+				</div>`, esc, usedBy, esc, html.EscapeString(sec.Scope), esc)
 			}
 		}
 		fmt.Fprint(w, `</div>`)

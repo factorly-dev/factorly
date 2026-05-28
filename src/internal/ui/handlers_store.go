@@ -33,6 +33,8 @@ func (s *Server) handleStore(w http.ResponseWriter, r *http.Request) {
 		"Nav":             "store",
 		"Sections":        sections,
 		"ActiveWorkspace": s.requestWorkspace(r),
+		"Usage":           toolReferenceCounts(s.cfg, "store"),
+		"AuthUsage":       oauthProviderReferenceCounts(s.cfg, "store"),
 	})
 }
 
@@ -313,6 +315,10 @@ func (s *Server) handleStoreDelete(w http.ResponseWriter, r *http.Request) {
 func (s *Server) renderStoreKeys(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	sections := s.storeSections(r)
+	// Build the key → tool-count map once per request for the
+	// "used by N tools" badge. Mirrors renderVaultKeys.
+	usage := toolReferenceCounts(s.cfg, "store")
+	authUsage := oauthProviderReferenceCounts(s.cfg, "store")
 	for _, sec := range sections {
 		scope := html.EscapeString(sec.Scope)
 		fmt.Fprintf(w, `<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -324,15 +330,33 @@ func (s *Server) renderStoreKeys(w http.ResponseWriter, r *http.Request) {
 			for _, k := range sec.Keys {
 				ek := html.EscapeString(k)
 				eq := url.QueryEscape(k)
+				usedBy := ""
+				if n := usage[k]; n > 0 {
+					noun := "tools"
+					if n == 1 {
+						noun = "tool"
+					}
+					usedBy += fmt.Sprintf(`<span class="px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-700" title="Referenced as {{store:%s}} in tool config">used by %d %s</span>`, ek, n, noun)
+				}
+				if n := authUsage[k]; n > 0 {
+					noun := "auths"
+					if n == 1 {
+						noun = "auth"
+					}
+					usedBy += fmt.Sprintf(`<span class="px-1.5 py-0.5 text-[10px] rounded bg-green-50 text-green-700" title="Referenced as {{store:%s}} in oauth provider config">used by %d %s</span>`, ek, n, noun)
+				}
 				fmt.Fprintf(w, `<div class="px-5 py-2.5 border-b border-gray-100 last:border-b-0">
 					<div class="flex items-center justify-between">
-						<a href="/store/entry?scope=%s&key=%s" class="font-mono text-sm hover:text-indigo-600">%s</a>
+						<div class="flex items-center gap-2 min-w-0">
+							<a href="/store/entry?scope=%s&key=%s" class="font-mono text-sm hover:text-indigo-600 truncate">%s</a>
+							%s
+						</div>
 						<div class="flex items-center gap-3">
 							<a href="/store/entry?scope=%s&key=%s" class="text-indigo-600 hover:text-indigo-700 text-xs">view</a>
 							<button hx-delete="/store/%s?scope=%s" hx-target="#store-keys" hx-swap="innerHTML" hx-confirm="Delete store entry '%s'?" class="text-red-600 hover:text-red-700 text-xs">delete</button>
 						</div>
 					</div>
-				</div>`, scope, eq, ek, scope, eq, eq, scope, ek)
+				</div>`, scope, eq, ek, usedBy, scope, eq, eq, scope, ek)
 			}
 		}
 		fmt.Fprint(w, `</div>`)
