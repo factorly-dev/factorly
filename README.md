@@ -44,24 +44,33 @@ brew install factorly-dev/tap/factorly
 
 ## Quick Start
 
-Then, define your tools, secure your credentials, and sync with your agent:
+Zero config: wrap any existing MCP server and it's instantly callable through Factorly:
 
 ```bash
-# 1. Configure your tools or install a blueprint (41 services: GitHub, Slack, Stripe, Linear, Gmail, ...)
+factorly wrap -- npx -y @modelcontextprotocol/server-everything
+```
+
+Then set up a project: install a blueprint, store credentials, and sync with your agent:
+
+```bash
+# 1. Create a project config + install a blueprint (41 services: GitHub, Slack, Stripe, Linear, Gmail, ...)
 factorly init
 factorly blueprint install github
 
-# 2. Store your credentials in the encrypted vault
+# 2. Store credentials in the encrypted vault (or: factorly auth login github)
 factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
 
-# 3. Connect to your agent (auto-detects Claude Code, Cursor, Codex)
+# 3. Confirm it's wired up
+factorly tools status
+
+# 4. Connect to your agent (auto-detects Claude Code, Cursor, Codex), then reload it
 factorly sync
 
-# 3. Optional, start the UI
+# 5. Optional — browse, edit, and try tools in the UI
 factorly ui
 ```
 
-Your agent connects to Factorly as a single MCP server or CLI and sees every tool you've configured. Credentials never leave the vault.
+Your agent connects to Factorly as a single MCP server or CLI and sees every tool you've configured. Credentials never leave the vault. Full walkthrough: [Getting Started](docs/getting-started.md).
 
 ---
 

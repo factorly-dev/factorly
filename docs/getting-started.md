@@ -28,31 +28,55 @@ cd factorly && make build
 
 ## Try It Immediately
 
-No config needed — wrap any existing MCP server:
+Zero config: wrap any existing MCP server and it's instantly callable through Factorly:
 
 ```bash
 factorly wrap -- npx @modelcontextprotocol/server-everything
 ```
 
-Or install a pre-built blueprint:
+That's the fastest way to see Factorly working. The [`wrap`](cli-reference.md)
+command needs no `.factorly/` directory and no setup.
+
+## Your First Real Tool (the happy path)
+
+One uninterrupted thread from nothing to "it's in my agent":
 
 ```bash
-factorly blueprint install github
-factorly call github.list_repos --username octocat
-```
-
-## Set Up a Project
-
-```bash
-# Interactive setup — creates .factorly/factorly.yaml
+# 1. Create a project config
 factorly init
 
-# Store a secret
-factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
+# 2. Install a ready-made tool bundle (41 services available)
+factorly blueprint install github
 
-# Check everything works
+# 3. Give it the credential it needs
+factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx
+#    (some services use OAuth instead — see "When a blueprint needs OAuth" below)
+
+# 4. Confirm it's wired up — names any missing keys / auth
 factorly tools status
+
+# 5. Fire a real call to prove it works
+factorly call github.list_repos --username octocat
+
+# 6. Connect it to your agent (auto-detects Claude Code, Cursor, Codex)
+factorly sync
+#    then reload/restart your agent — Factorly's tools appear in its tool list
 ```
+
+If step 5 fails with an unresolved `{{vault:KEY}}` error, the message
+names the exact key and the command to fix it. Run `factorly tools status`
+anytime to see which tools are healthy and which need credentials.
+
+### When a blueprint needs OAuth
+
+Some services (Google, Microsoft, GitHub Apps) authenticate via OAuth
+rather than a static token. Instead of `vault set`, run:
+
+```bash
+factorly auth login github
+```
+
+See [OAuth](oauth.md) for the full flow.
 
 ## Add Tools
 
