@@ -104,6 +104,7 @@ func (s *Server) handleStoreNewSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, writeErr.Error(), http.StatusBadRequest)
 		return
 	}
+	toast(w, toastSuccess, "Saved store entry "+key)
 	http.Redirect(w, r, "/store", http.StatusSeeOther)
 }
 
@@ -300,6 +301,7 @@ func (s *Server) handleStoreDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "store delete: "+delErr.Error(), http.StatusInternalServerError)
 		return
 	}
+	toast(w, toastInfo, "Deleted store entry "+key)
 	s.renderStoreKeys(w, r)
 }
 
@@ -509,6 +511,7 @@ func (s *Server) handleStoreEntryUpdate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	toast(w, toastSuccess, "Saved "+key)
 	target := "/store/entry?scope=" + url.QueryEscape(scope) + "&key=" + url.QueryEscape(key)
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
@@ -555,6 +558,7 @@ func (s *Server) handleStoreEntryDelete(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, delErr.Error(), http.StatusInternalServerError)
 		return
 	}
+	toast(w, toastInfo, "Deleted store entry "+key)
 	http.Redirect(w, r, "/store", http.StatusSeeOther)
 }
 

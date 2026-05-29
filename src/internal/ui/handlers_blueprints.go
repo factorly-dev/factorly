@@ -310,6 +310,7 @@ func (s *Server) handleBlueprintBrowseInstall(w http.ResponseWriter, r *http.Req
 	}
 	// On success, redirect back to /blueprints so the user sees the
 	// freshly-installed entry in their list.
+	toast(w, toastSuccess, "Installed blueprint "+name)
 	w.Header().Set("HX-Redirect", "/blueprints")
 	http.Redirect(w, r, "/blueprints", http.StatusSeeOther)
 }
@@ -351,6 +352,7 @@ func (s *Server) handleBlueprintUninstall(w http.ResponseWriter, r *http.Request
 		http.Error(w, fmt.Sprintf("uninstalled but reload failed: %v", err), http.StatusInternalServerError)
 		return
 	}
+	toast(w, toastInfo, "Uninstalled blueprint "+name)
 	w.Header().Set("HX-Redirect", "/blueprints")
 	w.WriteHeader(http.StatusOK)
 }

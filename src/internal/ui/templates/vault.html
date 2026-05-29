@@ -36,8 +36,9 @@
 {{end}}
 
 {{if not .Sections}}
-<div class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
-  Vault not available. Run <code class="bg-gray-100 px-1 rounded">factorly vault set KEY value</code> from the CLI to initialize.
+<div class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-600">
+  <p class="text-sm mb-4">No vault tiers found. Add your first secret to initialize one — or run <code class="bg-gray-100 px-1 rounded">factorly vault set KEY value</code> from the CLI.</p>
+  <a href="/vault/new" class="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">{{icon "plus"}} Create a secret</a>
 </div>
 {{else}}
 

@@ -33,7 +33,8 @@
 {{if not .Blueprints}}
 <div class="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-600">
   <p class="text-lg mb-2">No blueprints installed</p>
-  <p class="text-sm">Click "Browse Catalog" above to pick from bundled integrations, or "+ Install Blueprint" to install from a GitHub repo or YAML file.</p>
+  <p class="text-sm mb-4">Blueprints are ready-made tool bundles (GitHub, Slack, Linear, Trello, ...). Install one and its tools are immediately callable.</p>
+  <a href="/blueprints/browse" class="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">{{icon "package"}} Browse the catalog</a>
 </div>
 {{else}}
 <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">

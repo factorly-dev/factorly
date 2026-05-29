@@ -108,12 +108,13 @@
     startPolling();
   }
 
+  // Delegate to the global toast (static/toast.js). Kept as a thin
+  // wrapper so the call sites below don't change; falls back to a
+  // bare alert only if toast.js somehow didn't load.
   function showToast(msg) {
-    var t = document.createElement('div');
-    t.className = 'fixed bottom-4 right-4 z-50 px-3 py-2 bg-gray-800 text-white text-xs rounded shadow-lg';
-    t.textContent = msg;
-    document.body.appendChild(t);
-    setTimeout(function() { t.remove(); }, 2500);
+    if (window.toast) {
+      window.toast(msg, 'info');
+    }
   }
 
   window.respondConfirm = function(id, action) {

@@ -285,6 +285,11 @@
             {{if not .IsBuiltin}}<span class="inline-flex items-center gap-1 text-xs text-indigo-600 cursor-pointer" onclick="event.preventDefault(); event.stopPropagation(); this.closest('details').open = true; addToolParam()">{{icon "plus"}} Add</span>{{end}}
           </summary>
           <div class="p-4" id="params-list">
+            <p class="text-xs text-gray-600 mb-3">
+              The location column controls where each param goes in a REST call.
+              <span class="font-medium">auto</span> infers it from where the matching {{"{{name}}"}} appears (path → path, otherwise query/body).
+              Set it explicitly when inference is wrong.
+            </p>
             {{range $i, $p := .Params}}
             <div class="param-row border border-gray-100 rounded p-3 mb-2 bg-gray-50/50 space-y-2">
               <div class="flex items-center justify-between">
@@ -461,10 +466,11 @@
   <!-- Try it panel -->
   <div id="try-panel">
     <div class="bg-white rounded-lg border border-gray-200 p-5 sticky top-6">
-      <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center justify-between mb-1">
         <h2 class="text-xs font-medium text-gray-500 uppercase tracking-wide">Try it</h2>
         <span class="text-[10px] text-gray-600 font-mono">{{.Tool.Name}}</span>
       </div>
+      <p class="text-xs text-gray-600 mb-4">Fire a real call with these params to confirm the tool works before you rely on it.</p>
 
       <form data-run-form
             hx-post="/tools/{{.Tool.Name}}/try"
@@ -520,7 +526,9 @@
         </span>
       </form>
 
-      <div id="try-result" class="mt-4"></div>
+      <div id="try-result" class="mt-4">
+        <p class="text-center text-[10px] text-gray-500 py-3">Run the tool to see its response here.</p>
+      </div>
     </div>
   </div>
 </div>

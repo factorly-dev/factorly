@@ -90,6 +90,7 @@ func (s *Server) handleVaultNewSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("vault set: %v", err), http.StatusInternalServerError)
 		return
 	}
+	toast(w, toastSuccess, "Saved secret "+key)
 	http.Redirect(w, r, "/vault", http.StatusSeeOther)
 }
 
@@ -289,6 +290,7 @@ func (s *Server) handleVaultDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	toast(w, toastInfo, "Deleted secret "+key)
 	s.renderVaultKeys(w, r)
 }
 

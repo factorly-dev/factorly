@@ -89,6 +89,7 @@ func (s *Server) handleAuthCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.cfg.OAuthProviders[name] = p
 
+	toast(w, toastSuccess, "Added auth provider "+name)
 	http.Redirect(w, r, "/auth", http.StatusSeeOther)
 }
 
@@ -120,6 +121,7 @@ func (s *Server) handleAuthUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.cfg.OAuthProviders[name] = p
 
+	toast(w, toastSuccess, "Updated auth provider "+name)
 	http.Redirect(w, r, "/auth", http.StatusFound)
 }
 
@@ -149,6 +151,7 @@ func (s *Server) handleAuthDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	toast(w, toastInfo, "Removed auth provider "+name)
 	w.Header().Set("HX-Redirect", "/auth")
 	w.WriteHeader(http.StatusOK)
 }

@@ -470,6 +470,7 @@ func (s *Server) handleToolCreate(w http.ResponseWriter, r *http.Request) {
 	s.cfg.Tools[name] = tc
 	s.registerTool(name, tc)
 
+	toast(w, toastSuccess, "Created "+name)
 	http.Redirect(w, r, "/tools/"+name, http.StatusFound)
 }
 
@@ -781,6 +782,7 @@ func (s *Server) handleToolDelete(w http.ResponseWriter, r *http.Request) {
 	s.unregisterTool(name)
 
 	// Return empty response for htmx (redirects via HX-Redirect header)
+	toast(w, toastInfo, "Deleted "+name)
 	w.Header().Set("HX-Redirect", "/tools")
 	w.WriteHeader(http.StatusOK)
 }
