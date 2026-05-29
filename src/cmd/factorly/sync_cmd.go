@@ -19,6 +19,7 @@ var syncCommand string
 var syncToken string
 var syncRemove bool
 var syncGlobal bool
+var syncVerify bool
 
 type clientDef struct {
 	Name       string
@@ -77,6 +78,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	entry := buildFactorlyEntry()
 	synced := 0
+	var syncedClients []string // names of clients we actually wrote to
 	activeClients := getClients()
 
 	fmt.Fprintln(os.Stderr)
@@ -118,16 +120,56 @@ func runSync(cmd *cobra.Command, args []string) error {
 			}
 			fmt.Fprintf(os.Stderr, "  ✓ %-14s wrote %s\n", c.Name, c.ConfigPath)
 			synced++
+			syncedClients = append(syncedClients, c.Name)
 		}
 	}
 
 	fmt.Fprintln(os.Stderr)
 	if syncRemove {
 		fmt.Fprintf(os.Stderr, "  Removed from %d clients.\n", synced)
-	} else {
-		fmt.Fprintf(os.Stderr, "  Synced %d clients.\n", synced)
+		return nil
+	}
+
+	fmt.Fprintf(os.Stderr, "  Synced %d clients.\n", synced)
+
+	if synced > 0 {
+		// --verify confirms the server actually starts and counts the
+		// tools it would expose, so the user gets a green check before
+		// switching to their agent. Off by default because bootstrap can
+		// prompt for a vault password / probe the network — not what you
+		// want on every sync.
+		if syncVerify {
+			if verified := verifyToolCount(); verified >= 0 {
+				fmt.Fprintf(os.Stderr, "\n  Verified: Factorly exposes %d %s.\n",
+					verified, plural(verified, "tool", "tools"))
+			} else {
+				fmt.Fprintln(os.Stderr, "\n  Verify: could not start the server to count tools (vault locked? run 'factorly tools status').")
+			}
+		}
+		// Tell the user what to do next — sync writing the config is
+		// invisible until the client re-reads it. Without this, people
+		// sync, see "Synced 1 clients", switch to their agent, and
+		// wonder why nothing changed.
+		fmt.Fprintf(os.Stderr, "\n  Next: reload or restart %s — Factorly's tools appear in its tool list.\n",
+			strings.Join(syncedClients, ", "))
 	}
 	return nil
+}
+
+// verifyToolCount loads the config and bootstraps providers — the same
+// path `serve` uses — then returns how many tools the MCP server would
+// expose (non-hidden). Returns -1 on any error so the caller can skip
+// the "will expose N tools" line rather than fail the sync (the sync
+// itself already succeeded; this is just confirmation).
+func verifyToolCount() int {
+	cfg, reg, err := loadConfig()
+	if err != nil {
+		return -1
+	}
+	if _, err := bootstrapProviders(cfg, reg); err != nil {
+		return -1
+	}
+	return len(reg.ListVisible())
 }
 
 func buildFactorlyEntry() map[string]any {
@@ -257,4 +299,5 @@ func init() {
 	syncCmd.Flags().StringVar(&syncCommand, "command", "", "custom factorly binary path")
 	syncCmd.Flags().BoolVar(&syncRemove, "remove", false, "remove factorly entry from client configs")
 	syncCmd.Flags().BoolVar(&syncGlobal, "global", false, "sync to user-level config (~/.claude/, ~/.cursor/, ~/.codex/)")
+	syncCmd.Flags().BoolVar(&syncVerify, "verify", false, "after syncing, start the server to confirm the tool count")
 }
