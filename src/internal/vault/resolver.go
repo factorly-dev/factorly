@@ -367,3 +367,22 @@ func IsSafeBackendName(name string) bool {
 func IsSecretBackendName(name string) bool {
 	return !IsSafeBackendName(name)
 }
+
+// FirstSecretRef returns the backend and key of the first
+// secret-backend reference (e.g. {{vault:LINEAR_API_KEY}}) in s, so
+// callers can produce a precise "key X is missing" diagnostic instead
+// of a generic "unresolved reference". Returns ("", "", false) when s
+// contains no secret-backend ref. Safe-backend refs (env/store/expr)
+// are skipped — those resolve elsewhere and aren't the cause of a
+// surfaced "unresolved" error here.
+func FirstSecretRef(s string) (backend, key string, ok bool) {
+	for _, m := range refPattern.FindAllStringSubmatch(s, -1) {
+		if len(m) < 3 {
+			continue
+		}
+		if IsSecretBackendName(m[1]) {
+			return m[1], m[2], true
+		}
+	}
+	return "", "", false
+}

@@ -84,9 +84,25 @@ func main() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:               "factorly",
-	Short:             "One endpoint. All your tools.",
-	Long:              "Factorly wraps your existing agent tools — MCP servers, REST APIs, CLIs — into a single endpoint.",
+	Use:   "factorly",
+	Short: "One endpoint. All your tools.",
+	Long: "Factorly wraps your existing agent tools — MCP servers, REST APIs, CLIs — into a single endpoint.\n\n" +
+		"Fastest start (zero config): wrap any MCP server so it's instantly callable —\n" +
+		"  factorly wrap -- npx -y @modelcontextprotocol/server-github\n\n" +
+		"Set up a project, then check everything's wired up:\n" +
+		"  factorly init                 # create .factorly/factorly.yaml\n" +
+		"  factorly blueprint install github\n" +
+		"  factorly tools status         # diagnose missing keys / auth\n" +
+		"  factorly ui                   # browse, edit, and try tools in the browser",
+	Example: "  # Zero-config: proxy an MCP server through factorly\n" +
+		"  factorly wrap -- npx -y @modelcontextprotocol/server-everything\n\n" +
+		"  # Project setup + health check\n" +
+		"  factorly init\n" +
+		"  factorly blueprint install slack\n" +
+		"  factorly vault set SLACK_TOKEN xoxb-...\n" +
+		"  factorly tools status\n\n" +
+		"  # Run one tool directly\n" +
+		"  factorly call github.list_repos --username octocat",
 	SilenceUsage:      true,
 	CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 }
@@ -469,9 +485,12 @@ vars:
 		// presumptuous.
 		maybeOfferGitignore(scanner, filepath.Dir(outPath))
 
-		fmt.Println("\nTip: install a bundled blueprint (gmail, linear, github, ...) with:")
-		fmt.Println("  factorly blueprint install <name>")
-		fmt.Println("Or browse the catalog at /blueprints/browse when running 'factorly ui'.")
+		fmt.Println("\nNext steps — get your first working tool:")
+		fmt.Println("  1. factorly blueprint install github     # or: gmail, linear, slack, ...")
+		fmt.Println("  2. factorly vault set GITHUB_TOKEN <value>   # or: factorly auth login github (OAuth)")
+		fmt.Println("  3. factorly tools status                  # confirm it's wired up")
+		fmt.Println("  4. factorly call github.list_repos --username octocat")
+		fmt.Println("\n  Prefer a browser? factorly ui  (browse the blueprint catalog, edit and try tools)")
 
 		// Offer to sync with AI clients
 		doSync := prompt(scanner, "Connect to your AI agent now? (y/n)", "y")
@@ -1585,23 +1604,49 @@ func (s *vaultTokenStore) SetTokenBundle(key string, bundle *oauth.TokenBundle) 
 func validateNoVaultRefs(restTools map[string]provider.RESTToolDef) error {
 	for name, def := range restTools {
 		if vault.HasVaultRefs(def.BaseURL) {
-			return fmt.Errorf("unresolved vault reference in base_url for tool %q — check vault password and key", name)
+			return unresolvedVaultRefError(name, "base_url", def.BaseURL)
 		}
 		if def.Auth != nil {
 			if vault.HasVaultRefs(def.Auth.Token) {
-				return fmt.Errorf("unresolved vault reference in auth token for tool %q — check vault password and key", name)
+				return unresolvedVaultRefError(name, "auth token", def.Auth.Token)
 			}
 			if vault.HasVaultRefs(def.Auth.Value) {
-				return fmt.Errorf("unresolved vault reference in auth value for tool %q — check vault password and key", name)
+				return unresolvedVaultRefError(name, "auth value", def.Auth.Value)
 			}
 		}
 		for k, v := range def.Headers {
 			if vault.HasVaultRefs(v) {
-				return fmt.Errorf("unresolved vault reference in header %q for tool %q — check vault password and key", k, name)
+				return unresolvedVaultRefError(name, fmt.Sprintf("header %q", k), v)
 			}
 		}
 	}
 	return nil
+}
+
+// unresolvedVaultRefError builds an actionable error for a
+// {{vault:KEY}} (or other secret-backend) reference that survived
+// resolution — which means the vault is locked or the key is missing.
+// We can't tell which from here (both leave the template intact), so
+// we name the exact key and offer both fixes as "→ try:" hints.
+func unresolvedVaultRefError(tool, field, raw string) error {
+	backend, key, ok := vault.FirstSecretRef(raw)
+	if !ok {
+		// Shouldn't happen (caller already confirmed HasVaultRefs), but
+		// degrade to the old generic message rather than panic.
+		return fmt.Errorf("unresolved vault reference in %s for tool %q — check vault password and key", field, tool)
+	}
+	// Only the vault backend has a `factorly vault set` fix; other
+	// secret backends (op, aws-sm, …) resolve through their own tooling.
+	var fix string
+	if backend == "vault" {
+		fix = fmt.Sprintf("\n  → try: factorly vault set %s <value>   (add the secret)"+
+			"\n  → or:  set FACTORLY_VAULT_PASSWORD / unlock the vault if the key already exists"+
+			"\n  → see: factorly vault list   to check which keys are set", key)
+	} else {
+		fix = fmt.Sprintf("\n  → the %s backend couldn't resolve %q — check that backend's credentials are available", backend, key)
+	}
+	return fmt.Errorf("tool %q references {{%s:%s}} in %s, but it didn't resolve "+
+		"(vault locked or key missing).%s", tool, backend, key, field, fix)
 }
 
 var sensitiveParamNames = []string{"token", "secret", "password", "key", "auth", "credential"}
