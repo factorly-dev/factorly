@@ -1,6 +1,6 @@
 # Factorly Vault vs HashiCorp Vault
 
-Different products solving different problems at different scales.
+Factorly's vault solves one specific problem: keeping the credential out of the agent's view at call time.
 
 | | Factorly Vault | HashiCorp Vault |
 |---|---|---|
@@ -36,7 +36,7 @@ Different products solving different problems at different scales.
 
 ## They're complementary
 
-Factorly can use HashiCorp Vault as an external backend — no custom client needed:
+Factorly can use HashiCorp Vault as an external backend. No custom client needed:
 
 ```yaml
 vault_backends:

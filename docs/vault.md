@@ -1,8 +1,10 @@
 # Vault — Encrypted Secret Storage
 
-Factorly includes an encrypted vault so secrets never live in plaintext `.env` files. Two-layer encryption: the vault file is encrypted with AES-256-GCM (Argon2id-derived key), and each secret value is independently encrypted with its own salt via HKDF-SHA256.
+Factorly's vault keeps the agent out of the credential entirely. Your tool's auth block references `{{vault:KEY}}`, Factorly resolves it at call time, and only the resolved request goes to the upstream API. The agent sees the response, never the key.
 
-This means `vault list` never decrypts secret values, and `vault get` only decrypts the one you ask for. Identical values stored under different keys produce different ciphertext.
+The vault is one piece of Factorly's workbench — tool definitions, workflows, governance, and audit live alongside it.
+
+Under the hood: secrets never live in plaintext `.env` files. The vault file is encrypted in two layers with AES-256-GCM (Argon2id-derived key) as a whole and each secret value independently encrypted with its own salt via HKDF-SHA256. `vault list` never decrypts secret values, and `vault get` only decrypts the one you ask for. Identical values stored under different keys produce different ciphertext.
 
 ## Store and retrieve secrets
 

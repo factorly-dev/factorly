@@ -24,7 +24,7 @@ MCP servers, REST APIs, and CLI commands in one config, one UI, one audit log.
 
 </center>
 
-Factorly is a local runtime for agent tool chains. It manages tool calls, injects credentials from an encrypted vault, enforces governance rules, and logs everything. Your agent sees workflows, tools, and data. Secrets stay secret.
+Factorly is a local runtime for agent tool chains. It manages tool calls, injects credentials from an encrypted vault, enforces governance rules, and logs everything. Your agent sees workflows, tools, and data. It never receives your credentials, only the tool's response. Secrets stay secret.
 
 ![Screenshot of Factorly UI](docs/images/screenshot-rm.png)
 
@@ -70,7 +70,7 @@ factorly sync
 factorly ui
 ```
 
-Your agent connects to Factorly as a single MCP server or CLI and sees every tool you've configured. Credentials never leave the vault. Full walkthrough: [Getting Started](docs/getting-started.md).
+Your agent connects to Factorly as a single MCP server or CLI and sees every tool you've configured. Your agent never possesses the credential — Factorly resolves `{{vault:KEY}}` references at call time and only the resolved request leaves the box. Full walkthrough: [Getting Started](docs/getting-started.md).
 
 ---
 

@@ -67,6 +67,10 @@ If step 5 fails with an unresolved `{{vault:KEY}}` error, the message
 names the exact key and the command to fix it. Run `factorly tools status`
 anytime to see which tools are healthy and which need credentials.
 
+Why a vault instead of an env var? Your agent never receives `GITHUB_TOKEN` — Factorly
+resolves the `{{vault:GITHUB_TOKEN}}` reference into the outbound request, and the
+agent only sees GitHub's response. See [Vault](vault.md) for the full model.
+
 ### When a blueprint needs OAuth
 
 Some services (Google, Microsoft, GitHub Apps) authenticate via OAuth
