@@ -40,7 +40,7 @@
 ## Future?
 
 ### Agent & workflows
-- [ ] **`factorly agent`** — lightweight agent loop with tool calling, oversight, and run summary ([spec](agent-spec.md))
+- [ ] **`factorly agent`** — lightweight agent loop with tool calling, oversight, and run summary
 - [ ] **PreToolUse hooks** — `factorly hooks install` to intercept agent Bash calls, rewriting them to `factorly exec` for compression and logging without MCP ([spec](hooks-spec.md))
 - [ ] **Response caching** — return cached results for identical tool calls within a configurable window, reducing API quota usage and latency
 
