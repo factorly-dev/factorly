@@ -1,3 +1,24 @@
+## [v0.17.4] - 2026-06-01
+
+### Added
+- `--verify` flag for `factorly sync` that boots the server and reports exposed tool count before switching agents
+- Toast notifications for action handlers (tool, blueprint, vault, store, auth create/save/delete) in the web UI
+- Deduplication of toasts via a FIFO seen-set using a shared crypto/rand ID across HX-Trigger header and flash cookie paths
+- Inline field hints on the REST tool form (vault/env refs, `{{param}}` placeholders, per-auth-type guidance) and new-tool type picker
+- Actionable empty-state CTAs on blueprints and vault pages
+- `vault.FirstSecretRef` helper to extract backend and key from unresolved template refs
+- "When a blueprint needs OAuth" pointer (`auth login` → `oauth.md`) in getting-started docs
+
+### Changed
+- `factorly sync` success output now names written clients and prints a "reload or restart" next step
+- Unresolved `{{vault:KEY}}` refs at bootstrap now report the exact key and field with fix commands (`vault set`, `FACTORLY_VAULT_PASSWORD`, `vault list`)
+- Root `--help` now leads with `factorly wrap -- ...` on-ramp and surfaces `factorly tools status`
+- `init` wizard closing tip replaced with a copy-pasteable happy path sequence
+- Getting-started docs tightened to a single happy path: init → blueprint install → vault set → tools status → call → sync
+- README Quick Start fixes duplicate `# 3.` step, leads with `wrap`, renumbers steps 1–5, and links the full walkthrough
+- Non-vault secret backend errors now emit a backend-appropriate hint instead of a generic message
+- `confirm.js` private `showToast` now delegates to the shared `window.toast`
+
 ## [v0.17.3] - 2026-05-28
 
 ### Added
