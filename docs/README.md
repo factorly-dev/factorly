@@ -71,12 +71,6 @@
 |-------|-------------|
 | [OAuth Server Spec](oauth-server-spec.md) | Planned: MCP-spec OAuth 2.1 authorization server design |
 
-## Positioning
-
-| Topic | Description |
-|-------|-------------|
-| [Competitive Positioning](competitive.md) | Factorly vs. Zapier, Composio, and direct MCP/REST — oversight layer, not integration platform |
-
 ## Philosophy
 
 - **Wrap, don't replace.** Your tools don't change. Factorly sits in front.
