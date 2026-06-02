@@ -86,23 +86,18 @@ func main() {
 var rootCmd = &cobra.Command{
 	Use:   "factorly",
 	Short: "One endpoint. All your tools.",
-	Long: "Factorly wraps your existing agent tools — MCP servers, REST APIs, CLIs — into a single endpoint.\n\n" +
-		"Fastest start (zero config): wrap any MCP server so it's instantly callable —\n" +
-		"  factorly wrap -- npx -y @modelcontextprotocol/server-github\n\n" +
-		"Set up a project, then check everything's wired up:\n" +
-		"  factorly init                 # create .factorly/factorly.yaml\n" +
-		"  factorly blueprint install github\n" +
-		"  factorly tools status         # diagnose missing keys / auth\n" +
-		"  factorly ui                   # browse, edit, and try tools in the browser",
-	Example: "  # Zero-config: proxy an MCP server through factorly\n" +
+	Long: "Factorly wraps your existing agent tools — MCP servers, REST APIs, CLIs — into a single endpoint.",
+	Example: "  # Zero-config: proxy any MCP server through factorly\n" +
 		"  factorly wrap -- npx -y @modelcontextprotocol/server-everything\n\n" +
-		"  # Project setup + health check\n" +
+		"  # Set up a project + install a blueprint + check it's wired up\n" +
 		"  factorly init\n" +
-		"  factorly blueprint install slack\n" +
-		"  factorly vault set SLACK_TOKEN xoxb-...\n" +
+		"  factorly blueprint install github\n" +
+		"  factorly vault set GITHUB_TOKEN ghp_xxxxxxxxxxxx\n" +
 		"  factorly tools status\n\n" +
 		"  # Run one tool directly\n" +
-		"  factorly call github.list_repos --username octocat",
+		"  factorly call github.list_repos --username octocat\n\n" +
+		"  # Browse, edit, and try tools in the UI\n" +
+		"  factorly ui",
 	SilenceUsage:      true,
 	CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 }
