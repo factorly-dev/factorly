@@ -54,6 +54,29 @@ func Register(cfg *config.Config, opts Options) {
 		},
 	})
 
+	// Self-describing onboarding tool. The description deliberately
+	// nudges an agent to call this BEFORE working with other tools so
+	// it learns the factorly behaviors (vault, oversight, workflows)
+	// without prompt engineering. Same corpus as `factorly explain`.
+	register("factorly.help", config.ToolConfig{
+		Type: "builtin",
+		Description: "Call this first to learn what factorly is and how to use the tools available here. " +
+			"Returns an overview of factorly's behaviors (credential injection, oversight, audit, workflows) " +
+			"plus a snapshot of what's installed. Optional `topic` parameter (vault, shadow, workflows, blueprints, tools, what-is) " +
+			"or `tool` for per-tool docs.",
+		MaxOutput: 50000,
+		Parameters: []config.ParamConfig{
+			{
+				Name:        "topic",
+				Description: "Specific section: vault, shadow, workflows, blueprints, tools, what-is. Omit for the default overview.",
+			},
+			{
+				Name:        "tool",
+				Description: "Render detailed docs for one tool by name (e.g. github.list_repos). Overrides topic.",
+			},
+		},
+	})
+
 	// Local only (stdio mode) — runs on the agent's machine
 	if opts.Mode == "http" {
 		return

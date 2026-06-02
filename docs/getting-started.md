@@ -71,6 +71,15 @@ Why a vault instead of an env var? Your agent never receives `GITHUB_TOKEN` — 
 resolves the `{{vault:GITHUB_TOKEN}}` reference into the outbound request, and the
 agent only sees GitHub's response. See [Vault](vault.md) for the full model.
 
+### Teach your agent about factorly
+
+Run `factorly explain` and paste the output into your agent's system prompt. It's a short
+primer covering the credential model, oversight, audit, and a snapshot of what's installed —
+the things an agent should know before calling tools.
+
+Connected agents can also call the `factorly.help` tool at any time to learn the same
+content from inside their session. Use it when you don't want to pre-load the prompt.
+
 ### When a blueprint needs OAuth
 
 Some services (Google, Microsoft, GitHub Apps) authenticate via OAuth

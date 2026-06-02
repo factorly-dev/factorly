@@ -21,6 +21,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/builtins"
 	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/configyaml"
+	"github.com/factorly-dev/factorly/internal/help"
 	"github.com/factorly-dev/factorly/internal/logger"
 	"github.com/factorly-dev/factorly/internal/oauth"
 	"github.com/factorly-dev/factorly/internal/openapi"
@@ -86,7 +87,7 @@ func main() {
 var rootCmd = &cobra.Command{
 	Use:   "factorly",
 	Short: "One endpoint. All your tools.",
-	Long: "Factorly wraps your existing agent tools — MCP servers, REST APIs, CLIs — into a single endpoint.",
+	Long:  "Factorly wraps your existing agent tools — MCP servers, REST APIs, CLIs — into a single endpoint.",
 	Example: "  # Zero-config: proxy any MCP server through factorly\n" +
 		"  factorly wrap -- npx -y @modelcontextprotocol/server-everything\n\n" +
 		"  # Set up a project + install a blueprint + check it's wired up\n" +
@@ -645,7 +646,7 @@ func init() {
 
 	toolsCmd.AddCommand(toolsListCmd, toolsShowCmd, addCmd, removeCmd, importCmd, recordCmd, statusCmd, toolsPromoteCmd)
 	utilsCmd.AddCommand(autocompleteCmd)
-	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, storeCmd, workspacesCmd, authCmd, serveCmd, wrapCmd, execCmd, logsCmd, utilsCmd, uiCmd, blueprintCmd)
+	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, storeCmd, workspacesCmd, authCmd, serveCmd, wrapCmd, execCmd, logsCmd, utilsCmd, uiCmd, blueprintCmd, explainCmd)
 }
 
 // loadConfig loads config and builds a registry. Does not open the vault
@@ -949,8 +950,14 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	if configPath != "" {
 		projectDir = filepath.Dir(configPath)
 	}
-	providers["builtin"] = provider.NewBuiltinProvider(serveMode, projectDir)
+	bp := provider.NewBuiltinProvider(serveMode, projectDir)
+	providers["builtin"] = bp
 	vlog("initialized builtin provider (root: %s)", projectDir)
+
+	// Wire factorly.help against the live config + cfgPath so the
+	// agent's snapshot reflects this user's setup. The closure captures
+	// pointers; mutations to cfg.Tools (e.g. after a reload) are seen.
+	bp.RegisterHandler("factorly.help", makeFactorlyHelpHandler(cfg, configPath))
 
 	if len(cliTools) > 0 {
 		vlog("initialized cli provider (%d tools)", len(cliTools))
@@ -1760,4 +1767,32 @@ func parseToolArgs(args []string) map[string]string {
 		}
 	}
 	return params
+}
+
+// makeFactorlyHelpHandler returns the in-process handler for the
+// factorly.help MCP builtin. Renders the same corpus the `factorly
+// explain` CLI uses, so an agent calling factorly.help gets the
+// exact onboarding text its user would paste from the CLI.
+//
+// The handler closes over the live *config.Config so each call sees
+// the current installed-tool snapshot — if a blueprint is installed
+// after the agent connects, the next factorly.help call reflects it.
+func makeFactorlyHelpHandler(cfg *config.Config, cfgPath string) provider.BuiltinHandler {
+	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
+		in := help.Inputs{Config: cfg, CfgPath: cfgPath}
+		// tool wins over topic — per-tool docs are the more specific
+		// ask, so an agent passing both gets the tool view.
+		if toolName := strings.TrimSpace(params["tool"]); toolName != "" {
+			out := help.RenderTool(toolName, cfg)
+			if out == "" {
+				return &provider.Result{
+					Error:    fmt.Sprintf("tool %q not found — call factorly.help with topic=\"tools\" to see what's installed", toolName),
+					ExitCode: 1,
+				}, nil
+			}
+			return &provider.Result{Output: out}, nil
+		}
+		topic := help.Topic(strings.TrimSpace(params["topic"]))
+		return &provider.Result{Output: help.Render(topic, in)}, nil
+	}
 }

@@ -7087,3 +7087,152 @@ func readSessionToken(t *testing.T, stdout io.Reader, stderr *strings.Builder) s
 }
 
 var tokenRE = regexp.MustCompile(`token=[a-f0-9]+`)
+
+// TestHelpExplain_CLI exercises the `factorly explain` CLI end-to-end:
+// default block, --topic dispatch, --tool dispatch, missing-tool error.
+// Pairs with TestHelpExplain_Builtin below which covers the same content
+// through the MCP / factorly.call path.
+func TestHelpExplain_CLI(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `tools:
+  demo.echo:
+    type: cli
+    description: echo a message
+    command: echo
+    parameters:
+      - name: msg
+        required: true
+`,
+	})
+
+	t.Run("default block", func(t *testing.T) {
+		stdout, stderr, code := run(t, dir, "explain")
+		if code != 0 {
+			t.Fatalf("explain exit=%d stderr=%s", code, stderr)
+		}
+		for _, want := range []string{
+			"# What factorly is",
+			"## Behaviors to expect",
+			"Credentials are already wired up",
+			"## What's installed here",
+			"1 user-defined tool", // demo.echo
+			"## Topics for deeper detail",
+		} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("default missing %q; got:\n%s", want, stdout)
+			}
+		}
+	})
+
+	t.Run("topic vault", func(t *testing.T) {
+		stdout, stderr, code := run(t, dir, "explain", "--topic", "vault")
+		if code != 0 {
+			t.Fatalf("explain --topic vault exit=%d stderr=%s", code, stderr)
+		}
+		if !strings.Contains(stdout, "# The vault model") {
+			t.Errorf("missing vault header; got:\n%s", stdout)
+		}
+		if strings.Contains(stdout, "## Behaviors to expect") {
+			t.Errorf("--topic vault should not include the default behaviors block; got:\n%s", stdout)
+		}
+	})
+
+	t.Run("tool dispatch", func(t *testing.T) {
+		stdout, stderr, code := run(t, dir, "explain", "--tool", "demo.echo")
+		if code != 0 {
+			t.Fatalf("explain --tool exit=%d stderr=%s", code, stderr)
+		}
+		for _, want := range []string{
+			"# demo.echo",
+			"echo a message",
+			"`msg` (required)",
+		} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("tool docs missing %q; got:\n%s", want, stdout)
+			}
+		}
+	})
+
+	t.Run("unknown tool errors", func(t *testing.T) {
+		_, stderr, code := run(t, dir, "explain", "--tool", "no.such.tool")
+		if code == 0 {
+			t.Errorf("expected non-zero exit for unknown tool")
+		}
+		if !strings.Contains(stderr, "no.such.tool") {
+			t.Errorf("error should name the missing tool; stderr=%s", stderr)
+		}
+	})
+}
+
+// TestHelpExplain_Builtin exercises factorly.help as an MCP builtin
+// invoked through `factorly call`. This is the path a connected agent
+// actually takes — the CLI test alone wouldn't catch a regression in
+// the builtin registration or the handler wiring in main.go.
+func TestHelpExplain_Builtin(t *testing.T) {
+	dir := setupDir(t, map[string]string{
+		".factorly/factorly.yaml": `tools:
+  demo.echo:
+    type: cli
+    description: echo a message
+    command: echo
+    parameters:
+      - name: msg
+        required: true
+`,
+	})
+
+	t.Run("default call", func(t *testing.T) {
+		stdout, stderr, code := run(t, dir, "call", "factorly.help")
+		if code != 0 {
+			t.Fatalf("call factorly.help exit=%d stderr=%s", code, stderr)
+		}
+		for _, want := range []string{
+			"# What factorly is",
+			"## Behaviors to expect",
+			"## What's installed here",
+		} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("default call missing %q; got:\n%s", want, stdout)
+			}
+		}
+	})
+
+	t.Run("topic shadow", func(t *testing.T) {
+		stdout, stderr, code := run(t, dir, "call", "factorly.help", "--topic", "shadow")
+		if code != 0 {
+			t.Fatalf("topic call exit=%d stderr=%s", code, stderr)
+		}
+		if !strings.Contains(stdout, "# Oversight (shadow rules)") {
+			t.Errorf("missing shadow header; got:\n%s", stdout)
+		}
+	})
+
+	t.Run("tool dispatch", func(t *testing.T) {
+		stdout, stderr, code := run(t, dir, "call", "factorly.help", "--tool", "demo.echo")
+		if code != 0 {
+			t.Fatalf("tool call exit=%d stderr=%s", code, stderr)
+		}
+		if !strings.Contains(stdout, "# demo.echo") {
+			t.Errorf("missing per-tool header; got:\n%s", stdout)
+		}
+		if !strings.Contains(stdout, "echo a message") {
+			t.Errorf("missing tool description; got:\n%s", stdout)
+		}
+	})
+
+	t.Run("unknown tool returns helpful error", func(t *testing.T) {
+		stdout, stderr, _ := run(t, dir, "call", "factorly.help", "--tool", "no.such.tool")
+		// The handler returns a Result with Error+ExitCode=1 rather
+		// than a Go error, so `factorly call` surfaces the error
+		// string on either stdout or stderr depending on how the call
+		// path renders Result.Error. Check both — what matters is the
+		// hint reaches the user.
+		combined := stdout + "\n" + stderr
+		if !strings.Contains(combined, "no.such.tool") {
+			t.Errorf("error should name the missing tool; stdout=%q stderr=%q", stdout, stderr)
+		}
+		if !strings.Contains(combined, `topic="tools"`) {
+			t.Errorf("error should hint at calling factorly.help with topic=tools; stdout=%q stderr=%q", stdout, stderr)
+		}
+	})
+}
