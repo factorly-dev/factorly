@@ -42,6 +42,7 @@ type Server struct {
 	mcpHandler    http.Handler
 	activity      *ActivityBroadcaster
 	confirmBroker *ConfirmBroker
+	askBroker     *AskBroker
 	// OnReload is invoked at the end of reloadConfig on success. Lets
 	// callers (e.g., the MCP server bridge) react to config changes.
 	OnReload func()
@@ -132,6 +133,7 @@ type Options struct {
 	Resolver      *vault.Resolver
 	Activity      *ActivityBroadcaster
 	ConfirmBroker *ConfirmBroker
+	AskBroker     *AskBroker
 	// ActiveWorkspace is the workspace the server was started with
 	// (whatever --workspace or FACTORLY_WORKSPACE or default auto-load
 	// resolved to). The factorly_workspace cookie overrides it per
@@ -225,6 +227,7 @@ func New(opts Options) (*Server, error) {
 		resolver:        opts.Resolver,
 		activity:        opts.Activity,
 		confirmBroker:   opts.ConfirmBroker,
+		askBroker:       opts.AskBroker,
 		tmpls:           tmpls,
 		mux:             http.NewServeMux(),
 		activeWorkspace: opts.ActiveWorkspace,
@@ -309,6 +312,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /confirm/pending", s.handleConfirmPending)
 	s.mux.HandleFunc("GET /confirm/stream", s.handleConfirmSSE)
 	s.mux.HandleFunc("POST /confirm/{id}/{action}", s.handleConfirmRespond)
+	s.mux.HandleFunc("GET /ask/pending", s.handleAskPending)
+	s.mux.HandleFunc("GET /ask/stream", s.handleAskSSE)
+	s.mux.HandleFunc("POST /ask/{id}", s.handleAskRespond)
 
 	// History
 	s.mux.HandleFunc("GET /history", s.handleHistory)

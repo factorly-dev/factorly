@@ -33,6 +33,7 @@ import (
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/factorly-dev/factorly/internal/shadow"
 	"github.com/factorly-dev/factorly/internal/store"
+	"github.com/factorly-dev/factorly/internal/ui"
 	"github.com/factorly-dev/factorly/internal/update"
 	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/factorly-dev/factorly/internal/workspace"
@@ -764,6 +765,17 @@ func getCachedResolver() *vault.Resolver {
 	return cachedResolver
 }
 
+// activeAskBroker is the broker the UI command builds at startup. Set
+// once during `factorly ui` setup (before bootstrapProviders runs);
+// the factorly.ask handler reads it to route prompts through the
+// browser modal. Stays nil in non-UI commands (factorly call, serve,
+// etc.) — the handler returns a clean "UI not running" error there.
+var activeAskBroker *ui.AskBroker
+
+// SetActiveAskBroker is called from runUI before bootstrapProviders
+// so the factorly.ask handler can find the broker after construction.
+func SetActiveAskBroker(b *ui.AskBroker) { activeAskBroker = b }
+
 // bootstrapProviders opens the vault if needed, creates providers, and
 // wires everything into a proxy. Takes config and registry from loadConfig().
 // confirmFn is used for shadow confirm prompts — nil uses the default CLI prompt.
@@ -958,6 +970,13 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	// agent's snapshot reflects this user's setup. The closure captures
 	// pointers; mutations to cfg.Tools (e.g. after a reload) are seen.
 	bp.RegisterHandler("factorly.help", makeFactorlyHelpHandler(cfg, configPath))
+	// factorly.ask is late-bound because its handler needs a live
+	// reference to the UI's AskBroker. The broker is constructed in
+	// `runUI` (via SetActiveAskBroker) BEFORE bootstrapProviders
+	// runs; the closure reads the current value each call so the
+	// non-UI command paths can register the handler too — it just
+	// returns the "UI not running" error there.
+	bp.RegisterHandler("factorly.ask", makeFactorlyAskHandler(func() *ui.AskBroker { return activeAskBroker }))
 
 	if len(cliTools) > 0 {
 		vlog("initialized cli provider (%d tools)", len(cliTools))
@@ -1296,6 +1315,100 @@ func makeFactorlyCodeHandler(cp *codeprov.Provider, builtinCfg config.ToolConfig
 		}
 		return cp.Run(ctx, src, innerParams, defaultMaxCalls)
 	}
+}
+
+// makeFactorlyAskHandler returns a builtin handler that posts a
+// question to the UI's AskBroker and blocks until the user submits,
+// cancels, or the per-call timeout fires. Without a broker (any
+// non-UI command path) the handler returns a clean error directing
+// the operator to run `factorly ui` — much better than the deadlock
+// the alternative (block forever) would produce.
+func makeFactorlyAskHandler(brokerFn func() *ui.AskBroker) provider.BuiltinHandler {
+	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
+		broker := brokerFn()
+		if broker == nil {
+			return &provider.Result{
+				Error:    "factorly.ask requires the UI to be running (start `factorly ui`)",
+				ExitCode: 1,
+			}, nil
+		}
+		req, perr := buildAskRequest(params)
+		if perr != "" {
+			return &provider.Result{Error: perr, ExitCode: 1}, nil
+		}
+		timeout := 5 * time.Minute
+		if v := strings.TrimSpace(params["timeout"]); v != "" {
+			if d, err := time.ParseDuration(v); err == nil && d > 0 {
+				timeout = d
+			}
+		}
+		askCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		answer, err := broker.Request(askCtx, req)
+		if err != nil {
+			if errors.Is(err, ui.ErrAskCancelled) {
+				return &provider.Result{
+					Error:    "user cancelled the prompt",
+					ExitCode: 1,
+				}, nil
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				return &provider.Result{
+					Error:    fmt.Sprintf("timed out waiting for user input after %s", timeout),
+					ExitCode: 1,
+				}, nil
+			}
+			return &provider.Result{
+				Error:    "ask failed: " + err.Error(),
+				ExitCode: 1,
+			}, nil
+		}
+		return &provider.Result{Output: answer}, nil
+	}
+}
+
+// buildAskRequest translates the factorly.ask parameter map into the
+// AskRequest the broker expects. Returns a non-empty error string
+// when the params are ill-formed (e.g. unparseable bounds), which the
+// caller surfaces as a Result.Error.
+//
+// `choices` is the workflow-author-friendly alias for `enum`. When
+// present, splits on commas + trims; if `type` wasn't set, implicitly
+// promotes to "enum" so the browser renders a <select>.
+func buildAskRequest(params map[string]string) (ui.AskRequest, string) {
+	req := ui.AskRequest{
+		Name:        strings.TrimSpace(params["name"]),
+		Type:        strings.TrimSpace(params["type"]),
+		Description: params["description"],
+		Default:     params["default"],
+		Title:       params["title"],
+		// Required defaults to true (declared on the param), so an
+		// empty string here means "use param default" which the
+		// declared Default of "true" already produced via the
+		// registry coercion. Treat "" as required=true defensively.
+		Required: strings.TrimSpace(params["required"]) != "false",
+	}
+	if req.Name == "" {
+		return req, "name is required"
+	}
+	if choices := strings.TrimSpace(params["choices"]); choices != "" {
+		parts := strings.Split(choices, ",")
+		out := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if p = strings.TrimSpace(p); p != "" {
+				out = append(out, p)
+			}
+		}
+		req.Enum = out
+		if req.Type == "" || req.Type == "string" {
+			req.Type = "enum"
+		}
+	}
+	if req.Type == "" {
+		req.Type = "string"
+	}
+	return req, ""
 }
 
 // checkCommandAllowed returns an error if the command is disabled in config.

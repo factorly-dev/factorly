@@ -122,6 +122,41 @@ func Register(cfg *config.Config, opts Options) {
 		},
 	})
 
+	// factorly.ask pauses a workflow / agent / call and asks the user
+	// one question via the UI's modal. The answer becomes the tool's
+	// Output, so workflow `store:` + {{var}} substitution pulls it
+	// into the next step with no schema gymnastics. One call = one
+	// question; chain steps for multi-input forms.
+	//
+	// Most parameters here mirror the shape of a regular tool param
+	// (Type, Default, Required, Enum/Pattern/Min/Max). That's
+	// deliberate: the question IS a parameter, just one whose
+	// concrete value the user fills in at runtime instead of the
+	// workflow author at design time.
+	register("factorly.ask", config.ToolConfig{
+		Type:        "builtin",
+		Description: "Pause and ask the user a single question via the UI. Answers come back as the tool's output.",
+		Parameters: []config.ParamConfig{
+			{Name: "name", Type: "string", Required: true,
+				Description: "Variable name for the answer (also used as the input label)."},
+			{Name: "type", Type: "string", Default: "string",
+				Description: "Answer type: string, text, integer, number, boolean, or enum.",
+				Enum: []string{"string", "text", "integer", "number", "boolean", "enum"}},
+			{Name: "description", Type: "string",
+				Description: "Question text shown above the input."},
+			{Name: "default", Type: "string",
+				Description: "Pre-filled value."},
+			{Name: "required", Type: "boolean", Default: "true",
+				Description: "Whether an empty answer is rejected."},
+			{Name: "title", Type: "string", Default: "Input needed",
+				Description: "Modal title."},
+			{Name: "choices", Type: "string",
+				Description: "Comma-separated options (e.g. \"staging,prod\"). Sets type to enum implicitly."},
+			{Name: "timeout", Type: "string", Default: "5m",
+				Description: "How long to wait for an answer before erroring (e.g. 30s, 5m, 1h)."},
+		},
+	})
+
 	// factorly.code runs an agent-supplied Go script through the same
 	// yaegi sandbox used by `type: code` tools. Scripts can call other
 	// registered tools via factorly.Call. Inner calls go through the

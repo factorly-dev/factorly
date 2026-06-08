@@ -219,6 +219,7 @@
   <script src="/static/toast.js"></script>
   <script src="/static/sse-init.js"></script>
   <script src="/static/confirm.js"></script>
+  <script src="/static/ask.js"></script>
   <script src="/static/copy.js"></script>
 
   <!-- Vault unlock modal (auto-fetched on every page load; renders only
@@ -228,9 +229,17 @@
        hx-get="{{if eq .Nav "vault"}}/vault/unlock-modal?force=1{{else}}/vault/unlock-modal{{end}}"
        hx-trigger="load" hx-swap="outerHTML"></div>
 
-  <!-- Shadow confirm modal (for tool execution confirmations via SSE) -->
-  <div id="confirm-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+  <!-- Shadow confirm modal (for tool execution confirmations via SSE).
+       Keeps the higher z-index because if both modals are pending,
+       confirm is the more time-critical of the two. -->
+  <div id="confirm-modal" class="hidden fixed inset-0 z-[110] flex items-center justify-center bg-black/30 backdrop-blur-sm">
     <div class="bg-white rounded-xl shadow-2xl border border-gray-200 p-6 max-w-md w-full mx-4" id="confirm-content">
+    </div>
+  </div>
+
+  <!-- factorly.ask modal (for prompting the user mid-run via SSE) -->
+  <div id="ask-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+    <div class="bg-white rounded-xl shadow-2xl border border-gray-200 p-6 max-w-md w-full mx-4" id="ask-content">
     </div>
   </div>
 
