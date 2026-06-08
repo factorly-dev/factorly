@@ -5,6 +5,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -176,4 +178,90 @@ func TestFactorlyAsk_CustomResolver(t *testing.T) {
 	if res.Output != "from-resolver" {
 		t.Errorf("Output = %q, want 'from-resolver'", res.Output)
 	}
+}
+
+// cliAskResolver reads from os.Stdin directly, so to test it we
+// swap stdin to a pipe, write the answer, and run the resolver in
+// the main goroutine. Restoring stdin afterwards keeps the test
+// suite usable from subsequent tests / `go test -v`.
+func withFakeStdin(t *testing.T, input string, fn func()) {
+	t.Helper()
+	orig := os.Stdin
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stdin = r
+	defer func() { os.Stdin = orig; _ = r.Close() }()
+	if _, err := w.WriteString(input); err != nil {
+		t.Fatalf("write fake stdin: %v", err)
+	}
+	_ = w.Close()
+	fn()
+}
+
+func TestCLIAskResolver_Plain(t *testing.T) {
+	withFakeStdin(t, "hello world\n", func() {
+		got, err := cliAskResolver(context.Background(), ui.AskRequest{Name: "msg"})
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if got != "hello world" {
+			t.Errorf("got %q, want 'hello world'", got)
+		}
+	})
+}
+
+// Empty line + Required → loops back. We feed two lines: an empty
+// one (rejected) then a real answer.
+func TestCLIAskResolver_RequiredLoops(t *testing.T) {
+	withFakeStdin(t, "\nfinally\n", func() {
+		got, err := cliAskResolver(context.Background(),
+			ui.AskRequest{Name: "x", Required: true})
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if got != "finally" {
+			t.Errorf("got %q, want 'finally'", got)
+		}
+	})
+}
+
+// Empty line on non-required falls back to Default.
+func TestCLIAskResolver_DefaultOnEmpty(t *testing.T) {
+	withFakeStdin(t, "\n", func() {
+		got, err := cliAskResolver(context.Background(),
+			ui.AskRequest{Name: "x", Default: "fallback"})
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if got != "fallback" {
+			t.Errorf("got %q, want 'fallback'", got)
+		}
+	})
+}
+
+// Enum validation: typo rejected, retry accepted.
+func TestCLIAskResolver_EnumValidates(t *testing.T) {
+	withFakeStdin(t, "dev\nprod\n", func() {
+		got, err := cliAskResolver(context.Background(),
+			ui.AskRequest{Name: "env", Required: true,
+				Enum: []string{"staging", "prod"}})
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if got != "prod" {
+			t.Errorf("got %q, want 'prod' (after rejecting dev)", got)
+		}
+	})
+}
+
+// EOF on stdin → ErrAskCancelled (treated as the user giving up).
+func TestCLIAskResolver_EOFCancels(t *testing.T) {
+	withFakeStdin(t, "", func() {
+		_, err := cliAskResolver(context.Background(), ui.AskRequest{Name: "x"})
+		if !errors.Is(err, ui.ErrAskCancelled) {
+			t.Errorf("got err=%v, want ErrAskCancelled", err)
+		}
+	})
 }

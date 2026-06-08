@@ -785,14 +785,77 @@ func SetActiveAskBroker(b *ui.AskBroker) { activeAskBroker = b }
 type AskResolver func(ctx context.Context, req ui.AskRequest) (string, error)
 
 // activeAskResolver is what the factorly.ask handler calls. nil
-// means "no UI configured" (CLI tools / serve / etc.) and the
-// handler returns the headless error.
+// means "no answer channel available" — the handler returns the
+// headless error rather than blocking forever. Set BEFORE
+// bootstrapProviders by `runUI` (browser, optionally raced with
+// MCP elicitation); bootstrapProviders installs cliAskResolver as
+// a fallback when stdin is a TTY.
 var activeAskResolver AskResolver
 
-// SetActiveAskResolver wires the resolver the handler uses. UI mode
-// sets a racing resolver; other modes leave it nil so the handler
-// fails loud at call time rather than blocking forever.
+// SetActiveAskResolver wires the resolver the handler uses.
 func SetActiveAskResolver(r AskResolver) { activeAskResolver = r }
+
+// cliAskResolver reads the answer from stdin interactively. Prompt
+// goes to stderr so stdout stays clean for shell piping
+// (`x=$(factorly call factorly.ask --param_name=env …)`). Validates
+// enum membership inline so the user gets immediate feedback rather
+// than seeing a generic registry-validator error after a roundtrip;
+// other validation (regex, numeric bounds) was deliberately not
+// added to the ask param surface so there's nothing more to check
+// here.
+func cliAskResolver(ctx context.Context, req ui.AskRequest) (string, error) {
+	// Format the prompt header: name, optional description, choices
+	// hint if enum, default hint if present.
+	hint := ""
+	if len(req.Enum) > 0 {
+		hint = " [" + strings.Join(req.Enum, "/") + "]"
+	}
+	defHint := ""
+	if req.Default != "" {
+		defHint = " (default: " + req.Default + ")"
+	}
+	if req.Description != "" {
+		fmt.Fprintf(os.Stderr, "%s\n", req.Description)
+	}
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+		fmt.Fprintf(os.Stderr, "%s%s%s\n> ", req.Name, hint, defHint)
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			// EOF / read error — treat as cancellation. Common in
+			// pipelines where stdin closes after the input is
+			// consumed by an earlier step.
+			return "", ui.ErrAskCancelled
+		}
+		answer := strings.TrimRight(line, "\r\n")
+		if answer == "" {
+			answer = req.Default
+		}
+		if answer == "" && req.Required {
+			fmt.Fprintln(os.Stderr, "  (required; please enter a value)")
+			continue
+		}
+		if len(req.Enum) > 0 && answer != "" {
+			ok := false
+			for _, v := range req.Enum {
+				if v == answer {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				fmt.Fprintf(os.Stderr, "  (must be one of: %s)\n", strings.Join(req.Enum, ", "))
+				continue
+			}
+		}
+		return answer, nil
+	}
+}
 
 // DefaultAskResolver delegates straight to an AskBroker's Request.
 // Used by `factorly ui` without --mcp (browser is the only channel)
@@ -999,11 +1062,16 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	// pointers; mutations to cfg.Tools (e.g. after a reload) are seen.
 	bp.RegisterHandler("factorly.help", makeFactorlyHelpHandler(cfg, configPath))
 	// factorly.ask is late-bound because its handler needs a live
-	// reference to the UI's AskBroker. The broker is constructed in
-	// `runUI` (via SetActiveAskBroker) BEFORE bootstrapProviders
-	// runs; the closure reads the current value each call so the
-	// non-UI command paths can register the handler too — it just
-	// returns the "UI not running" error there.
+	// reference to a resolver. The UI command sets
+	// activeAskResolver to a browser-or-MCP-elicitation racing
+	// resolver before bootstrap runs; if no UI was wired by the
+	// time we get here AND stdin is a TTY, default to a CLI
+	// stdin prompt — same pattern as the shadow-confirm fallback
+	// just above. Non-interactive non-UI callers (piped stdin,
+	// daemons, CI) keep getting the "UI not running" error.
+	if activeAskResolver == nil && isInteractive() {
+		SetActiveAskResolver(cliAskResolver)
+	}
 	bp.RegisterHandler("factorly.ask", makeFactorlyAskHandler(func() AskResolver { return activeAskResolver }))
 
 	if len(cliTools) > 0 {
