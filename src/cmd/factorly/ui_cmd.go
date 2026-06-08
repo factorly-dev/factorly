@@ -58,14 +58,13 @@ func runUI(cmd *cobra.Command, args []string) error {
 
 	// Set up confirm broker for routing shadow confirm prompts to the browser
 	confirmBroker := ui.NewConfirmBroker()
-	// Set up ask broker BEFORE bootstrapProviders. The
-	// factorly.ask builtin handler reads `activeAskBroker` at call
-	// time, so as long as we assign it before bootstrap registers
-	// the late-bound handler closure, the wiring is correct. The
-	// same broker also gets injected into the UI server below so
-	// the SSE / POST routes route to the same queue.
+	// Set up ask broker BEFORE bootstrapProviders. The factorly.ask
+	// builtin handler reads activeAskResolver at call time, so as
+	// long as we assign the resolver before bootstrap registers the
+	// late-bound handler closure, the wiring is correct. The same
+	// broker also gets injected into the UI server below so the SSE
+	// / POST routes route to the same queue.
 	askBroker := ui.NewAskBroker()
-	SetActiveAskBroker(askBroker)
 	// Default ask resolver: just the browser broker. When --mcp is on
 	// we wrap it below to race against MCP elicitation, mirroring the
 	// shadow-confirm race semantics.

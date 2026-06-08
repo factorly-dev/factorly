@@ -765,17 +765,6 @@ func getCachedResolver() *vault.Resolver {
 	return cachedResolver
 }
 
-// activeAskBroker is the broker the UI command builds at startup. Set
-// once during `factorly ui` setup (before bootstrapProviders runs);
-// the factorly.ask handler reads it to route prompts through the
-// browser modal. Stays nil in non-UI commands (factorly call, serve,
-// etc.) — the handler returns a clean "UI not running" error there.
-var activeAskBroker *ui.AskBroker
-
-// SetActiveAskBroker is called from runUI before bootstrapProviders
-// so the factorly.ask handler can find the broker after construction.
-func SetActiveAskBroker(b *ui.AskBroker) { activeAskBroker = b }
-
 // AskResolver answers a factorly.ask question. The default
 // implementation (DefaultAskResolver) just delegates to the broker;
 // the UI command swaps in a racing resolver when --mcp is enabled so

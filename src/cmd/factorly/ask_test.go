@@ -155,7 +155,6 @@ func TestBuildAskRequest_MissingName(t *testing.T) {
 	}
 }
 
-
 // TestFactorlyAsk_CustomResolver verifies the resolver indirection
 // works — a non-broker AskResolver (such as the browser/MCP race
 // wrapper used with --mcp) takes precedence over the default and its
