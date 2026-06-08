@@ -416,3 +416,68 @@ func TestValidateCoercionPreservesOriginal(t *testing.T) {
 		t.Errorf("originals not preserved: %v", r.Modified)
 	}
 }
+
+// TestValidateEnumTypeAccepts: type=enum accepts a value that's in
+// the declared list — this is the first-class enum type path.
+func TestValidateEnumTypeAccepts(t *testing.T) {
+	tool := &Tool{
+		Parameters: []Parameter{{Name: "env", Type: "enum", Enum: []string{"staging", "prod"}}},
+	}
+	params := map[string]string{"env": "prod"}
+	r := tool.ValidateAndCoerce(params)
+	if r.HasErrors() {
+		t.Fatalf("unexpected errors: %v", r.Errors)
+	}
+	if params["env"] != "prod" {
+		t.Errorf("expected prod, got %s", params["env"])
+	}
+}
+
+// TestValidateEnumTypeRejects: type=enum rejects values outside the
+// declared list with a "must be one of" message.
+func TestValidateEnumTypeRejects(t *testing.T) {
+	tool := &Tool{
+		Parameters: []Parameter{{Name: "env", Type: "enum", Enum: []string{"staging", "prod"}}},
+	}
+	params := map[string]string{"env": "dev"}
+	r := tool.ValidateAndCoerce(params)
+	if !r.HasErrors() {
+		t.Fatal("expected error for value outside enum")
+	}
+}
+
+// TestValidateEnumTypeEmptyList: type=enum with no enum list errors
+// at the validator. Config load catches this earlier in production,
+// but the validator is defense-in-depth — programmatic callers
+// (tests, in-process registrations) can construct ill-formed
+// Parameters and we shouldn't silently accept any value for them.
+func TestValidateEnumTypeEmptyList(t *testing.T) {
+	tool := &Tool{
+		Parameters: []Parameter{{Name: "x", Type: "enum"}},
+	}
+	params := map[string]string{"x": "anything"}
+	r := tool.ValidateAndCoerce(params)
+	if !r.HasErrors() {
+		t.Fatal("expected error for type=enum with empty list")
+	}
+}
+
+// TestValidateLegacyStringEnumStillWorks: the historical
+// `type: string + enum: [...]` shape (or just `enum: [...]` with no
+// type) must keep working — the enum membership check is shared
+// across both paths, so the legacy configs don't need migrating.
+func TestValidateLegacyStringEnumStillWorks(t *testing.T) {
+	tool := &Tool{
+		Parameters: []Parameter{{Name: "env", Type: "string", Enum: []string{"staging", "prod"}}},
+	}
+	// Accept path.
+	good := map[string]string{"env": "prod"}
+	if r := tool.ValidateAndCoerce(good); r.HasErrors() {
+		t.Errorf("legacy enum should accept prod: %v", r.Errors)
+	}
+	// Reject path.
+	bad := map[string]string{"env": "dev"}
+	if r := tool.ValidateAndCoerce(bad); !r.HasErrors() {
+		t.Error("legacy enum should reject dev")
+	}
+}

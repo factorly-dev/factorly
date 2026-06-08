@@ -614,14 +614,26 @@ func (s *Server) handleToolSave(w http.ResponseWriter, r *http.Request) {
 		if pname == "" {
 			break
 		}
-		params = append(params, config.ParamConfig{
+		pc := config.ParamConfig{
 			Name:        pname,
 			Type:        r.FormValue(fmt.Sprintf("param_type_%d", i)),
 			In:          r.FormValue(fmt.Sprintf("param_in_%d", i)),
 			Required:    r.FormValue(fmt.Sprintf("param_required_%d", i)) == "on",
 			Default:     r.FormValue(fmt.Sprintf("param_default_%d", i)),
 			Description: r.FormValue(fmt.Sprintf("param_desc_%d", i)),
-		})
+		}
+		// Enum values come from the dedicated comma-separated
+		// input that's only shown when type=enum. We persist
+		// whatever the user typed regardless of the type field
+		// so flipping type=string→enum and back doesn't lose
+		// the list — but we only honor it semantically when
+		// type=enum (or when legacy `type: string + enum: [...]`
+		// is in use). The registry validator + config-load check
+		// catch the "type=enum, no list" failure mode either way.
+		if e := splitComma(r.FormValue(fmt.Sprintf("param_enum_%d", i))); len(e) > 0 {
+			pc.Enum = e
+		}
+		params = append(params, pc)
 	}
 	tc.Parameters = params
 

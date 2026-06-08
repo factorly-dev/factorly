@@ -30,6 +30,7 @@ function reindexWfParams() {
     r.querySelectorAll('[name^="wf_param_required_"]').forEach(el => el.name = 'wf_param_required_' + i);
     r.querySelectorAll('[name^="wf_param_default_"]').forEach(el => el.name = 'wf_param_default_' + i);
     r.querySelectorAll('[name^="wf_param_desc_"]').forEach(el => el.name = 'wf_param_desc_' + i);
+    r.querySelectorAll('[name^="wf_param_enum_"]').forEach(el => el.name = 'wf_param_enum_' + i);
   });
 }
 

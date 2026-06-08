@@ -227,13 +227,22 @@ func (s *Server) handleWorkflowSave(w http.ResponseWriter, r *http.Request) {
 		if pname == "" {
 			break
 		}
-		wfParams = append(wfParams, config.ParamConfig{
+		pc := config.ParamConfig{
 			Name:        pname,
 			Type:        r.FormValue(fmt.Sprintf("wf_param_type_%d", i)),
 			Required:    r.FormValue(fmt.Sprintf("wf_param_required_%d", i)) == "on",
 			Default:     r.FormValue(fmt.Sprintf("wf_param_default_%d", i)),
 			Description: r.FormValue(fmt.Sprintf("wf_param_desc_%d", i)),
-		})
+		}
+		// Enum choices from the type=enum-only dedicated row.
+		// Persist whatever the user typed so flipping the type
+		// back and forth doesn't lose the list — semantics only
+		// take effect when type=enum (registry validator +
+		// config-load check enforce the well-formed shape).
+		if e := splitComma(r.FormValue(fmt.Sprintf("wf_param_enum_%d", i))); len(e) > 0 {
+			pc.Enum = e
+		}
+		wfParams = append(wfParams, pc)
 	}
 
 	tc.Description = r.FormValue("description")

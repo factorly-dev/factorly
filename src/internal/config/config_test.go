@@ -1433,3 +1433,61 @@ tools:
 		t.Errorf("no-workspace path regressed: got %q", got)
 	}
 }
+
+// TestValidationParamUnknownType: a typo in a param's type
+// (e.g. "boolan") should fail loud at config load rather than
+// silently fall through to "untyped string" semantics at call
+// time.
+func TestValidationParamUnknownType(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  broken:
+    type: cli
+    command: echo
+    parameters:
+      - name: x
+        type: boolan
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for unknown param type")
+	}
+}
+
+// TestValidationEnumTypeWithoutList: type=enum without an enum list
+// can never accept any value — reject the config so the user fixes
+// it before runtime instead of seeing a confusing "must be one of: "
+// (empty) at the first call.
+func TestValidationEnumTypeWithoutList(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  broken:
+    type: cli
+    command: echo
+    parameters:
+      - name: env
+        type: enum
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for type=enum without enum list")
+	}
+}
+
+// TestValidationEnumTypeWithList: the well-formed case must load
+// cleanly.
+func TestValidationEnumTypeWithList(t *testing.T) {
+	path := writeTestConfig(t, `
+tools:
+  ok:
+    type: cli
+    command: echo
+    parameters:
+      - name: env
+        type: enum
+        enum: [staging, prod]
+`)
+	if _, err := Load(path); err != nil {
+		t.Fatalf("expected clean load, got: %v", err)
+	}
+}

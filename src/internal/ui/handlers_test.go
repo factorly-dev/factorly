@@ -581,6 +581,50 @@ func TestHandleToolSave(t *testing.T) {
 	}
 }
 
+// TestHandleToolSave_EnumParam verifies the param_enum_<i> form
+// field round-trips into ParamConfig.Enum. The choices input is
+// only visible when type=enum in the UI, but the handler trusts
+// whatever the form submits — type semantics and the "type=enum
+// requires a list" rule are enforced at config-load + registry
+// validation, not at save.
+func TestHandleToolSave_EnumParam(t *testing.T) {
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"my.tool": {Type: "cli", Command: "echo"},
+		},
+	}
+	srv, _ := testServer(t, cfg)
+
+	form := url.Values{
+		"description":  {""},
+		"command":      {"echo"},
+		"param_name_0": {"env"},
+		"param_type_0": {"enum"},
+		"param_enum_0": {"staging, prod, dev"},
+		"param_desc_0": {"environment"},
+	}
+
+	req := httptest.NewRequest("POST", "/tools/my.tool", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	tc := srv.cfg.Tools["my.tool"]
+	if len(tc.Parameters) != 1 {
+		t.Fatalf("expected 1 param, got %d", len(tc.Parameters))
+	}
+	p := tc.Parameters[0]
+	if p.Type != "enum" {
+		t.Errorf("type = %q, want enum", p.Type)
+	}
+	if len(p.Enum) != 3 || p.Enum[0] != "staging" || p.Enum[2] != "dev" {
+		t.Errorf("Enum = %v, want [staging prod dev] (trimmed)", p.Enum)
+	}
+}
+
 func TestHandleToolSave_WithShadow(t *testing.T) {
 	cfg := &config.Config{
 		Tools: map[string]config.ToolConfig{

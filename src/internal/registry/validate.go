@@ -111,6 +111,17 @@ func validateParam(pd Parameter, val string) (coerced string, errs []string) {
 		if !json.Valid([]byte(val)) {
 			return val, []string{"invalid JSON"}
 		}
+
+	case "enum":
+		// Type-level enum dispatch. Membership is enforced by the
+		// shared block below (line ~135), which is the same path the
+		// legacy `type: string + enum: [...]` shape uses — declaring
+		// this case explicitly keeps the validator's switch-by-type
+		// shape readable and lets us reject ill-defined "enum but
+		// no values" configs that slipped past load-time validation.
+		if len(pd.Enum) == 0 {
+			return val, []string{"type=enum requires a non-empty enum list"}
+		}
 	}
 
 	// String length checks (for string type or untyped)

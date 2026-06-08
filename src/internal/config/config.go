@@ -754,8 +754,36 @@ func validate(cfg *Config) error {
 				}
 			}
 		}
+		// Per-parameter checks. Param types are free-form strings
+		// historically; validate the known set so a typo doesn't
+		// silently fall through to "untyped string" at call time.
+		// "enum" requires an enum list — without one, the tool can
+		// never accept any value and the failure mode would be
+		// confusing ("must be one of: " with an empty list).
+		for _, p := range tool.Parameters {
+			if !validParamTypes[p.Type] {
+				return fmt.Errorf("config: tool %q parameter %q has unknown type %q", name, p.Name, p.Type)
+			}
+			if p.Type == "enum" && len(p.Enum) == 0 {
+				return fmt.Errorf("config: tool %q parameter %q is type=enum but has no enum list", name, p.Name)
+			}
+		}
 	}
 	return nil
+}
+
+// validParamTypes is the set of accepted ParamConfig.Type values.
+// Empty string is allowed because it's the default ("string") used
+// historically by configs that didn't bother setting the type.
+var validParamTypes = map[string]bool{
+	"":        true,
+	"string":  true,
+	"text":    true,
+	"integer": true,
+	"number":  true,
+	"boolean": true,
+	"json":    true,
+	"enum":    true,
 }
 
 // ValidateReferences performs cross-reference validation that requires knowing

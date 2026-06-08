@@ -17,7 +17,20 @@
           {{if .Required}}<span class="text-red-600">*</span>{{end}}
           {{if .Type}}<span class="text-gray-500 font-normal">{{.Type}}</span>{{end}}
         </label>
-        {{if eq .Type "boolean"}}
+        {{/* Enum check first: covers both type=enum (first-class) and
+             the legacy type=string + enum:[...] shape. The presence of
+             an enum list is what matters for the widget — we render a
+             <select> in either case. */}}
+        {{if or (eq .Type "enum") .Enum}}
+        {{$param := .}}
+        {{if .Description}}<p class="text-[10px] text-gray-600 mb-1">{{.Description}}</p>{{end}}
+        <select name="param_{{.Name}}"
+                class="w-full px-3 py-1.5 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                {{if .Required}}required{{end}}>
+          {{if not .Required}}<option value="" {{if not .Default}}selected{{end}}></option>{{end}}
+          {{range $param.Enum}}<option value="{{.}}" {{if eq . $param.Default}}selected{{end}}>{{.}}</option>{{end}}
+        </select>
+        {{else if eq .Type "boolean"}}
         <label class="flex items-start gap-2 text-xs text-gray-600">
           <input type="checkbox" name="param_{{.Name}}" value="true"
                  {{if or (eq .Default "true") (eq .Default "1") (eq .Default "yes")}}checked{{end}}
