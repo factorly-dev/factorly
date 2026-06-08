@@ -776,6 +776,34 @@ var activeAskBroker *ui.AskBroker
 // so the factorly.ask handler can find the broker after construction.
 func SetActiveAskBroker(b *ui.AskBroker) { activeAskBroker = b }
 
+// AskResolver answers a factorly.ask question. The default
+// implementation (DefaultAskResolver) just delegates to the broker;
+// the UI command swaps in a racing resolver when --mcp is enabled so
+// browser + MCP elicitation compete for the answer (same pattern as
+// the existing shadow-confirm race). Same return contract as
+// AskBroker.Request: answer string + (nil | ErrAskCancelled | ctx.Err).
+type AskResolver func(ctx context.Context, req ui.AskRequest) (string, error)
+
+// activeAskResolver is what the factorly.ask handler calls. nil
+// means "no UI configured" (CLI tools / serve / etc.) and the
+// handler returns the headless error.
+var activeAskResolver AskResolver
+
+// SetActiveAskResolver wires the resolver the handler uses. UI mode
+// sets a racing resolver; other modes leave it nil so the handler
+// fails loud at call time rather than blocking forever.
+func SetActiveAskResolver(r AskResolver) { activeAskResolver = r }
+
+// DefaultAskResolver delegates straight to an AskBroker's Request.
+// Used by `factorly ui` without --mcp (browser is the only channel)
+// and as the fallback inside the racing resolver when no MCP session
+// is bound to the ctx.
+func DefaultAskResolver(b *ui.AskBroker) AskResolver {
+	return func(ctx context.Context, req ui.AskRequest) (string, error) {
+		return b.Request(ctx, req)
+	}
+}
+
 // bootstrapProviders opens the vault if needed, creates providers, and
 // wires everything into a proxy. Takes config and registry from loadConfig().
 // confirmFn is used for shadow confirm prompts — nil uses the default CLI prompt.
@@ -976,7 +1004,7 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 	// runs; the closure reads the current value each call so the
 	// non-UI command paths can register the handler too — it just
 	// returns the "UI not running" error there.
-	bp.RegisterHandler("factorly.ask", makeFactorlyAskHandler(func() *ui.AskBroker { return activeAskBroker }))
+	bp.RegisterHandler("factorly.ask", makeFactorlyAskHandler(func() AskResolver { return activeAskResolver }))
 
 	if len(cliTools) > 0 {
 		vlog("initialized cli provider (%d tools)", len(cliTools))
@@ -1323,10 +1351,10 @@ func makeFactorlyCodeHandler(cp *codeprov.Provider, builtinCfg config.ToolConfig
 // non-UI command path) the handler returns a clean error directing
 // the operator to run `factorly ui` — much better than the deadlock
 // the alternative (block forever) would produce.
-func makeFactorlyAskHandler(brokerFn func() *ui.AskBroker) provider.BuiltinHandler {
+func makeFactorlyAskHandler(resolverFn func() AskResolver) provider.BuiltinHandler {
 	return func(ctx context.Context, params map[string]string) (*provider.Result, error) {
-		broker := brokerFn()
-		if broker == nil {
+		resolve := resolverFn()
+		if resolve == nil {
 			return &provider.Result{
 				Error:    "factorly.ask requires the UI to be running (start `factorly ui`)",
 				ExitCode: 1,
@@ -1345,7 +1373,7 @@ func makeFactorlyAskHandler(brokerFn func() *ui.AskBroker) provider.BuiltinHandl
 		askCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
-		answer, err := broker.Request(askCtx, req)
+		answer, err := resolve(askCtx, req)
 		if err != nil {
 			if errors.Is(err, ui.ErrAskCancelled) {
 				return &provider.Result{

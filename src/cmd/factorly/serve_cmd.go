@@ -14,6 +14,7 @@ import (
 	"time"
 
 	factorlyServer "github.com/factorly-dev/factorly/internal/server"
+	"github.com/factorly-dev/factorly/internal/ui"
 	"github.com/factorly-dev/factorly/internal/vault"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -190,6 +191,92 @@ func mcpElicitConfirm(ctx context.Context, toolName string, params map[string]st
 	}
 
 	return result.Action == mcp.ElicitationResponseActionAccept
+}
+
+// mcpElicitAsk surfaces a factorly.ask question to the MCP client via
+// elicitation. Schema mirrors the AskRequest's type/enum so the client
+// can render an appropriate constrained input (e.g. Claude Code shows
+// a dropdown for enums, a text input for strings).
+//
+// Returns the user's answer on accept, ui.ErrAskCancelled on decline/
+// cancel, or a plain error on transport / schema mismatch. The race
+// wrapper in ui_cmd.go normalizes those into the broker's contract so
+// the factorly.ask handler doesn't need to know the source.
+func mcpElicitAsk(ctx context.Context, areq ui.AskRequest) (string, error) {
+	session := server.ClientSessionFromContext(ctx)
+	if session == nil {
+		return "", fmt.Errorf("no MCP session available")
+	}
+	elicitSession, ok := session.(server.SessionWithElicitation)
+	if !ok {
+		return "", fmt.Errorf("MCP session does not support elicitation")
+	}
+
+	// Map AskRequest.Type to JSON Schema type. enum/string/text/json
+	// all collapse to "string" at the wire level — enum is enforced
+	// via the schema's `enum` field, not its type.
+	jsonType := "string"
+	switch areq.Type {
+	case "integer":
+		jsonType = "integer"
+	case "number":
+		jsonType = "number"
+	case "boolean":
+		jsonType = "boolean"
+	}
+
+	prop := map[string]any{"type": jsonType}
+	if areq.Description != "" {
+		prop["description"] = areq.Description
+	}
+	if areq.Default != "" {
+		prop["default"] = areq.Default
+	}
+	if len(areq.Enum) > 0 {
+		prop["enum"] = areq.Enum
+	}
+
+	schema := map[string]any{
+		"type":       "object",
+		"properties": map[string]any{areq.Name: prop},
+	}
+	if areq.Required {
+		schema["required"] = []string{areq.Name}
+	}
+
+	msg := areq.Description
+	if msg == "" {
+		msg = areq.Title
+	}
+	if msg == "" {
+		msg = areq.Name
+	}
+
+	req := mcp.ElicitationRequest{}
+	req.Params.Message = msg
+	req.Params.RequestedSchema = schema
+
+	result, err := elicitSession.RequestElicitation(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("elicitation failed: %w", err)
+	}
+	if result.Action != mcp.ElicitationResponseActionAccept {
+		return "", ui.ErrAskCancelled
+	}
+	// Extract `<name>` from result.Content (JSON-shaped object that
+	// conforms to RequestedSchema). MCP libraries deserialize Content
+	// as map[string]any with primitives as their JSON-native types,
+	// so we stringify whatever's there back to factorly's
+	// string-typed param convention.
+	content, ok := result.Content.(map[string]any)
+	if !ok {
+		return "", fmt.Errorf("elicitation response has unexpected content shape: %T", result.Content)
+	}
+	raw, ok := content[areq.Name]
+	if !ok {
+		return "", fmt.Errorf("elicitation response missing field %q", areq.Name)
+	}
+	return fmt.Sprint(raw), nil
 }
 
 func init() {

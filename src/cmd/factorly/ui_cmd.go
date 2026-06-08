@@ -66,6 +66,10 @@ func runUI(cmd *cobra.Command, args []string) error {
 	// the SSE / POST routes route to the same queue.
 	askBroker := ui.NewAskBroker()
 	SetActiveAskBroker(askBroker)
+	// Default ask resolver: just the browser broker. When --mcp is on
+	// we wrap it below to race against MCP elicitation, mirroring the
+	// shadow-confirm race semantics.
+	SetActiveAskResolver(DefaultAskResolver(askBroker))
 	confirmFn := shadow.ConfirmFunc(confirmBroker.Request)
 	if uiMCP {
 		// Race MCP elicitation and browser confirm — first response wins.
@@ -116,6 +120,48 @@ func runUI(cmd *cobra.Command, args []string) error {
 				return false
 			}
 		}
+
+		// Race factorly.ask the same way: browser + elicitation, first
+		// response wins. We do this in the same --mcp block because
+		// elicitation is only meaningful when an MCP session is bound
+		// to the ctx, which only happens for tools dispatched through
+		// our MCP server.
+		SetActiveAskResolver(func(ctx context.Context, req ui.AskRequest) (string, error) {
+			browserCtx, browserCancel := context.WithCancel(ctx)
+			defer browserCancel()
+			type askResult struct {
+				answer string
+				err    error
+				source string
+			}
+			result := make(chan askResult, 2)
+
+			channels := []string{"browser"}
+			go func() {
+				a, e := askBroker.Request(browserCtx, req)
+				result <- askResult{a, e, "browser"}
+			}()
+			if mcpserver.ClientSessionFromContext(ctx) != nil {
+				channels = append(channels, "elicitation")
+				go func() {
+					a, e := mcpElicitAsk(ctx, req)
+					result <- askResult{a, e, "elicitation"}
+				}()
+			}
+			vlog("[ask] %s: waiting for answer (%s)", req.Name, strings.Join(channels, ", "))
+
+			select {
+			case r := <-result:
+				if r.err != nil {
+					vlog("[ask] %s: %v via %s", req.Name, r.err, r.source)
+					return "", r.err
+				}
+				vlog("[ask] %s: answered via %s", req.Name, r.source)
+				return r.answer, nil
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		})
 	}
 	p, err := bootstrapProviders(cfg, reg, confirmFn)
 	if err != nil {

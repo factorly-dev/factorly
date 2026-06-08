@@ -16,7 +16,7 @@ import (
 // is running, the handler must return a clean operator-readable error
 // instead of blocking forever.
 func TestFactorlyAsk_NilBroker(t *testing.T) {
-	h := makeFactorlyAskHandler(func() *ui.AskBroker { return nil })
+	h := makeFactorlyAskHandler(func() AskResolver { return nil })
 	res, err := h(context.Background(), map[string]string{
 		"name":        "env",
 		"description": "x",
@@ -36,7 +36,7 @@ func TestFactorlyAsk_NilBroker(t *testing.T) {
 // builtin handler with a background goroutine that responds.
 func TestFactorlyAsk_HappyPath(t *testing.T) {
 	broker := ui.NewAskBroker()
-	h := makeFactorlyAskHandler(func() *ui.AskBroker { return broker })
+	h := makeFactorlyAskHandler(func() AskResolver { return DefaultAskResolver(broker) })
 
 	go func() {
 		for {
@@ -70,7 +70,7 @@ func TestFactorlyAsk_HappyPath(t *testing.T) {
 // failed.
 func TestFactorlyAsk_Cancelled(t *testing.T) {
 	broker := ui.NewAskBroker()
-	h := makeFactorlyAskHandler(func() *ui.AskBroker { return broker })
+	h := makeFactorlyAskHandler(func() AskResolver { return DefaultAskResolver(broker) })
 
 	go func() {
 		for {
@@ -97,7 +97,7 @@ func TestFactorlyAsk_Cancelled(t *testing.T) {
 // the configured timeout.
 func TestFactorlyAsk_Timeout(t *testing.T) {
 	broker := ui.NewAskBroker()
-	h := makeFactorlyAskHandler(func() *ui.AskBroker { return broker })
+	h := makeFactorlyAskHandler(func() AskResolver { return DefaultAskResolver(broker) })
 
 	start := time.Now()
 	res, err := h(context.Background(), map[string]string{
@@ -153,3 +153,27 @@ func TestBuildAskRequest_MissingName(t *testing.T) {
 	}
 }
 
+
+// TestFactorlyAsk_CustomResolver verifies the resolver indirection
+// works — a non-broker AskResolver (such as the browser/MCP race
+// wrapper used with --mcp) takes precedence over the default and its
+// return values reach the handler verbatim.
+func TestFactorlyAsk_CustomResolver(t *testing.T) {
+	resolver := func(ctx context.Context, req ui.AskRequest) (string, error) {
+		if req.Name != "env" {
+			t.Errorf("resolver got Name = %q, want env", req.Name)
+		}
+		return "from-resolver", nil
+	}
+	h := makeFactorlyAskHandler(func() AskResolver { return resolver })
+	res, err := h(context.Background(), map[string]string{
+		"name":        "env",
+		"description": "x",
+	})
+	if err != nil {
+		t.Fatalf("unexpected go-error: %v", err)
+	}
+	if res.Output != "from-resolver" {
+		t.Errorf("Output = %q, want 'from-resolver'", res.Output)
+	}
+}
