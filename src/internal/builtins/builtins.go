@@ -139,8 +139,8 @@ func Register(cfg *config.Config, opts Options) {
 		Parameters: []config.ParamConfig{
 			{Name: "name", Type: "string", Required: true,
 				Description: "Variable name for the answer (also used as the input label)."},
-			{Name: "type", Type: "string", Default: "string",
-				Description: "Answer type: string, text, integer, number, boolean, or enum.",
+			{Name: "type", Type: "enum", Default: "string",
+				Description: "Answer type.",
 				Enum: []string{"string", "text", "integer", "number", "boolean", "enum"}},
 			{Name: "description", Type: "string",
 				Description: "Question text shown above the input."},

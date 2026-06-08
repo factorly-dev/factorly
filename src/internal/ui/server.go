@@ -864,6 +864,24 @@ func templateFuncs() template.FuncMap {
 		"joinList": func(items []string) string {
 			return strings.Join(items, ", ")
 		},
+		// dict packs alternating key/value pairs into a map. Used
+		// for inline `{{template "name" (dict "K1" v1 "K2" v2)}}` so
+		// partials can be reused with synthesized contexts without
+		// declaring a wrapper struct in Go.
+		"dict": func(pairs ...any) (map[string]any, error) {
+			if len(pairs)%2 != 0 {
+				return nil, fmt.Errorf("dict requires an even number of args (key, value, …)")
+			}
+			out := make(map[string]any, len(pairs)/2)
+			for i := 0; i < len(pairs); i += 2 {
+				k, ok := pairs[i].(string)
+				if !ok {
+					return nil, fmt.Errorf("dict key at position %d must be a string, got %T", i, pairs[i])
+				}
+				out[k] = pairs[i+1]
+			}
+			return out, nil
+		},
 		"icon": func(name string) template.HTML {
 			icons := map[string]string{
 				"play":          `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>`,
