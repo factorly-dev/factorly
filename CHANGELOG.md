@@ -1,3 +1,27 @@
+## [v0.18.0] - 2026-06-08
+
+### Added
+- `factorly.ask` builtin tool to pause a run and prompt the user via UI modal, returning the answer as tool output
+- `factorly.ask` stdin/TTY fallback when no UI is running, printing prompt to stderr so stdout stays clean for shell capture
+- MCP elicitation support for `factorly.ask`
+- `factorly explain` CLI command emitting a markdown primer for use in agent system prompts
+- `factorly.help` MCP builtin for agent self-discovery of installed tools, workflows, and blueprints
+- `type: enum` as a first-class parameter type with load-time validation
+- `dict` template function enabling partials to be reused with synthesized contexts
+- Choices field (comma-separated) in tool/workflow param editors, visible when `type=enum`
+- Try-It panel renders a `<select>` for any param with a non-empty enum list
+
+### Changed
+- Try-It panel in `tool_edit.html` now uses the `try_panel` partial as single source of truth for both initial load and htmx swap
+- Config load now allowlists param types so typos fail loud at load time
+- `type: string + enum:` legacy shape continues to work unchanged
+- Confirm modal z-index bumped to `z-[110]` so it stays above the ask modal when both are pending
+- `factorly.help` description nudges agents to call it first
+- Updated MOTD/help content and fixed broken/dead links
+
+### Removed
+- `activeAskBroker` global and `SetActiveAskBroker` setter (dead code after refactor to `activeAskResolver`)
+
 ## [v0.17.4] - 2026-06-01
 
 ### Added
