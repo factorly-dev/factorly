@@ -1,3 +1,15 @@
+## [v0.18.1] - 2026-06-10
+
+### Added
+- `factorly init` now offers to create encrypted vaults (global and project scope) during setup with interactive passphrase prompt and confirmation
+- `LocalBackend.Initialize()` in `internal/vault/local.go` to persist an empty vault upfront, ensuring wrong-passphrase opens fail immediately
+- Dynamic help text in create tool form based on selected type
+
+### Changed
+- Passphrase prompt/confirm logic extracted into `createVaultInteractive` and `readAndConfirmPassphrase` for testability via injected `readPass` func
+- Non-interactive runs skip vault creation prompts with a notice to set passphrase later via `vault set`
+- Workflows breadcrumb updated
+
 ## [v0.18.0] - 2026-06-08
 
 ### Added
