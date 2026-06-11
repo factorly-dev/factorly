@@ -6,6 +6,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,8 @@ import (
 
 	"encoding/json"
 	"time"
+
+	"golang.org/x/term"
 
 	"github.com/factorly-dev/factorly/internal"
 	"github.com/factorly-dev/factorly/internal/builtins"
@@ -476,6 +479,19 @@ vars:
 
 		fmt.Printf("\nCreated %s\n", outPath)
 
+		// Offer to create encrypted vaults and set their passphrases now,
+		// so the user isn't establishing a passphrase implicitly on their
+		// first `vault set`. Each scope is offered only when its file
+		// doesn't already exist — we never re-prompt or risk clobbering an
+		// existing passphrase. Global comes first (the default other
+		// commands write to), then the project-local vault.
+		if err := maybeInitVault(scanner, "global", vault.DefaultVaultPath()); err != nil {
+			return err
+		}
+		if err := maybeInitVault(scanner, "project", filepath.Join(filepath.Dir(outPath), "vault.enc")); err != nil {
+			return err
+		}
+
 		// Offer to ignore runtime state in an existing .gitignore. We only
 		// prompt when a .gitignore is already present — we're not the
 		// gitignore manager and creating one on the user's behalf would be
@@ -503,6 +519,115 @@ vars:
 
 		return nil
 	},
+}
+
+// vaultPassphraseAttempts is how many times we let the user re-enter a
+// passphrase + confirmation before giving up. A typo'd confirmation or
+// an accidental empty entry shouldn't be fatal on the first miss, but we
+// don't loop forever either — after this many failures init aborts.
+const vaultPassphraseAttempts = 3
+
+// maybeInitVault offers to create an encrypted vault at path and set its
+// passphrase, but only when the file doesn't already exist. scope is a
+// human label ("global" / "project") used in the prompts. An existing
+// vault is left untouched with a notice — we never re-prompt for a
+// passphrase or risk clobbering one.
+//
+// The step is skipped when stdin isn't a terminal: setting a passphrase
+// is inherently interactive (we read it without echo and confirm it
+// twice), and a piped init run has no sensible way to supply or confirm
+// one. Non-interactive callers establish the passphrase later via
+// `factorly vault set`.
+//
+// Returns an error (which aborts init) only when the user opts in but
+// fails to supply a matching, non-empty passphrase within
+// vaultPassphraseAttempts tries. Declining the offer, an already-
+// existing vault, and a non-interactive stdin all return nil — they're
+// not failures.
+func maybeInitVault(scanner *bufio.Scanner, scope, path string) error {
+	if _, err := os.Stat(path); err == nil {
+		fmt.Printf("%s vault already exists at %s — leaving it untouched.\n", scope, path)
+		return nil
+	}
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		// Non-interactive: can't safely prompt/confirm a passphrase.
+		return nil
+	}
+
+	ans := prompt(scanner, fmt.Sprintf("Create an encrypted %s vault now and set its passphrase? (y/n)", scope), "y")
+	if !strings.HasPrefix(strings.ToLower(ans), "y") {
+		return nil
+	}
+
+	if err := createVaultInteractive(scope, path, promptSecret); err != nil {
+		return err
+	}
+	fmt.Printf("Created %s vault at %s\n", scope, path)
+	return nil
+}
+
+// createVaultInteractive reads a passphrase (twice, to confirm) via the
+// supplied prompt func, then creates and persists an empty encrypted
+// vault at path. Split out from maybeInitVault so the passphrase-confirm
+// and write logic is testable without a TTY — tests pass a canned
+// prompt func instead of promptSecret. readPass is called once per
+// label ("Passphrase: ", "Confirm passphrase: ") per attempt.
+//
+// An empty or mismatched passphrase is re-prompted up to
+// vaultPassphraseAttempts times (each failure prints a warning and tries
+// again). Only after exhausting all attempts does it return an error —
+// at which point no partial vault is left on disk. A read error or write
+// failure returns immediately.
+func createVaultInteractive(scope, path string, readPass func(label string) (vault.Secret, error)) error {
+	for attempt := 1; attempt <= vaultPassphraseAttempts; attempt++ {
+		ok, err := readAndConfirmPassphrase(scope, path, readPass)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
+		if attempt < vaultPassphraseAttempts {
+			fmt.Fprintf(os.Stderr, "Try again (%d of %d).\n", attempt+1, vaultPassphraseAttempts)
+		}
+	}
+	return fmt.Errorf("failed to set %s vault passphrase after %d attempts", scope, vaultPassphraseAttempts)
+}
+
+// readAndConfirmPassphrase runs one prompt+confirm cycle. Returns
+// (true, nil) when a non-empty, matching passphrase was supplied and the
+// vault was written; (false, nil) when the entry was empty or didn't
+// match (caller may retry); (false, err) on an unrecoverable read or
+// write error.
+func readAndConfirmPassphrase(scope, path string, readPass func(label string) (vault.Secret, error)) (bool, error) {
+	pw, err := readPass("Passphrase: ")
+	if err != nil {
+		return false, fmt.Errorf("reading passphrase: %w", err)
+	}
+	defer pw.Zero()
+	if len(pw.Bytes()) == 0 {
+		fmt.Fprintln(os.Stderr, "Passphrase can't be empty.")
+		return false, nil
+	}
+	confirm, err := readPass("Confirm passphrase: ")
+	if err != nil {
+		return false, fmt.Errorf("reading passphrase: %w", err)
+	}
+	defer confirm.Zero()
+	if subtle.ConstantTimeCompare(pw.Bytes(), confirm.Bytes()) != 1 {
+		fmt.Fprintln(os.Stderr, "Passphrases didn't match.")
+		return false, nil
+	}
+
+	b, err := vault.OpenLocalAt(path, pw)
+	if err != nil {
+		return false, fmt.Errorf("creating %s vault: %w", scope, err)
+	}
+	defer b.Close()
+	if err := b.Initialize(); err != nil {
+		return false, fmt.Errorf("writing %s vault: %w", scope, err)
+	}
+	return true, nil
 }
 
 // maybeOfferGitignore looks for a .gitignore at the project root and,

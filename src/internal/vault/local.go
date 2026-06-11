@@ -254,6 +254,18 @@ func (b *LocalBackend) Close() error {
 	return nil
 }
 
+// Initialize writes the vault file to disk even when it holds no
+// entries. OpenLocalAt builds a fresh vault in memory but only persists
+// on the first Set, so a brand-new empty vault leaves nothing on disk.
+// `factorly init` calls this to lock the chosen passphrase in up front
+// — the salt + derived key get written, so a later Set just appends an
+// entry instead of silently establishing the passphrase on first use.
+func (b *LocalBackend) Initialize() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.save()
+}
+
 // readWithSharedLock reads the vault file while holding a shared lock.
 // Returns os.ErrNotExist if the file doesn't exist.
 func (b *LocalBackend) readWithSharedLock() ([]byte, error) {
