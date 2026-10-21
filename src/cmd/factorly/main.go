@@ -775,6 +775,40 @@ func init() {
 	rootCmd.AddCommand(versionCmd, toolsCmd, callCmd, initCmd, syncCmd, vaultCmd, storeCmd, workspacesCmd, authCmd, serveCmd, wrapCmd, execCmd, logsCmd, utilsCmd, uiCmd, blueprintCmd, explainCmd)
 }
 
+// resolveWorkspaceName settles the active workspace into the global
+// workspaceName: --workspace wins; FACTORLY_WORKSPACE is the fallback so
+// users can set it once per shell. If neither is set and a "default"
+// workspace exists next to cfgPath, auto-select it — that's the
+// Postman-style "always have an environment active" default. Persisted
+// into the global so downstream code (audit log, vault tiers, resolver
+// overlay) sees the resolved value. Shared by loadConfig and exec, which
+// builds its own synthetic config.
+func resolveWorkspaceName(cfgPath string) {
+	if workspaceName == "" {
+		workspaceName = os.Getenv("FACTORLY_WORKSPACE")
+	}
+	if workspaceName == "" && workspace.Exists(cfgPath, "default") {
+		workspaceName = "default"
+		vlog("auto-selected default workspace")
+	}
+	if workspaceName != "" {
+		vlog("using workspace: %s", workspaceName)
+	}
+}
+
+// parseCLIToolTimeout interprets a cli tool's timeout string. "none" and
+// "0" mean no deadline at all; anything else is a time.Duration.
+func parseCLIToolTimeout(s string) (d time.Duration, none bool, err error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "":
+		return 0, false, nil
+	case "0", "none":
+		return 0, true, nil
+	}
+	d, err = time.ParseDuration(s)
+	return d, false, err
+}
+
 // loadConfig loads config and builds a registry. Does not open the vault
 // or create providers — use for read-only commands like `tools`.
 func loadConfig() (*config.Config, *registry.Registry, error) {
@@ -800,22 +834,7 @@ func loadConfig() (*config.Config, *registry.Registry, error) {
 		} else {
 			vlog("using config: %s", cfgPath)
 		}
-		// --workspace wins; FACTORLY_WORKSPACE is the fallback so users
-		// can set it once per shell. If neither is set and a "default"
-		// workspace exists, auto-select it — that's the Postman-style
-		// "always have an environment active" default. Persist back
-		// into workspaceName so downstream code (audit log, vault) sees
-		// the resolved value.
-		if workspaceName == "" {
-			workspaceName = os.Getenv("FACTORLY_WORKSPACE")
-		}
-		if workspaceName == "" && workspace.Exists(cfgPath, "default") {
-			workspaceName = "default"
-			vlog("auto-selected default workspace")
-		}
-		if workspaceName != "" {
-			vlog("using workspace: %s", workspaceName)
-		}
+		resolveWorkspaceName(cfgPath)
 		cfg, err = config.Load(cfgPath, config.WithWorkspace(workspaceName))
 	}
 	if err != nil {
@@ -1025,12 +1044,11 @@ func bootstrapProviders(cfg *config.Config, reg *registry.Registry, confirmFn ..
 				Env:         resolveVaultMap(resolver, toolCfg.Env),
 				EnvStrict:   toolCfg.EnvIsolation == "strict",
 			}
-			if toolCfg.Timeout != "" {
-				if d, err := time.ParseDuration(toolCfg.Timeout); err == nil {
-					def.Timeout = d
-				} else {
-					vlog("warning: invalid timeout %q for tool %s: %v", toolCfg.Timeout, name, err)
-				}
+			if d, none, err := parseCLIToolTimeout(toolCfg.Timeout); err != nil {
+				vlog("warning: invalid timeout %q for tool %s: %v", toolCfg.Timeout, name, err)
+			} else {
+				def.Timeout = d
+				def.NoTimeout = none
 			}
 			cliTools[name] = def
 			vlog("  registered cli tool: %s", name)

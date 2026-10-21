@@ -51,7 +51,7 @@ tools:
     env:                         # environment variables
       KEY: {{vault:SECRET}}
       HOME: "{{env:HOME}}"       # forward from host env
-    timeout: 30s                 # execution timeout (e.g. "10s", "2m"; default 30s for CLI)
+    timeout: 30s                 # execution timeout (e.g. "10s", "2m"; default 30s for CLI; "none" disables it for CLI tools)
     max_output: 50000            # max output bytes (default 50000)
     compress: ["all"]            # compression hints: "json", "logs", or "all"
 

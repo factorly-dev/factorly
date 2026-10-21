@@ -21,7 +21,12 @@ type CLIToolDef struct {
 	Env         map[string]string
 	EnvStrict   bool // when true, child gets minimal env instead of inheriting parent
 	Timeout     time.Duration
+	NoTimeout   bool // when true, the subprocess runs with no deadline (Timeout is ignored)
 }
+
+// ExitCodeTimeout is the exit code reported when a subprocess is killed
+// for exceeding its timeout. Matches coreutils `timeout(1)`.
+const ExitCodeTimeout = 124
 
 type CLIProvider struct {
 	tools map[string]CLIToolDef
@@ -83,13 +88,20 @@ func (p *CLIProvider) Execute(toolName string, params map[string]string) (*Resul
 
 	args := substituteArgs(def.Args, params)
 
+	// Timeout: explicit > 30s default. Tools that opt out via NoTimeout
+	// run with no deadline, and so do interactive sessions unless the
+	// tool sets one explicitly — a REPL should not be killed from under
+	// the user by a default meant for agent calls.
+	ctx := context.Background()
 	timeout := def.Timeout
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	if !def.NoTimeout && !(def.Interactive && def.Timeout == 0) {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
 
 	cmd := exec.CommandContext(ctx, def.Command, args...)
 
@@ -107,14 +119,7 @@ func (p *CLIProvider) Execute(toolName string, params map[string]string) (*Resul
 		duration := time.Since(start)
 
 		result := &Result{Duration: duration}
-		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				result.ExitCode = exitErr.ExitCode()
-			} else {
-				result.ExitCode = 1
-				result.Error = err.Error()
-			}
-		}
+		applyRunError(ctx, result, err, timeout)
 		return result, nil
 	}
 
@@ -137,17 +142,33 @@ func (p *CLIProvider) Execute(toolName string, params map[string]string) (*Resul
 		Error:    stderr.String(),
 		Duration: duration,
 	}
-
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			result.ExitCode = exitErr.ExitCode()
-		} else {
-			result.ExitCode = 1
-			result.Error = err.Error()
-		}
-	}
-
+	applyRunError(ctx, result, err, timeout)
 	return result, nil
+}
+
+// applyRunError maps a cmd.Run error onto the result. A deadline hit is
+// reported explicitly — exit 124 and a "timed out after X" message —
+// instead of the bare -1 exit code Go reports for a signal-killed child,
+// which is indistinguishable from a crash.
+func applyRunError(ctx context.Context, result *Result, err error, timeout time.Duration) {
+	if err == nil {
+		return
+	}
+	if ctx.Err() == context.DeadlineExceeded {
+		result.ExitCode = ExitCodeTimeout
+		msg := fmt.Sprintf("timed out after %s", timeout)
+		if result.Error != "" {
+			msg = strings.TrimRight(result.Error, "\n") + "\n" + msg
+		}
+		result.Error = msg
+		return
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		result.ExitCode = exitErr.ExitCode()
+		return
+	}
+	result.ExitCode = 1
+	result.Error = err.Error()
 }
 
 func substituteString(tmpl string, params map[string]string) string {

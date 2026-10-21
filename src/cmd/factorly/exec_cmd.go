@@ -11,7 +11,6 @@ import (
 	"github.com/factorly-dev/factorly/internal/config"
 	"github.com/factorly-dev/factorly/internal/registry"
 	"github.com/factorly-dev/factorly/internal/vault"
-	"github.com/factorly-dev/factorly/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +21,7 @@ var (
 	execInteractive  bool
 	execTimeout      string
 	execEnvVars      []string
+	execVaultKeys    []string
 )
 
 var execCmd = &cobra.Command{
@@ -33,10 +33,18 @@ and audit logging. The zero-config equivalent of a CLI tool definition.
 Supports {{vault:KEY}} and {{env:VAR}} references in arguments:
   factorly exec -- curl -H "Authorization: Bearer {{vault:GITHUB_TOKEN}}" https://api.github.com/user
 
+Export vault secrets into the command's environment with --vault:
+  factorly exec --vault GITHUB_TOKEN -- gh pr list
+  factorly exec --vault GH_TOKEN=GITHUB_TOKEN -- ./script.sh
+  factorly exec --vault 'STRIPE_*' -- npm run sync
+
+Commands run with no timeout unless --timeout is given.
+
 Examples:
   factorly exec -- git status
   factorly exec --compress json -- npm test
-  factorly exec --env-isolation strict -- ./deploy.sh
+  factorly exec --timeout 10m -- make build
+  factorly exec --env-isolation strict --vault GITHUB_TOKEN -- gh pr list
   factorly exec -i -- psql -h localhost mydb`,
 	RunE: runExec,
 }
@@ -71,11 +79,20 @@ func runExec(cmd *cobra.Command, args []string) error {
 		toolCfg.Compress = []string{"all"}
 	}
 	toolCfg.MaxOutput = execMaxOutput
-	if execTimeout != "" {
-		toolCfg.Timeout = execTimeout
-	}
 	if execEnvIsolation == "strict" {
 		toolCfg.EnvIsolation = "strict"
+	}
+
+	// Timeout: exec is a foreground, user-driven command, so the 30s
+	// default that protects agent tool calls does not apply. No flag
+	// (or "0"/"none") means no deadline; a duration opts into one.
+	if _, _, err := parseCLIToolTimeout(execTimeout); err != nil {
+		return fmt.Errorf("invalid --timeout %q: %w", execTimeout, err)
+	}
+	if strings.TrimSpace(execTimeout) == "" {
+		toolCfg.Timeout = "none"
+	} else {
+		toolCfg.Timeout = execTimeout
 	}
 
 	// Parse --env KEY=VALUE pairs
@@ -88,6 +105,24 @@ func runExec(cmd *cobra.Command, args []string) error {
 			}
 			toolCfg.Env[k] = v
 		}
+	}
+
+	// --vault KEY / ENV=KEY / GLOB → env entries holding {{vault:KEY}}
+	// refs, so they ride the same resolver path as --env values.
+	// Explicit --env entries win on conflict.
+	if len(execVaultKeys) > 0 {
+		specs, err := parseVaultEnvSpecs(execVaultKeys)
+		if err != nil {
+			return err
+		}
+		warnf := func(format string, a ...any) {
+			fmt.Fprintf(os.Stderr, "warning: "+format+"\n", a...)
+		}
+		vaultEnv, err := vaultEnvRefs(specs, listCachedVaultKeys, warnf)
+		if err != nil {
+			return err
+		}
+		toolCfg.Env = mergeVaultEnv(toolCfg.Env, vaultEnv)
 	}
 
 	toolName := "exec"
@@ -111,49 +146,30 @@ func runExec(cmd *cobra.Command, args []string) error {
 
 	vlog("exec: %s", strings.Join(args, " "))
 
-	// Check if vault refs are present anywhere — open vault lazily
-	hasVaultRefs := vault.HasVaultRefs(toolCfg.Command)
-	for _, a := range toolCfg.Args {
-		if vault.HasVaultRefs(a) {
-			hasVaultRefs = true
-			break
-		}
-	}
-	for _, v := range toolCfg.Env {
-		if vault.HasVaultRefs(v) {
-			hasVaultRefs = true
-			break
-		}
-	}
-
-	// Build resolver with env + optional vault backends. When --workspace
-	// (or FACTORLY_WORKSPACE) is active, seed the env backend with the
-	// workspace's vars so {{env:NAME}} references resolve to workspace
-	// values before falling back to os.Getenv — same overlay semantics
-	// as `factorly call` uses via config.WithWorkspace.
-	resolver := vault.NewResolver()
-	workspaceVars := loadExecWorkspaceVars()
-	if len(workspaceVars) > 0 {
-		resolver.Register("env", vault.EnvBackendWithOverrides{Overrides: workspaceVars})
-	} else {
-		resolver.Register("env", vault.EnvBackend{})
-	}
-	if hasVaultRefs {
-		backend, err := getCachedLocalVault()
-		if err != nil {
-			return fmt.Errorf("resolving vault refs: %w", err)
-		}
-		resolver.Register("vault", backend)
+	// Resolve refs through the shared resolver (env + workspace overlay,
+	// store, external vault backends, project→global vault cascade) —
+	// the same one `call` uses, so exec sees every backend the project
+	// does. Done here rather than left to bootstrapProviders because
+	// --env values must be visible to args as {{env:KEY}} (phase 2).
+	resolver, err := initExecResolver(cfg)
+	if err != nil {
+		return err
 	}
 
 	// Phase 1: resolve env values first (they may reference parent env/vault)
 	for k, v := range toolCfg.Env {
-		toolCfg.Env[k], _ = resolver.Resolve(v)
+		resolved, err := resolveExecRef(resolver, v, "env "+k)
+		if err != nil {
+			return err
+		}
+		toolCfg.Env[k] = resolved
 	}
 
-	// Phase 2: rebuild resolver with resolved --env values as overrides
-	// so args can reference them via {{env:KEY}}. --env wins over
-	// workspace vars (more specific intent), workspace wins over os env.
+	// Phase 2: rebuild env backend with resolved --env values as
+	// overrides so args can reference them via {{env:KEY}}. --env wins
+	// over workspace vars (more specific intent), workspace wins over
+	// os env.
+	workspaceVars := loadActiveWorkspaceVars(cfg)
 	if len(toolCfg.Env) > 0 || len(workspaceVars) > 0 {
 		merged := make(map[string]string, len(workspaceVars)+len(toolCfg.Env))
 		for k, v := range workspaceVars {
@@ -166,9 +182,15 @@ func runExec(cmd *cobra.Command, args []string) error {
 	}
 
 	// Phase 3: resolve command and args
-	toolCfg.Command, _ = resolver.Resolve(toolCfg.Command)
+	toolCfg.Command, err = resolveExecRef(resolver, toolCfg.Command, "command")
+	if err != nil {
+		return err
+	}
 	for i, a := range toolCfg.Args {
-		toolCfg.Args[i], _ = resolver.Resolve(a)
+		toolCfg.Args[i], err = resolveExecRef(resolver, a, fmt.Sprintf("argument %d", i+1))
+		if err != nil {
+			return err
+		}
 	}
 	cfg.Tools[toolName] = toolCfg
 
@@ -190,37 +212,62 @@ func runExec(cmd *cobra.Command, args []string) error {
 	if result.IsError() {
 		if result.Error != "" {
 			fmt.Fprint(os.Stderr, result.Error)
+			if !strings.HasSuffix(result.Error, "\n") {
+				fmt.Fprintln(os.Stderr)
+			}
 		}
 		os.Exit(result.ExitCode)
 	}
 	return nil
 }
 
-// loadExecWorkspaceVars returns the vars map for the active workspace
-// (resolved from --workspace flag or FACTORLY_WORKSPACE env), or nil
-// when no workspace is active or the project has none. exec uses its
-// own resolver setup (not config.Load), so the workspace overlay has
-// to be wired here explicitly. Errors are swallowed — exec should
-// still run even if the workspace file is missing; missing var refs
-// will surface as unresolved-placeholder errors downstream which is
-// the right signal.
-func loadExecWorkspaceVars() map[string]string {
-	name := workspaceName
-	if name == "" {
-		name = os.Getenv("FACTORLY_WORKSPACE")
+// resolveExecRef resolves refs in s and fails when a secret-backend
+// reference survives. Running the command with a literal "{{vault:KEY}}"
+// in its environment or arguments is never what the user meant — a
+// bogus credential reaching a real service is worse than stopping here.
+// Failures on safe backends (env/store) are only warned about, matching
+// how config-based tools behave.
+func resolveExecRef(resolver *vault.Resolver, s, where string) (string, error) {
+	if s == "" {
+		return s, nil
 	}
-	if name == "" {
-		return nil
+	resolved, rerr := resolver.Resolve(s)
+	if backend, key, ok := vault.UnresolvedSecretRef(s, resolved); ok {
+		if rerr != nil {
+			return "", fmt.Errorf("%s: {{%s:%s}} could not be resolved: %w", where, backend, key, rerr)
+		}
+		return "", fmt.Errorf("%s: {{%s:%s}} could not be resolved (no %q backend available)", where, backend, key, backend)
 	}
+	if rerr != nil {
+		fmt.Fprintf(os.Stderr, "warning: %v\n", rerr)
+	}
+	return resolved, nil
+}
+
+// initExecResolver builds the shared resolver for exec's synthetic
+// config. exec runs without loading the project (it must work with
+// zero config), but when a project is present its vault_backends are
+// borrowed so {{op:KEY}}-style external refs resolve exactly as they
+// would for `call`. Workspace selection follows the same rules as
+// loadConfig. A missing or broken project config is logged and ignored.
+func initExecResolver(cfg *config.Config) (*vault.Resolver, error) {
 	cfgPath := configPath
 	if cfgPath == "" {
 		cfgPath = config.FindConfig()
 	}
-	ws, err := workspace.Load(cfgPath, name)
-	if err != nil || ws == nil {
-		return nil
+	resolveWorkspaceName(cfgPath)
+
+	if project, err := config.Load(cfgPath, config.WithWorkspace(workspaceName)); err == nil {
+		cfg.VaultBackends = project.VaultBackends
+	} else {
+		vlog("exec: project config not loaded (%v); external vault backends unavailable", err)
 	}
-	return ws.Vars
+
+	resolver, err := initResolver(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("resolving refs: %w", err)
+	}
+	return resolver, nil
 }
 
 func init() {
@@ -228,6 +275,7 @@ func init() {
 	execCmd.Flags().StringVar(&execCompress, "compress", "all", "compression mode: all, json, logs, none")
 	execCmd.Flags().StringVar(&execEnvIsolation, "env-isolation", "", "environment isolation: strict (minimal env) or standard (default, inherit parent)")
 	execCmd.Flags().BoolVarP(&execInteractive, "interactive", "i", false, "connect directly to terminal (skip compression, for TTY tools)")
-	execCmd.Flags().StringVar(&execTimeout, "timeout", "", "execution timeout (e.g. 30s, 5m; default: 30s)")
+	execCmd.Flags().StringVar(&execTimeout, "timeout", "", "execution timeout (e.g. 30s, 5m; default: none)")
 	execCmd.Flags().StringArrayVar(&execEnvVars, "env", nil, "set env var (KEY=VALUE, supports {{env:VAR}} and {{vault:KEY}}); repeatable")
+	execCmd.Flags().StringArrayVar(&execVaultKeys, "vault", nil, "export vault secret as env var (KEY, ENV=KEY, or glob like 'STRIPE_*'; '*' exports everything); repeatable")
 }

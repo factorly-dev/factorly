@@ -654,3 +654,26 @@ func TestRedactToTemplate_NoOpWhenBackendMissing(t *testing.T) {
 		t.Errorf("expected no-op when backend missing, got %q", got)
 	}
 }
+
+func TestUnresolvedSecretRef(t *testing.T) {
+	cases := []struct {
+		name, original, resolved string
+		wantKey                  string
+		wantOK                   bool
+	}{
+		{"resolved", "{{vault:A}}", "secret", "", false},
+		{"unresolved", "x {{vault:A}} y", "x {{vault:A}} y", "A", true},
+		{"escaped passthrough", `\{{vault:A}}`, "{{vault:A}}", "", false},
+		{"escaped plus real unresolved", `\{{vault:A}} {{vault:B}}`, "{{vault:A}} {{vault:B}}", "B", true},
+		{"escaped plus real resolved", `\{{vault:A}} {{vault:B}}`, "{{vault:A}} ok", "", false},
+		{"safe backend ignored", "{{env:HOME}}", "{{env:HOME}}", "", false},
+		{"external backend", "{{op:item/field}}", "{{op:item/field}}", "item/field", true},
+		{"default consumed", "{{vault:A|dflt}}", "dflt", "", false},
+	}
+	for _, c := range cases {
+		_, key, ok := UnresolvedSecretRef(c.original, c.resolved)
+		if ok != c.wantOK || key != c.wantKey {
+			t.Errorf("%s: got (%q,%v), want (%q,%v)", c.name, key, ok, c.wantKey, c.wantOK)
+		}
+	}
+}

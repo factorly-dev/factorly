@@ -1,3 +1,18 @@
+## [Unreleased]
+
+### Added
+- `--vault KEY` on `factorly exec` and `factorly wrap`: export a vault secret as an environment variable without spelling out `--env KEY={{vault:KEY}}`. Accepts `KEY`, `ENV=KEY` to rename, and quoted globs like `'STRIPE_*'`. `--env` wins on conflict
+- `timeout: none` (or `"0"`) on CLI tool definitions disables the deadline entirely (`parseCLIToolTimeout`, `CLIToolDef.NoTimeout`)
+- Timed-out CLI tools now report `timed out after <duration>` and exit 124 (`provider.ExitCodeTimeout`) instead of a bare -1 with no message
+- `vault.UnresolvedSecretRef` to detect secret references that survived resolution, escape-aware
+
+### Changed
+- `factorly exec` runs with **no timeout** unless `--timeout` is given. The 30s default exists to protect agent tool calls; exec is a foreground command and was cutting off long builds and interactive sessions
+- Interactive CLI tools (`interactive: true`, `exec -i`) no longer inherit the 30s default; an explicit `timeout:` is still honoured
+- `factorly exec` resolves references through the shared resolver (`initResolver`) instead of its own local-vault-only copy, so workspace overlays, `{{store:KEY}}`, external `vault_backends`, and the project → global vault cascade all work. Workspace selection is shared with `loadConfig` via `resolveWorkspaceName`
+- `factorly exec` fails fast when a `{{vault:KEY}}` or external-backend reference cannot be resolved, rather than running the command with the literal placeholder
+- `factorly wrap` resolves `--env`/`--vault` through the vault cascade (`getCachedVault`) rather than the local tier only
+
 ## [v0.18.1] - 2026-06-10
 
 ### Added

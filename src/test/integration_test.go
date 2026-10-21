@@ -7236,3 +7236,58 @@ func TestHelpExplain_Builtin(t *testing.T) {
 		}
 	})
 }
+
+// --- Exec timeouts ---
+
+func TestExecNoTimeoutByDefault(t *testing.T) {
+	// 31s+ would prove the old 30s default is gone but is too slow for
+	// CI; instead rely on the unit test for NoTimeout and check here
+	// that a multi-second command completes with no --timeout flag.
+	out, _, code := run(t, t.TempDir(), "exec", "--compress", "none", "--", "sh", "-c", "sleep 1; echo done")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(out, "done") {
+		t.Errorf("expected output 'done', got %q", out)
+	}
+}
+
+func TestExecTimeoutReported(t *testing.T) {
+	_, stderr, code := run(t, t.TempDir(), "exec", "--timeout", "1s", "--", "sleep", "5")
+	if code != 124 {
+		t.Fatalf("expected exit 124 on timeout, got %d (stderr: %q)", code, stderr)
+	}
+	if !strings.Contains(stderr, "timed out after 1s") {
+		t.Errorf("expected timed-out message on stderr, got %q", stderr)
+	}
+}
+
+func TestExecTimeoutInvalid(t *testing.T) {
+	_, stderr, code := run(t, t.TempDir(), "exec", "--timeout", "soon", "--", "true")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for invalid --timeout")
+	}
+	if !strings.Contains(stderr, "invalid --timeout") {
+		t.Errorf("expected invalid --timeout error, got %q", stderr)
+	}
+}
+
+func TestExecEnvVisibleToArgs(t *testing.T) {
+	out, _, code := run(t, t.TempDir(), "exec", "--compress", "none", "--env", "GREETING=hello", "--", "sh", "-c", "echo $GREETING {{env:GREETING}}")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if strings.TrimSpace(out) != "hello hello" {
+		t.Errorf("expected 'hello hello', got %q", out)
+	}
+}
+
+func TestExecVaultInvalidSpec(t *testing.T) {
+	_, stderr, code := run(t, t.TempDir(), "exec", "--vault", "not-a-name", "--", "true")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for invalid --vault spec")
+	}
+	if !strings.Contains(stderr, "not a valid environment variable name") {
+		t.Errorf("expected spec error, got %q", stderr)
+	}
+}

@@ -386,3 +386,23 @@ func FirstSecretRef(s string) (backend, key string, ok bool) {
 	}
 	return "", "", false
 }
+
+// UnresolvedSecretRef reports the first secret-backend reference in
+// original that is still present verbatim in resolved — i.e. a
+// reference Resolve could not substitute. Escaped references
+// (\{{vault:KEY}}) in original are ignored, since those are meant to
+// pass through as literal text. Callers use this to turn a silently
+// unresolved secret into a hard error.
+func UnresolvedSecretRef(original, resolved string) (backend, key string, ok bool) {
+	const placeholder = "\x00ESCAPED_BRACE\x00"
+	unescaped := strings.ReplaceAll(original, "\\{{", placeholder)
+	for _, m := range refPattern.FindAllStringSubmatch(unescaped, -1) {
+		if len(m) < 3 || !IsSecretBackendName(m[1]) {
+			continue
+		}
+		if strings.Contains(resolved, m[0]) {
+			return m[1], m[2], true
+		}
+	}
+	return "", "", false
+}

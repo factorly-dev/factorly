@@ -210,9 +210,12 @@ Runs a single shell command through Factorly's full safety layer — the zero-co
 ```bash
 factorly exec -- git status
 factorly exec --compress json -- npm test
+factorly exec --timeout 10m -- make build
 factorly exec --env-isolation strict -- ./deploy.sh
 factorly exec -i -- psql -h localhost mydb
 ```
+
+Commands run with **no timeout** unless you pass `--timeout`. The 30s default that protects agent tool calls does not apply here — exec is a foreground command and Ctrl-C is the kill switch. A command that does hit `--timeout` exits with code 124 and `timed out after <duration>` on stderr.
 
 Supports `{{vault:KEY}}` and `{{env:VAR}}` references in arguments — secrets stay out of shell history. Add `|default` for fallbacks:
 
@@ -228,20 +231,37 @@ factorly exec -- curl "{{env:API_URL|https://api.example.com}}/users"
 --compress <mode>         # compression: all, json, logs, none (default: "all")
 --env-isolation <mode>    # "strict" for minimal env (default: inherit parent)
 --env KEY=VALUE           # set env var (repeatable; supports {{env:VAR}} and {{vault:KEY}})
+--vault KEY               # export a vault secret as an env var (repeatable; see below)
 -i, --interactive         # connect directly to terminal (skip compression, for TTY tools)
---timeout <duration>      # execution timeout (e.g. 30s, 5m; default: 30s)
+--timeout <duration>      # execution timeout (e.g. 30s, 5m; default: none)
 ```
 
-Use `--env` with `--env-isolation strict` to pass specific vars into a restricted environment:
+### Vault secrets as environment variables
+
+`--vault` is the short form of `--env KEY={{vault:KEY}}`. Three shapes:
+
+```bash
+factorly exec --vault GITHUB_TOKEN -- gh pr list            # vault key → same-named env var
+factorly exec --vault GH_TOKEN=GITHUB_TOKEN -- ./script.sh  # vault key → different env name
+factorly exec --vault 'STRIPE_*' -- npm run sync            # every key matching the glob
+```
+
+Quote globs so the shell does not expand them. `--vault '*'` exports the whole vault; use it deliberately. A glob that matches nothing is an error, and a key that is not a valid environment variable name (for example `github-token`) must be aliased with the `ENV=KEY` form. When the same name is given to both `--env` and `--vault`, `--env` wins.
+
+A `{{vault:KEY}}` or external-backend reference that cannot be resolved stops the command before it runs. The child never sees a literal placeholder where a credential should be.
+
+Combine with `--env-isolation strict` to hand a command exactly the variables it needs and nothing else:
 
 ```bash
 factorly exec --env-isolation strict --env DISPLAY={{env:DISPLAY}} -- xsel --clipboard
-factorly exec --env-isolation strict --env GITHUB_TOKEN={{vault:GITHUB_TOKEN}} -- gh pr list
+factorly exec --env-isolation strict --vault GITHUB_TOKEN -- gh pr list
 ```
+
+exec resolves references through the same backends as `factorly call`: the active workspace overlay, `{{store:KEY}}`, external `vault_backends` from the project config, and the project → global vault cascade.
 
 ### What happens
 
-1. Resolves `{{env:VAR}}` and `{{vault:KEY}}` references in arguments
+1. Resolves `{{env:VAR}}` and `{{vault:KEY}}` references in `--env`/`--vault` values, then in arguments
 2. Runs the command through the CLI provider (same as config-based tools)
 3. Applies built-in output filters for recognized commands (git, make, npm, go test, cargo, pip)
 4. Applies compression and truncation (unless `-i` interactive mode)
@@ -274,6 +294,7 @@ factorly wrap --url http://localhost:3001/mcp
 --http-token <tok>   # Bearer token for HTTP mode
 --env-isolation <mode>  # "strict" for minimal env, default inherits parent
 --env KEY=VALUE         # set env var (repeatable; supports {{env:VAR}} and {{vault:KEY}})
+--vault KEY             # export a vault secret as an env var (KEY, ENV=KEY, or glob; repeatable)
 --timeout <duration>    # tool call timeout (e.g. 30s, 5m; default: 30s)
 ```
 

@@ -30,6 +30,7 @@ var (
 	wrapEnvIsolation string
 	wrapTimeout      string
 	wrapEnvVars      []string
+	wrapVaultKeys    []string
 )
 
 var wrapCmd = &cobra.Command{
@@ -97,37 +98,62 @@ func runWrap(cmd *cobra.Command, args []string) error {
 		toolCfg.EnvIsolation = "strict"
 	}
 
-	// Parse --env KEY=VALUE pairs and resolve refs
+	// Parse --env KEY=VALUE pairs
 	if len(wrapEnvVars) > 0 {
 		if toolCfg.Env == nil {
 			toolCfg.Env = make(map[string]string)
 		}
+		for _, e := range wrapEnvVars {
+			k, v, ok := strings.Cut(e, "=")
+			if !ok {
+				return fmt.Errorf("invalid --env format %q (expected KEY=VALUE)", e)
+			}
+			toolCfg.Env[k] = v
+		}
+	}
+
+	// --vault KEY / ENV=KEY / GLOB → {{vault:KEY}} env entries; --env wins
+	// on conflict.
+	if len(wrapVaultKeys) > 0 {
+		specs, err := parseVaultEnvSpecs(wrapVaultKeys)
+		if err != nil {
+			return err
+		}
+		warnf := func(format string, a ...any) {
+			fmt.Fprintf(os.Stderr, "warning: "+format+"\n", a...)
+		}
+		vaultEnv, err := vaultEnvRefs(specs, listCachedVaultKeys, warnf)
+		if err != nil {
+			return err
+		}
+		toolCfg.Env = mergeVaultEnv(toolCfg.Env, vaultEnv)
+	}
+
+	// Resolve refs in env values. The vault is only opened when a value
+	// actually references it.
+	if len(toolCfg.Env) > 0 {
 		resolver := vault.NewResolver()
 		resolver.Register("env", vault.EnvBackend{})
 
 		hasVaultRefs := false
-		for _, e := range wrapEnvVars {
-			_, v, _ := strings.Cut(e, "=")
+		for _, v := range toolCfg.Env {
 			if vault.HasVaultRefs(v) {
 				hasVaultRefs = true
 				break
 			}
 		}
 		if hasVaultRefs {
-			backend, err := getCachedLocalVault()
+			backend, err := getCachedVault()
 			if err != nil {
-				return fmt.Errorf("resolving vault refs in --env: %w", err)
+				return fmt.Errorf("resolving vault refs in --env/--vault: %w", err)
 			}
-			resolver.Register("vault", backend)
+			if backend != nil {
+				resolver.Register("vault", backend)
+			}
 		}
 
-		for _, e := range wrapEnvVars {
-			k, v, ok := strings.Cut(e, "=")
-			if !ok {
-				return fmt.Errorf("invalid --env format %q (expected KEY=VALUE)", e)
-			}
-			resolved, _ := resolver.Resolve(v)
-			toolCfg.Env[k] = resolved
+		for k, v := range toolCfg.Env {
+			toolCfg.Env[k] = resolveVaultRef(resolver, v)
 		}
 	}
 
@@ -215,4 +241,5 @@ func init() {
 	wrapCmd.Flags().StringVar(&wrapEnvIsolation, "env-isolation", "", "environment isolation: strict (minimal env) or standard (default, inherit parent)")
 	wrapCmd.Flags().StringVar(&wrapTimeout, "timeout", "", "tool call timeout (e.g. 30s, 5m; default: 30s)")
 	wrapCmd.Flags().StringArrayVar(&wrapEnvVars, "env", nil, "set env var (KEY=VALUE, supports {{env:VAR}} and {{vault:KEY}}); repeatable")
+	wrapCmd.Flags().StringArrayVar(&wrapVaultKeys, "vault", nil, "export vault secret as env var (KEY, ENV=KEY, or glob like 'STRIPE_*'); repeatable")
 }
