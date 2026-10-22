@@ -5,6 +5,10 @@
 ### Added
 - Bare `--env NAME` on `factorly exec` and `factorly wrap` forwards a variable from the parent environment (workspace overlay first), docker `-e NAME` style; unset names are skipped (`parseEnvFlags`, `forwardEnv`)
 
+### Changed
+- Go 1.26 is now the minimum and the CI build toolchain (`go 1.26.10` in `src/go.mod`, read by `setup-go` via `go-version-file`)
+- Bumped `golang.org/x/crypto` to v0.58.0 and associated deps (`x/sys` v0.49.0, `x/term` v0.47.0, `x/text` v0.43.0)
+
 ## [v0.19.0] - 2026-06-10
 
 ### Added
