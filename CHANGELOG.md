@@ -1,17 +1,36 @@
-## [Unreleased]
+# Changelog
+
+## [v0.19.0] - 2026-06-10
 
 ### Added
+
+- **`exec`: `--vault` flag** – Short form for injecting secrets into the child process environment. Accepts `KEY`, `ENV=KEY` (rename), and quoted glob patterns expanded against the vault's key list. Available on both `exec` and `wrap` commands, replacing the verbose `--env KEY={{vault:KEY}}` syntax per key.
+- **`exec`: Full resolver support** – `initExecResolver` now delegates to the shared `initResolver`, picking up workspace overlays, `{{store:KEY}}` references, external `vault_backends`, and the project→global secret cascade. Previously only the local vault tier was available.
+- **`CLIToolDef.NoTimeout`** – New field allowing individual CLI tool definitions to opt out of the provider's default 30-second deadline. Interactive tools skip the default deadline unless a timeout is set explicitly.
+- **`ExitCodeTimeout` (exit 124)** – Timed-out tool invocations now exit with code 124 and report `"timed out after <duration>"` via the new `applyRunError` helper, consistent with shell convention.
+- **`parseCLIToolTimeout`** – Accepts `"none"` and `"0"` in addition to duration strings when configuring timeouts for config-based CLI tools.
+- **`resolveWorkspaceName`** – Workspace selection extracted into its own function so both `loadConfig` and `exec` paths agree on which workspace is active.
+- Tests covering timeout reporting and `NoTimeout` behavior (`cli_test.go`), vault spec parsing, glob expansion, and `--env` precedence (`vault_env_test.go`), and integration tests for `exec` with and without `--timeout`, `--env` visibility to args, and invalid `--vault` specs.
+- Updated documentation in `cli-reference`, `config-reference`, and example 24.
 - `--vault KEY` on `factorly exec` and `factorly wrap`: export a vault secret as an environment variable without spelling out `--env KEY={{vault:KEY}}`. Accepts `KEY`, `ENV=KEY` to rename, and quoted globs like `'STRIPE_*'`. `--env` wins on conflict
 - `timeout: none` (or `"0"`) on CLI tool definitions disables the deadline entirely (`parseCLIToolTimeout`, `CLIToolDef.NoTimeout`)
 - Timed-out CLI tools now report `timed out after <duration>` and exit 124 (`provider.ExitCodeTimeout`) instead of a bare -1 with no message
 - `vault.UnresolvedSecretRef` to detect secret references that survived resolution, escape-aware
 
 ### Changed
+
+- **`exec` timeout behavior** – `exec` now runs with no deadline by default. Pass `--timeout <duration>` (or `"0"`/`"none"`) to set one explicitly. Previously the CLI provider's 30-second default was inherited, silently killing long-running builds or interactive sessions with a bare `-1` exit and no message.
+- **Unresolved secret references are now a hard error** – A secret reference that survives resolution in `exec` (e.g. a missing vault key) is rejected via `resolveExecRef`, backed by `vault.UnresolvedSecretRef`, rather than passed as a literal placeholder to the child process.
+- **`mergeVaultEnv`** – An explicit `--env` value takes precedence over a `--vault` spec for the same key.
 - `factorly exec` runs with **no timeout** unless `--timeout` is given. The 30s default exists to protect agent tool calls; exec is a foreground command and was cutting off long builds and interactive sessions
 - Interactive CLI tools (`interactive: true`, `exec -i`) no longer inherit the 30s default; an explicit `timeout:` is still honoured
 - `factorly exec` resolves references through the shared resolver (`initResolver`) instead of its own local-vault-only copy, so workspace overlays, `{{store:KEY}}`, external `vault_backends`, and the project → global vault cascade all work. Workspace selection is shared with `loadConfig` via `resolveWorkspaceName`
 - `factorly exec` fails fast when a `{{vault:KEY}}` or external-backend reference cannot be resolved, rather than running the command with the literal placeholder
 - `factorly wrap` resolves `--env`/`--vault` through the vault cascade (`getCachedVault`) rather than the local tier only
+
+### Security
+
+- Bumped `golang.org/x/crypto` to `v0.52.0` and updated associated dependencies.
 
 ## [v0.18.1] - 2026-06-10
 
