@@ -98,18 +98,17 @@ func runWrap(cmd *cobra.Command, args []string) error {
 		toolCfg.EnvIsolation = "strict"
 	}
 
-	// Parse --env KEY=VALUE pairs
-	if len(wrapEnvVars) > 0 {
+	// Parse --env: KEY=VALUE pairs are set now; bare names are forwarded
+	// from the environment below.
+	explicitEnv, forwardNames, err := parseEnvFlags(wrapEnvVars)
+	if err != nil {
+		return err
+	}
+	for k, v := range explicitEnv {
 		if toolCfg.Env == nil {
 			toolCfg.Env = make(map[string]string)
 		}
-		for _, e := range wrapEnvVars {
-			k, v, ok := strings.Cut(e, "=")
-			if !ok {
-				return fmt.Errorf("invalid --env format %q (expected KEY=VALUE)", e)
-			}
-			toolCfg.Env[k] = v
-		}
+		toolCfg.Env[k] = v
 	}
 
 	// --vault KEY / ENV=KEY / GLOB → {{vault:KEY}} env entries; --env wins
@@ -131,7 +130,7 @@ func runWrap(cmd *cobra.Command, args []string) error {
 
 	// Resolve refs in env values. The vault is only opened when a value
 	// actually references it.
-	if len(toolCfg.Env) > 0 {
+	if len(toolCfg.Env) > 0 || len(forwardNames) > 0 {
 		resolver := vault.NewResolver()
 		resolver.Register("env", vault.EnvBackend{})
 
@@ -155,6 +154,11 @@ func runWrap(cmd *cobra.Command, args []string) error {
 		for k, v := range toolCfg.Env {
 			toolCfg.Env[k] = resolveVaultRef(resolver, v)
 		}
+		// Bare --env NAME: forwarded verbatim after resolution so the
+		// value is never re-templated. Wins over --vault for the same name.
+		toolCfg.Env = forwardEnv(toolCfg.Env, forwardNames, resolver, vlog)
+		// Values are final; bootstrapProviders resolves env once more.
+		toolCfg.Env = escapeResolvedEnv(toolCfg.Env)
 	}
 
 	// Apply shadow oversight
@@ -240,6 +244,6 @@ func init() {
 	wrapCmd.Flags().StringVar(&wrapHTTPToken, "http-token", "", "require Bearer token authentication for HTTP transport")
 	wrapCmd.Flags().StringVar(&wrapEnvIsolation, "env-isolation", "", "environment isolation: strict (minimal env) or standard (default, inherit parent)")
 	wrapCmd.Flags().StringVar(&wrapTimeout, "timeout", "", "tool call timeout (e.g. 30s, 5m; default: 30s)")
-	wrapCmd.Flags().StringArrayVar(&wrapEnvVars, "env", nil, "set env var (KEY=VALUE, supports {{env:VAR}} and {{vault:KEY}}); repeatable")
+	wrapCmd.Flags().StringArrayVar(&wrapEnvVars, "env", nil, "set env var (KEY=VALUE, supports {{env:VAR}} and {{vault:KEY}}) or forward one (NAME); repeatable")
 	wrapCmd.Flags().StringArrayVar(&wrapVaultKeys, "vault", nil, "export vault secret as env var (KEY, ENV=KEY, or glob like 'STRIPE_*'); repeatable")
 }

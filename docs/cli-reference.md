@@ -231,6 +231,7 @@ factorly exec -- curl "{{env:API_URL|https://api.example.com}}/users"
 --compress <mode>         # compression: all, json, logs, none (default: "all")
 --env-isolation <mode>    # "strict" for minimal env (default: inherit parent)
 --env KEY=VALUE           # set env var (repeatable; supports {{env:VAR}} and {{vault:KEY}})
+--env NAME                # forward NAME from your environment (repeatable; skipped if unset)
 --vault KEY               # export a vault secret as an env var (repeatable; see below)
 -i, --interactive         # connect directly to terminal (skip compression, for TTY tools)
 --timeout <duration>      # execution timeout (e.g. 30s, 5m; default: none)
@@ -250,10 +251,10 @@ Quote globs so the shell does not expand them. `--vault '*'` exports the whole v
 
 A `{{vault:KEY}}` or external-backend reference that cannot be resolved stops the command before it runs. The child never sees a literal placeholder where a credential should be.
 
-Combine with `--env-isolation strict` to hand a command exactly the variables it needs and nothing else:
+A bare `--env NAME` forwards a variable from your own environment, the way `docker run -e NAME` does. It is the short form of `--env NAME={{env:NAME}}`: with a workspace active the workspace value wins, and a name that is not set anywhere is skipped rather than exported empty. Combine with `--env-isolation strict` to hand a command exactly the variables it needs and nothing else:
 
 ```bash
-factorly exec --env-isolation strict --env DISPLAY={{env:DISPLAY}} -- xsel --clipboard
+factorly exec --env-isolation strict --env DISPLAY --env SSH_AUTH_SOCK -- xsel --clipboard
 factorly exec --env-isolation strict --vault GITHUB_TOKEN -- gh pr list
 ```
 
@@ -294,6 +295,7 @@ factorly wrap --url http://localhost:3001/mcp
 --http-token <tok>   # Bearer token for HTTP mode
 --env-isolation <mode>  # "strict" for minimal env, default inherits parent
 --env KEY=VALUE         # set env var (repeatable; supports {{env:VAR}} and {{vault:KEY}})
+--env NAME              # forward NAME from the parent environment (repeatable; skipped if unset)
 --vault KEY             # export a vault secret as an env var (KEY, ENV=KEY, or glob; repeatable)
 --timeout <duration>    # tool call timeout (e.g. 30s, 5m; default: 30s)
 ```

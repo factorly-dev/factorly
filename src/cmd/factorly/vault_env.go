@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/factorly-dev/factorly/internal/vault"
 )
 
 // vaultEnvSpec is one parsed --vault entry. Exactly one of Pattern or
@@ -130,6 +132,75 @@ func mergeVaultEnv(env map[string]string, vaultEnv map[string]string) map[string
 	for k, v := range vaultEnv {
 		if _, exists := env[k]; !exists {
 			env[k] = v
+		}
+	}
+	return env
+}
+
+// parseEnvFlags splits --env values into explicit KEY=VALUE pairs and
+// bare names. A bare name (docker's `-e VAR` shape) means "forward this
+// variable from my environment", and is looked up later through the
+// resolver's env backend so workspace overlays apply. Bare names must be
+// valid identifiers.
+func parseEnvFlags(raw []string) (explicit map[string]string, forward []string, err error) {
+	for _, e := range raw {
+		if k, v, ok := strings.Cut(e, "="); ok {
+			if k == "" {
+				return nil, nil, fmt.Errorf("invalid --env format %q (expected KEY=VALUE)", e)
+			}
+			if explicit == nil {
+				explicit = make(map[string]string)
+			}
+			explicit[k] = v
+			continue
+		}
+		name := strings.TrimSpace(e)
+		if !envNamePattern.MatchString(name) {
+			return nil, nil, fmt.Errorf("invalid --env %q (expected KEY=VALUE, or a variable name to forward)", e)
+		}
+		forward = append(forward, name)
+	}
+	return explicit, forward, nil
+}
+
+// forwardEnv copies each named variable from the resolver's env backend
+// (workspace overlay first, then the process environment) into env.
+// Unset names are skipped — a convenience forward like DISPLAY may
+// legitimately be absent — and reported through vlogf. Forwarded
+// values are set verbatim; they are real values, not templates.
+func forwardEnv(env map[string]string, names []string, resolver *vault.Resolver, vlogf func(string, ...any)) map[string]string {
+	if len(names) == 0 {
+		return env
+	}
+	backend := resolver.Backend("env")
+	if backend == nil {
+		backend = vault.EnvBackend{}
+	}
+	if env == nil {
+		env = make(map[string]string, len(names))
+	}
+	for _, name := range names {
+		val, err := backend.Get(name)
+		if err != nil {
+			vlogf("--env %s: not set, skipping", name)
+			continue
+		}
+		env[name] = val
+	}
+	return env
+}
+
+// escapeResolvedEnv protects final env values from being templated
+// again. exec and wrap resolve their env map up front (so --env values
+// can be referenced from args), but bootstrapProviders resolves every
+// tool's env map once more. A forwarded or already-resolved value that
+// happens to contain "{{" — a token that looks like a reference, say —
+// must reach the child verbatim, so "{{" is escaped to "\\{{" which
+// that single pass restores to the literal braces.
+func escapeResolvedEnv(env map[string]string) map[string]string {
+	for k, v := range env {
+		if strings.Contains(v, "{{") {
+			env[k] = strings.ReplaceAll(v, "{{", "\\{{")
 		}
 	}
 	return env

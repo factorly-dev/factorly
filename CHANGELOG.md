@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Bare `--env NAME` on `factorly exec` and `factorly wrap` forwards a variable from the parent environment (workspace overlay first), docker `-e NAME` style; unset names are skipped (`parseEnvFlags`, `forwardEnv`)
+
 ## [v0.19.0] - 2026-06-10
 
 ### Added

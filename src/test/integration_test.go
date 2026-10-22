@@ -7291,3 +7291,41 @@ func TestExecVaultInvalidSpec(t *testing.T) {
 		t.Errorf("expected spec error, got %q", stderr)
 	}
 }
+
+func TestExecForwardEnvStrict(t *testing.T) {
+	cmd := exec.Command(binary, "exec", "--compress", "none", "--env-isolation", "strict", "--env", "FWD_ME", "--env", "FWD_UNSET_QQ", "--", "sh", "-c", "echo [$FWD_ME] [${FWD_UNSET_QQ-absent}] [${NOT_FORWARDED-absent}]")
+	cmd.Env = append(os.Environ(), "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1", "FWD_ME=yes", "NOT_FORWARDED=leak")
+	cmd.Dir = t.TempDir()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("exec failed: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "[yes] [absent] [absent]" {
+		t.Errorf("unexpected output %q", got)
+	}
+}
+
+func TestExecForwardEnvInvalidName(t *testing.T) {
+	_, stderr, code := run(t, t.TempDir(), "exec", "--env", "not-a-name", "--", "true")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for invalid --env name")
+	}
+	if !strings.Contains(stderr, "invalid --env") {
+		t.Errorf("expected invalid --env error, got %q", stderr)
+	}
+}
+
+func TestExecForwardedValueNotRetemplated(t *testing.T) {
+	// A forwarded value that merely looks like a reference must reach the
+	// child verbatim, never be resolved against the vault or env.
+	cmd := exec.Command(binary, "exec", "--compress", "none", "--env", "WEIRD", "--env", "ALSO={{env:WEIRD}}", "--", "sh", "-c", `echo "$WEIRD|$ALSO"`)
+	cmd.Env = append(os.Environ(), "FACTORLY_NO_LOG=1", "FACTORLY_NO_UPDATE_CHECK=1", "WEIRD={{env:HOME}}")
+	cmd.Dir = t.TempDir()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("exec failed: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "{{env:HOME}}|{{env:HOME}}" {
+		t.Errorf("value was re-templated: %q", got)
+	}
+}

@@ -15,8 +15,9 @@ factorly exec --compress json -- curl -s https://api.github.com/repos/golang/go
 ```
 
 ```bash
-# Set environment variables for the subprocess
+# Set environment variables for the subprocess, or forward them from your own shell
 factorly exec --env REGION=us-east-1 -- echo "Deploying to $REGION"
+factorly exec --env-isolation strict --env DISPLAY --env SSH_AUTH_SOCK -- xsel --clipboard
 ```
 
 ```bash

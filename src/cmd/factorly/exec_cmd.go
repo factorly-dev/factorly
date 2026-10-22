@@ -33,10 +33,12 @@ and audit logging. The zero-config equivalent of a CLI tool definition.
 Supports {{vault:KEY}} and {{env:VAR}} references in arguments:
   factorly exec -- curl -H "Authorization: Bearer {{vault:GITHUB_TOKEN}}" https://api.github.com/user
 
-Export vault secrets into the command's environment with --vault:
+Export vault secrets into the command's environment with --vault, and
+forward variables from your own environment with a bare --env NAME:
   factorly exec --vault GITHUB_TOKEN -- gh pr list
   factorly exec --vault GH_TOKEN=GITHUB_TOKEN -- ./script.sh
   factorly exec --vault 'STRIPE_*' -- npm run sync
+  factorly exec --env-isolation strict --env DISPLAY --env SSH_AUTH_SOCK -- xsel --clipboard
 
 Commands run with no timeout unless --timeout is given.
 
@@ -95,17 +97,13 @@ func runExec(cmd *cobra.Command, args []string) error {
 		toolCfg.Timeout = execTimeout
 	}
 
-	// Parse --env KEY=VALUE pairs
-	if len(execEnvVars) > 0 {
-		toolCfg.Env = make(map[string]string)
-		for _, e := range execEnvVars {
-			k, v, ok := strings.Cut(e, "=")
-			if !ok {
-				return fmt.Errorf("invalid --env format %q (expected KEY=VALUE)", e)
-			}
-			toolCfg.Env[k] = v
-		}
+	// Parse --env: KEY=VALUE pairs are set now; bare names are forwarded
+	// from the environment once the resolver exists (after phase 1).
+	explicitEnv, forwardNames, err := parseEnvFlags(execEnvVars)
+	if err != nil {
+		return err
 	}
+	toolCfg.Env = explicitEnv
 
 	// --vault KEY / ENV=KEY / GLOB → env entries holding {{vault:KEY}}
 	// refs, so they ride the same resolver path as --env values.
@@ -165,6 +163,12 @@ func runExec(cmd *cobra.Command, args []string) error {
 		toolCfg.Env[k] = resolved
 	}
 
+	// Phase 1b: forward bare --env NAME entries. Resolved after phase 1
+	// so a forwarded value is set verbatim (never re-templated), and
+	// before phase 2 so args can reference it via {{env:NAME}}. A bare
+	// --env wins over --vault for the same name, like an explicit one.
+	toolCfg.Env = forwardEnv(toolCfg.Env, forwardNames, resolver, vlog)
+
 	// Phase 2: rebuild env backend with resolved --env values as
 	// overrides so args can reference them via {{env:KEY}}. --env wins
 	// over workspace vars (more specific intent), workspace wins over
@@ -192,6 +196,9 @@ func runExec(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	}
+	// Env values are final; keep bootstrapProviders' own resolve pass
+	// from templating them a second time.
+	toolCfg.Env = escapeResolvedEnv(toolCfg.Env)
 	cfg.Tools[toolName] = toolCfg
 
 	// Bootstrap providers (builds CLIProvider with our synthetic tool)
@@ -276,6 +283,6 @@ func init() {
 	execCmd.Flags().StringVar(&execEnvIsolation, "env-isolation", "", "environment isolation: strict (minimal env) or standard (default, inherit parent)")
 	execCmd.Flags().BoolVarP(&execInteractive, "interactive", "i", false, "connect directly to terminal (skip compression, for TTY tools)")
 	execCmd.Flags().StringVar(&execTimeout, "timeout", "", "execution timeout (e.g. 30s, 5m; default: none)")
-	execCmd.Flags().StringArrayVar(&execEnvVars, "env", nil, "set env var (KEY=VALUE, supports {{env:VAR}} and {{vault:KEY}}); repeatable")
+	execCmd.Flags().StringArrayVar(&execEnvVars, "env", nil, "set env var (KEY=VALUE, supports {{env:VAR}} and {{vault:KEY}}) or forward one (NAME); repeatable")
 	execCmd.Flags().StringArrayVar(&execVaultKeys, "vault", nil, "export vault secret as env var (KEY, ENV=KEY, or glob like 'STRIPE_*'; '*' exports everything); repeatable")
 }
