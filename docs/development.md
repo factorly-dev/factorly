@@ -103,7 +103,7 @@ git push && git push --tags
 The GitHub Actions release workflow triggers on CI success for main:
 - Builds cross-platform binaries (linux/amd64, darwin/amd64, darwin/arm64, windows/amd64)
 - Creates a GitHub Release with the binaries attached
-- Publishes the npm package (requires `NPM_TOKEN` secret in the `production` environment)
+- Publishes the npm package via npm trusted publishing (OIDC): no token or secret. The `factorly` package on npmjs.com has a trusted publisher pointing at this repo, `release.yml`, and the `production` environment, and the job has `id-token: write`
 
 ### Release checklist
 
@@ -120,7 +120,7 @@ cd npm
 npm publish
 ```
 
-Requires `NPM_TOKEN` env var or `npm login`.
+Requires `npm login` (a two-hour session with 2FA). There is no long-lived publish token; CI uses trusted publishing.
 
 ### Version files
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.19.3] - 2026-10-22
+
+### Changed
+- npm releases use trusted publishing (OIDC) instead of a long-lived `NPM_TOKEN`: the release job has `id-token: write`, runs on Node 24 for npm 11.5.1+, and `npm/.npmrc` is gone. The `factorly` package's trusted publisher on npmjs.com names this repo, `release.yml`, and the `production` environment
+- `npm/package.json` normalised per `npm pkg fix` (`repository.url` with `git+` prefix, `bin` path without `./`) so publish stops auto-correcting it
+
 ## [v0.19.2] - 2026-10-22
 
 ### Changed

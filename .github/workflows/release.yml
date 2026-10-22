@@ -14,6 +14,7 @@ jobs:
     environment: production
     permissions:
       contents: write
+      id-token: write # npm trusted publishing (OIDC)
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,14 +51,19 @@ jobs:
             build/factorly-${{ steps.version.outputs.version }}-windows-amd64.exe
             build/checksums.txt
 
+      # npm auth is OIDC trusted publishing: no token, no secret. The
+      # package's trusted publisher on npmjs.com must name this repo,
+      # this workflow file (release.yml) and the "production" environment.
+      # Needs npm >= 11.5.1, which Node 24 bundles.
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Publish to npm
         working-directory: npm
         run: |
+          echo "npm $(npm --version)"
           CURRENT=$(node -p "require('./package.json').version")
           PUBLISHED=$(npm view factorly version 2>/dev/null || echo "none")
           if [ "$CURRENT" = "$PUBLISHED" ]; then
@@ -65,8 +71,6 @@ jobs:
           else
             npm publish
           fi
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
